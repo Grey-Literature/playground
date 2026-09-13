@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#ede5ce">
+  <title>Tinwater Garden · Fidget Toy Garden</title>
+  <link rel="icon" href="../../favicon/RosettasKeysLogoFavi2-512x402.png">
+  <link rel="stylesheet" href="tinwater-garden/garden.css">
+</head>
+<body>
+  <header class="masthead">
+    <a class="home" href="../fidgetToy-index.html" aria-label="Back to Fidget Toy Garden">↖ <span>the fidget garden</span></a>
+    <div class="title"><span class="eyebrow">A SMALL PATCH OF CENTRAL TEXAS</span><h1>Tinwater Garden<span aria-hidden="true">.</span></h1></div>
+    <button id="sound" type="button" aria-pressed="false"><span aria-hidden="true">♫</span> <span id="sound-label">Sound off</span></button>
+  </header>
+  <main id="garden" aria-label="Interactive backyard garden">
+    <canvas id="scene" tabindex="0" aria-label="Six tipping cups in a living garden. Drag cups to tip them; hold to catch water. Use keys 1 through 6 to select a cup, arrows to tilt, space to hold, Escape to release. Drag fallen leaves into the water."></canvas>
+    <div class="scene-caption" aria-hidden="true"><span class="tiny-rule"></span><span id="mood">late afternoon, unhurried</span></div>
+    <div id="egg" role="status" hidden><span class="silk">a small kindness, caught in silk</span><span>A little help from <strong>OpenAI GPT-6</strong></span></div>
+    <div class="zoom-controls" aria-label="Garden view"><button id="zoom-out" aria-label="Zoom out">−</button><button id="fit" aria-label="Fit whole garden">↔</button><button id="zoom-in" aria-label="Zoom in">+</button></div>
+  </main>
+  <footer class="toolbar">
+    <div class="invitation"><span class="droplet" aria-hidden="true">◌</span><p id="hint" aria-live="polite">Tip a cup. Borrow a leaf. See where the water goes.</p></div>
+    <div class="time-controls"><span id="time-icon" aria-hidden="true">☀</span><label class="sr-only" for="time">Time of day</label><input id="time" type="range" min="0" max="1439" value="990" step="1"><output id="time-label" for="time">4:30 pm</output><button id="cycle" aria-pressed="true" title="Hold this time of day">Ⅱ</button></div>
+    <button id="about-toggle" aria-expanded="false" aria-controls="field-notes" aria-label="Open field notes">?</button>
+  </footer>
+  <section id="field-notes" aria-label="Field notes" hidden>
+    <button class="close" id="close-notes" aria-label="Close field notes">×</button>
+    <span class="eyebrow">FIELD NOTES / NO PARTICULAR OBJECTIVE</span><h2>A little water.<br>A lot going on.</h2>
+    <p>Tap a cup to rock it. Drag either rim to tip it, and keep holding to change its mind. Let go and the garden finds its rhythm.</p>
+    <p>Float a fallen leaf. Ruffle a flower. Splash the same soil a few times. At night, watch the warm rock and the spider’s corner.</p>
+    <p class="keys">Keyboard: <kbd>1–6</kbd> cup · <kbd>← →</kbd> tip · <kbd>Space</kbd> hold/release · <kbd>Esc</kbd> let go. Pinch or use +/− to zoom; drag the background to look around.</p>
+    <label class="volume">Water &amp; wildlife <input id="volume" type="range" min="0" max="100" value="65"></label>
+    <label class="motion"><input id="gentle" type="checkbox"> Less decorative motion</label>
+    <p class="credits">Original artwork created with image generation. CC0 field recordings: <a href="https://freesound.org/people/SonicOddities/sounds/841155/" target="_blank" rel="noopener">SonicOddities</a> and <a href="https://freesound.org/people/deleted_user_2104797/sounds/166324/" target="_blank" rel="noopener">deleted_user_2104797</a>. <a href="tinwater-garden/README.md">Making &amp; credits</a></p>
+  </section>
+  <noscript>This little garden needs JavaScript to move its water and wildlife.</noscript>
+  <script src="tinwater-garden/physics.js"></script>
+  <script src="tinwater-garden/audio.js"></script>
+  <script src="tinwater-garden/wildlife.js"></script>
+  <script src="tinwater-garden/render.js"></script>
+  <script src="tinwater-garden/main.js"></script>
+</body>
+</html>
