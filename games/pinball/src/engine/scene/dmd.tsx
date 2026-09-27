@@ -32,9 +32,35 @@ export function DMD({ position = [0, 16.5, -36.1] as [number, number, number], s
     g.fillStyle = bg;
     g.fillRect(0, 0, 512, 160);
     g.textAlign = 'left';
-    // attract alternates: title card (6 s) ↔ Spirit Board top 5 (4 s), when there is one
-    const boardPage = st.phase === 'attract' && st.board.length > 0 && t % 10 > 6;
-    if (boardPage) {
+    // attract rotates: title card (6 s) → Spirit Board top 5 (4 s) → Agent Board
+    // top 5 (4 s), skipping any board that's empty
+    const agentRows = [...st.agentBoards.realtime.map((e) => ({ ...e, tag: 'RT' })), ...st.agentBoards.lockstep.map((e) => ({ ...e, tag: 'LS' }))]
+      .sort((a, b) => b.score - a.score);
+    const pages = ['title', ...(st.board.length ? ['spirits'] : []), ...(agentRows.length ? ['agents'] : [])];
+    const cycle = 6 + (pages.length - 1) * 4;
+    const tc = t % cycle;
+    const page = st.phase !== 'attract' || tc < 6 ? 'title' : pages[1 + Math.floor((tc - 6) / 4)];
+    const boardPage = page === 'spirits';
+    if (page === 'agents') {
+      g.fillStyle = '#34d399';
+      g.shadowColor = '#34d399'; g.shadowBlur = 10;
+      g.font = '900 26px "Courier New", monospace';
+      g.fillText('AGENT BOARD', 30, 34);
+      g.fillStyle = DIFF.accent;
+      g.textAlign = 'right';
+      g.font = '700 18px "Courier New", monospace';
+      g.fillText(DIFF.label, 486, 34);
+      g.textAlign = 'left';
+      agentRows.slice(0, 5).forEach((e, i) => {
+        const y = 60 + i * 21;
+        g.fillStyle = i === 0 ? hot : on;
+        g.font = '700 19px "Courier New", monospace';
+        g.fillText(`${i + 1}. ${e.name.toUpperCase().slice(0, 16)} ${e.tag}`, 30, y);
+        g.textAlign = 'right';
+        g.fillText(e.score.toLocaleString(), 486, y);
+        g.textAlign = 'left';
+      });
+    } else if (boardPage) {
       g.fillStyle = on;
       g.shadowColor = on; g.shadowBlur = 10;
       g.font = '900 26px "Courier New", monospace';

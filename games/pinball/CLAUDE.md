@@ -156,6 +156,33 @@ Grey-Literature/playground#2). The two branches work like this:
     be a second adapter, and nothing else in the game would change.
   - `scores.check` covers the storage; `rules.check` covers the
     game-over → initials → board flow.
+- **Agent API and Agent Board (2c).** AI agents play through
+  `window.flipperSeance`, which `src/engine/agent.ts` installs only on
+  `?agent` pages. Its own `help()` documents it, a hidden `#agent-readme`
+  node in `index.html` points agents at it, and `scripts/reference-bot.js`
+  is a worked example you can paste into the console.
+  - **Declare first.** Every call is refused until
+    `declare({ name, model? })`.
+  - **Inputs only.** The calls are `flip`, `hold`, `plunge`, `nudge`,
+    `start` and `setMode`. `getState()`, `getTable()` and `events()` return
+    copies, and the runtime is never exposed.
+  - **Timing.** In `realtime` the game runs on its own clock. In `lockstep`
+    it only advances when the agent calls `step(ms)`; the render loop draws
+    but doesn't simulate (`isLockstepHeld`). Both paths run the same
+    `engine/sim.ts` `simulate()`.
+  - **Game time.** Timers that affect play run on game time (`later()` in
+    `runtime.ts`): tilt recovery, bell relights, door resets and the DSD
+    combo window. That way a lockstep agent sees them fire when a human
+    would. Cosmetic timers stay on the wall clock.
+  - **Filing.** A game played on an agent page files only to the Agent
+    Board (`flipper-seance:<theme>:agents:<realtime|lockstep>:<tier>`, top
+    10). The two modes are ranked separately and never on the human Spirit
+    Board.
+  - **`?debug` pages** can spawn balls, so their scores are filed nowhere.
+    The HUD says "DEBUG — NOT RANKED".
+  - **Forgiving taps, for everyone.** An instant key tap still gives a full
+    80 ms flipper stroke. A plunger tap with no hold auto-plunges at power
+    0.6. Agent games don't pause when the window loses focus.
 - **Clearance rule.** A ball passes a gap only if the centre-to-centre width
   is more than the sum of the two inflated radii:
   - wall to wall: 3.8
@@ -195,6 +222,12 @@ Run `npm test`. It runs `stuckcheck`, `launchcheck` and `feelcheck` for
 - `rules`: drives the real store with synthetic events and checks scoring,
   modes, the ball lifecycle, tilt, and per-theme × per-tier bests. Each real
   theme has its own section.
+- `wires`: no wire ramp's rails enter the shooter lane, and no two wire
+  ramps cross (the Salamander playtest bug).
+- `agent`: the agent API contract. It covers declare-first, `step()`
+  timing, taps, copy-only state, game-time timers under lockstep, and
+  filing (the Agent Board per mode, human board untouched, `?debug` filed
+  nowhere).
 - `mechanics`: swing bars stay in range with the right surface speed,
   orbiters stay on their circle, blast pads fire once and recharge,
   capture→ride redirects deliver, internal rides are never auto-entered,
@@ -279,6 +312,11 @@ The current numbers:
     before and after the relayout.
   - **Give Dead Star Disco's ramp and wormhole `carry`** once parity work
     starts. Its feel numbers will move, so re-baseline them.
+  - **Dead Star Disco multiball never ends for a good player.** Completing
+    both banks during multiball extends it (+5k and a full timer), and the
+    lockstep reference bot held 10× scoring for minutes. It scored about 7M
+    a minute and never drained until it retired itself. Consider capping
+    extensions.
   - **The Inferno Vents save balls.** They blast straight up the table (about
     450 blasts in 40 impossible balls), and the impossible flip-exit reading
     (315, weakest 131) is the vent catching the cradle shot. The prototype
@@ -337,6 +375,9 @@ The current numbers:
    waterfall gaps and a beacon for balls under the deck. The harness covers
    every layer. **STOP**
    **(b) Salamander, recreated** at engine scale. **STOP**
+   **(c) Agent Arcade.** AI agents play through a declared API in real
+   time or lockstep, with their own Agent Board. Key taps are forgiving and
+   game-time timers are in place. **STOP**
 3. **Physics parity.** Salamander should sit inside Dead Star Disco's
    envelope. Run death-trap and ball-trap audits, do Dead Star Disco's
    obstacle-placement pass, and check 30/60/144 Hz parity in a real
@@ -361,7 +402,8 @@ it fresh under `AGENTS.md`, and do not write any egg code before she approves.
 - Carrying over Salamander's Magnus, jitter or table-wobble physics. Dead
   Star Disco's feel is the physics truth.
 - Accounts, online leaderboards, or network calls of any kind. The Spirit
-  Board is local on purpose, because this is a family board on a public,
+  Board and the Agent Board are local on purpose (an agent plays in the
+  same browser the family uses), because this is a family board on a public,
   keyless site. If that ever changes, the `ScoreStore` adapter in
   `src/engine/scores.ts` is where an online board would plug in.
 - Scaling the ball per theme, or letting a theme fork `physics.ts`. New

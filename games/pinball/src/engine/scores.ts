@@ -1,4 +1,7 @@
-// The Spirit Board — per table × tier top-10 with arcade initials.
+// The Spirit Board — per table × tier top-10 with arcade initials — and the
+// Agent Board beside it: the same top-10, for AI agents that declared
+// themselves through the agent API (engine/agent.ts), kept separately per
+// timing mode (real-time and lockstep are never ranked against each other).
 //
 // Scores live behind the ScoreStore adapter. The only implementation is
 // LocalScoreStore (this browser's localStorage), deliberately: the repo is
@@ -132,3 +135,69 @@ export class LocalScoreStore implements ScoreStore {
 }
 
 export const scores: ScoreStore = new LocalScoreStore();
+
+// ---------------- Agent Board ----------------
+
+export type AgentMode = 'realtime' | 'lockstep';
+export const AGENT_MODES: AgentMode[] = ['realtime', 'lockstep'];
+
+export interface AgentEntry {
+  /** Declared name, e.g. "Claude Sonnet 5" (1–24 chars). */
+  name: string;
+  /** Optional model id / harness note (0–40 chars). */
+  model: string;
+  score: number;
+  day: string;
+}
+
+/** Keep names printable and short: letters, digits, space and . _ - ( ) / + # : */
+export function cleanAgentText(raw: unknown, max: number): string {
+  if (typeof raw !== 'string') return '';
+  return raw.replace(/[^A-Za-z0-9 ._\-()/+#:]/g, '').replace(/\s+/g, ' ').trim().slice(0, max);
+}
+
+export function sanitizeAgentBoard(raw: unknown): AgentEntry[] {
+  if (!Array.isArray(raw)) return [];
+  const out: AgentEntry[] = [];
+  for (const e of raw) {
+    if (!e || typeof e !== 'object') continue;
+    const { name, model, score, day } = e as Record<string, unknown>;
+    const n = cleanAgentText(name, 24);
+    if (!n || n !== name) continue;
+    if (typeof score !== 'number' || !Number.isFinite(score) || score < 0) continue;
+    out.push({
+      name: n, model: cleanAgentText(model, 40), score: Math.floor(score),
+      day: typeof day === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : '',
+    });
+  }
+  return out.sort((a, b) => b.score - a.score).slice(0, BOARD_SIZE);
+}
+
+export class LocalAgentBoard {
+  private kv = makeKV();
+  private key(theme: string, mode: AgentMode, tier: DiffId) { return `${NS}:${theme}:agents:${mode}:${tier}`; }
+
+  list(theme: string, mode: AgentMode, tier: DiffId): AgentEntry[] {
+    const raw = this.kv.get(this.key(theme, mode, tier));
+    if (raw === null) return [];
+    try { return sanitizeAgentBoard(JSON.parse(raw)); } catch { return []; }
+  }
+
+  /** Files the entry; returns its 1-based rank, or null if it didn't make the board. */
+  submit(theme: string, mode: AgentMode, tier: DiffId, entry: AgentEntry): number | null {
+    if (!(entry.score > 0)) return null;
+    const board = this.list(theme, mode, tier);
+    if (board.length >= BOARD_SIZE && entry.score <= board[board.length - 1].score) return null;
+    let i = board.findIndex((e) => entry.score > e.score);
+    if (i < 0) i = board.length;
+    board.splice(i, 0, entry);
+    this.kv.set(this.key(theme, mode, tier), JSON.stringify(board.slice(0, BOARD_SIZE)));
+    return i + 1;
+  }
+
+  clear(theme: string, mode: AgentMode, tier: DiffId) {
+    this.kv.set(this.key(theme, mode, tier), '[]');
+  }
+}
+
+export const agentBoard = new LocalAgentBoard();

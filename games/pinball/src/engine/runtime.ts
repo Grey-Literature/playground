@@ -41,6 +41,8 @@ export interface MutableGame {
   alpha: number;
   /** How many times the un-wedge safety net has fired (harness metric). */
   unwedgeCount: number;
+  /** Game time each flipper was last pressed (minimum-pulse taps). */
+  flipPressedAt: { left: number; right: number };
 }
 
 function freshFlipper(angle: number): FlipperState {
@@ -76,7 +78,33 @@ export const gameRef: MutableGame = {
   paused: false,
   alpha: 0,
   unwedgeCount: 0,
+  flipPressedAt: { left: -99, right: -99 },
 };
+
+// ---------------- game-time scheduler ----------------
+// Timers that change play (tilt recovery, bell relights, door resets) run on
+// GAME time, not the wall clock: they pause with the game, and an agent in
+// lockstep sees them fire at the same simulated moment a human would.
+// Cosmetic timers (messages, popups, the bonus count-up) stay on setTimeout.
+interface Timer { at: number; fn: () => void }
+let timers: Timer[] = [];
+
+/** Run `fn` after `seconds` of game time. */
+export function later(seconds: number, fn: () => void) {
+  timers.push({ at: gameRef.time + seconds, fn });
+}
+
+/** Fire every timer that is due (called by the simulation after each tick). */
+export function runDue() {
+  if (!timers.length) return;
+  const due = timers.filter((t) => t.at <= gameRef.time + 1e-9);
+  if (!due.length) return;
+  timers = timers.filter((t) => t.at > gameRef.time + 1e-9);
+  for (const t of due) t.fn();
+}
+
+/** Drop every pending game-time timer (new ball / new game). */
+export function clearTimers() { timers = []; }
 
 export function resetMutable() {
   gameRef.balls = [];
@@ -101,6 +129,8 @@ export function resetMutable() {
   gameRef.launchCooldown = 0;
   gameRef.stuckTimer = 0;
   gameRef.searchCount = 0;
+  gameRef.flipPressedAt = { left: -99, right: -99 };
+  clearTimers();
 }
 
 function makeBall(x: number, y: number, vx: number, vy: number, extra: Partial<BallState>): BallState {

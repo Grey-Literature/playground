@@ -8,14 +8,23 @@ import { themeById } from './engine/theme';
 import { gameRef, spawnBallAt } from './engine/runtime';
 import { DIFF_ORDER } from './engine/difficulty';
 import { sound } from './engine/audio';
+import { createAgentApi } from './engine/agent';
 
 bootTheme();
 
 // ?debug exposes the live runtime for browser-driven checks (Playwright screenshots
-// of specific ball states). Opt-in only; nothing is exposed on a normal visit.
+// of specific ball states). Opt-in only; nothing is exposed on a normal visit —
+// and because it can spawn balls, nothing a ?debug page scores is ever filed.
+// ?agent installs the agent API (engine/agent.ts) as window.flipperSeance.
 try {
-  if (new URLSearchParams(window.location.search).has('debug')) {
+  const q = new URLSearchParams(window.location.search);
+  if (q.has('debug')) {
     (window as unknown as { __pinball: unknown }).__pinball = { gameRef, useGame, spawnBallAt };
+    useGame.setState({ unranked: true });
+  }
+  if (q.has('agent')) {
+    (window as unknown as { flipperSeance: unknown }).flipperSeance = createAgentApi();
+    console.info('%cFLIPPER SÉANCE — agent API ready: flipperSeance.help()', 'color:#fbbf24;font-weight:bold');
   }
 } catch { /* no window */ }
 
@@ -126,6 +135,8 @@ function useKeyboard() {
     const blur = () => {
       const st = useGame.getState();
       if (st.phase !== 'playing') return;
+      // an agent's browser tooling steals focus constantly; its games don't auto-pause
+      if (st.run.agent) return;
       st.setFlipper('left', false);
       st.setFlipper('right', false);
       if (gameRef.plungerCharging) st.releasePlunger();

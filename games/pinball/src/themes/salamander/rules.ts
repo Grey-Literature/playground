@@ -14,7 +14,7 @@ import { create } from 'zustand';
 import type { PhysEvent } from '../../engine/types';
 import type { ThemeRules } from '../../engine/theme';
 import { useGame } from '../../engine/store';
-import { gameRef, flash, addShake, spinnerOf, ejectIntoRide } from '../../engine/runtime';
+import { gameRef, flash, addShake, spinnerOf, ejectIntoRide, later } from '../../engine/runtime';
 import { TABLE } from '../../engine/table';
 import { sound } from '../../engine/audio';
 import { fire } from './sound';
@@ -58,11 +58,11 @@ const get = () => useSalamander.getState();
 const set = (p: Partial<SalamanderState>) => useSalamander.setState(p);
 
 let lastBellAt = -99;
-let relightTimer: ReturnType<typeof setTimeout> | null = null;
+/** Bumped to cancel a pending relight (game-time timers can't be removed). */
+let relightToken = 0;
 
 function clearRelight() {
-  if (relightTimer) clearTimeout(relightTimer);
-  relightTimer = null;
+  relightToken++;
 }
 
 function onBell(id: string) {
@@ -94,11 +94,11 @@ function onBell(id: string) {
   fire.inferno();
   flash('inferno');
   addShake(0.45);
-  clearRelight();
-  relightTimer = setTimeout(() => {
-    relightTimer = null;
+  const token = ++relightToken;
+  later(BELL_RELIGHT, () => {
+    if (token !== relightToken) return;
     set({ bells: [false, false, false], relighting: false });
-  }, BELL_RELIGHT * 1000);
+  });
 }
 
 function onEmber(id: string) {

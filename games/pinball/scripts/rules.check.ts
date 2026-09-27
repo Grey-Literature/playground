@@ -4,7 +4,7 @@
 
 import { useGame } from '../src/engine/store';
 import { registerTheme, type ThemeDef } from '../src/engine/theme';
-import { gameRef } from '../src/engine/runtime';
+import { gameRef, runDue } from '../src/engine/runtime';
 import type { PhysEvent } from '../src/engine/types';
 import { table, diffOverrides } from '../src/themes/deadStarDisco/table';
 import { rules, useDisco } from '../src/themes/deadStarDisco/rules';
@@ -124,7 +124,7 @@ expect('third bell (combo x3) → 1,200 + INFERNO 5,000', g().score - t0 === 120
 expect('INFERNO → bells relighting, heat 1, Maw not yet lit', sal().relighting && sal().heat === 1 && !sal().mawLit && sal().infernos === 1);
 sfire({ type: 'bumper', id: 'bell0' });
 expect('bells stay dark while relighting (no double INFERNO)', sal().infernos === 1 && sal().relighting);
-await sleep(BELL_RELIGHT * 1000 + 150);
+gameRef.time += BELL_RELIGHT + 0.05; runDue(); // relights run on game time, not the wall clock
 expect(`bells relight after ${BELL_RELIGHT}s`, !sal().relighting && !sal().bells.some(Boolean));
 gameRef.time += 5;
 for (const id of ['bell0', 'bell1', 'bell2']) sfire({ type: 'bumper', id });

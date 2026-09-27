@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { useGame } from '../store';
-import { scores, cleanInitials } from '../scores';
+import { scores, cleanInitials, type AgentMode } from '../scores';
 import { DIFF_ORDER, DIFF, diffFor } from '../difficulty';
 import { obstacleCount } from '../table';
 import { activeTheme, hallThemes, themeById } from '../theme';
 import {
   Volume2, VolumeX, Camera, Vibrate, VibrateOff, CircleHelp,
-  Play, Pause, RotateCcw, Trophy, Zap, TriangleAlert, LifeBuoy, Ghost,
+  Play, Pause, RotateCcw, Trophy, Zap, TriangleAlert, LifeBuoy, Ghost, Bot,
 } from 'lucide-react';
 
 export function fmt(n: number) {
@@ -112,6 +112,7 @@ function TopBar() {
             <span className="tabular-nums">{fmt(highScore)}</span>
             {isHigh && <span className="ml-1 animate-pulse rounded bg-yellow-400/20 px-1.5 py-px text-[10px] font-black text-yellow-300">NEW BEST!</span>}
           </div>
+          <RunBadge />
         </div>
       </div>
 
@@ -142,6 +143,30 @@ function TopBar() {
           <BallsDots />
         </div>
       </div>
+    </div>
+  );
+}
+
+const MODE_TAG: Record<AgentMode, string> = { realtime: 'REAL-TIME', lockstep: 'LOCKSTEP' };
+
+/** Who this game counts for: an agent (Agent Board) or a ?debug page (nowhere). */
+function RunBadge() {
+  const phase = useGame((s) => s.phase);
+  const run = useGame((s) => s.run);
+  const agent = useGame((s) => s.agent);
+  const agentMode = useGame((s) => s.agentMode);
+  const unranked = useGame((s) => s.unranked);
+  const who = phase === 'playing' ? run.agent : agent;
+  const mode = phase === 'playing' ? run.mode : agentMode;
+  if ((phase === 'playing' ? run.unranked : unranked)) {
+    return <div className="mt-1 text-[10px] font-black tracking-[0.2em] text-red-300">DEBUG — NOT RANKED</div>;
+  }
+  if (!who) return null;
+  return (
+    <div className="mt-1 flex max-w-[16rem] items-center gap-1 text-[10px] font-black tracking-[0.15em] text-emerald-300">
+      <Bot className="h-3 w-3 shrink-0" />
+      <span className="truncate">AGENT: {who.name}</span>
+      <span className="shrink-0 text-slate-400">· {MODE_TAG[mode]}</span>
     </div>
   );
 }
@@ -408,7 +433,7 @@ function AttractScreen() {
         <Title />
 
         <div className="mx-auto mt-5 max-w-md">
-          <SpiritBoard limit={5} />
+          <Boards limit={5} />
         </div>
 
         <div className="mx-auto mt-5 max-w-xl text-left">
@@ -474,7 +499,7 @@ function GameOverScreen() {
         </div>
         <div className="font-display mt-2 text-5xl font-black text-white tabular-nums drop-shadow-[0_0_20px_color-mix(in_srgb,var(--color-pb-400)_60%,transparent)]">{fmt(score)}</div>
         {entry ? <InitialsEntry rank={entry.rank} /> : (
-          <div className="mt-4 text-left"><SpiritBoard limit={10} /></div>
+          <div className="mt-4 text-left"><Boards limit={10} /></div>
         )}
         {!entry && <>
         <div className="mt-5 text-left">
@@ -570,6 +595,7 @@ function HelpModal() {
           <p><b className="text-amber-300">Stuck ball:</b> press <Kbd>B</Kbd> to re-serve the ball to the plunger. You keep your score and <i>don't</i> lose a ball. The machine also auto-kicks a resting ball after ~3s.</p>
           <p><b className="text-pa-300">Difficulty</b> (<Kbd>1</Kbd>–<Kbd>5</Kbd> on the title screen): Super Easy → Impossible. Each tier scales gravity, launch power, bounciness and flipper snap{sets.length ? <>, adds obstacles ({sets.join(' → ')})</> : null}, and multiplies all points earned. Best scores are kept per table and per tier — Impossible pays 1.5x.</p>
           <p><b className="text-amber-300">Spirit Board:</b> the top 10 for each table and difficulty, with initials. It lives in <i>this browser only</i> — another device keeps its own board. <ClearBoardButton /></p>
+          <p><b className="text-emerald-300">Agent Board:</b> AI agents can play too — through an API instead of the keyboard. Add <code>?agent</code> to the page address and call <code>flipperSeance.help()</code>. An agent declares its name first, and its games are ranked on their own board (real-time and lockstep separately), never on the Spirit Board.</p>
           <p><b className="text-pb-300">Tables:</b> <Kbd>T</Kbd> on the title screen summons the next table. <b className="text-pa-300">Extra balls</b> at 120K / 300K / 600K. <b className="text-pa-300">Camera:</b> <Kbd>C</Kbd> cycles Auto / Broadcast / Top / Cinematic.</p>
         </div>
         <button onClick={toggle} className="pointer-events-auto mt-5 w-full rounded-xl bg-gradient-to-r from-pa-500 to-pb-500 py-2.5 font-black text-white">GOT IT</button>
@@ -642,6 +668,79 @@ export function SpiritBoard({ limit = 10 }: { limit?: number }) {
                 <span className="w-5 text-right text-[11px] font-bold text-slate-500">{i + 1}</span>
                 <span className="w-10 font-black tracking-[0.2em] whitespace-pre">{e.initials}</span>
                 <span className="flex-1 text-right font-black">{fmt(e.score)}</span>
+                <span className="hidden w-20 text-right text-[10px] font-semibold text-slate-500 sm:inline">{e.day}</span>
+              </li>
+            );
+          })}
+        </ol>
+      )}
+    </div>
+  );
+}
+
+/** Spirit Board (humans) and Agent Board (declared AI agents), as tabs. */
+export function Boards({ limit = 10 }: { limit?: number }) {
+  const agentPage = useGame((s) => !!s.agent || !!s.run.agent);
+  const [tab, setTab] = useState<'spirits' | 'agents'>(agentPage ? 'agents' : 'spirits');
+  const tabBtn = (id: 'spirits' | 'agents', label: string) => (
+    <button
+      onClick={() => setTab(id)}
+      className={`pointer-events-auto rounded-t-lg px-3 py-1 text-[10px] font-black tracking-[0.25em] ${tab === id ? (id === 'spirits' ? 'bg-amber-950/40 text-amber-300' : 'bg-emerald-950/40 text-emerald-300') : 'text-slate-500 hover:text-slate-300'}`}
+    >
+      {label}
+    </button>
+  );
+  return (
+    <div>
+      <div className="flex gap-1">{tabBtn('spirits', 'SPIRITS')}{tabBtn('agents', 'AGENTS')}</div>
+      {tab === 'spirits' ? <SpiritBoard limit={limit} /> : <AgentBoard limit={limit} />}
+    </div>
+  );
+}
+
+/** Top scores by AI agents that declared themselves via the ?agent API; real-time and lockstep ranked apart. */
+export function AgentBoard({ limit = 10 }: { limit?: number }) {
+  const boards = useGame((s) => s.agentBoards);
+  const last = useGame((s) => s.lastAgentRank);
+  const runMode = useGame((s) => s.run.mode);
+  const difficulty = useGame((s) => s.difficulty);
+  const [mode, setMode] = useState<AgentMode>(last?.mode ?? runMode);
+  const cfg = diffFor(difficulty);
+  const rows = boards[mode].slice(0, limit);
+  return (
+    <div className="rounded-xl border border-emerald-300/30 bg-emerald-950/25 px-4 py-2.5 text-left">
+      <div className="mb-1.5 flex items-center justify-between gap-2">
+        <span className="flex items-center gap-1.5 text-[10px] font-black tracking-[0.35em] text-emerald-300">
+          <Bot className="h-3 w-3" /> AGENT BOARD
+        </span>
+        <span className="flex items-center gap-1">
+          {(['realtime', 'lockstep'] as AgentMode[]).map((m) => (
+            <button
+              key={m}
+              onClick={() => setMode(m)}
+              className={`pointer-events-auto rounded px-1.5 text-[9px] font-black tracking-[0.15em] ${mode === m ? 'bg-emerald-400/20 text-emerald-200' : 'text-slate-500 hover:text-slate-300'}`}
+            >
+              {MODE_TAG[m]}
+            </button>
+          ))}
+          <span className="ml-1 text-[10px] font-black tracking-[0.2em]" style={{ color: cfg.accent }}>{cfg.label}</span>
+        </span>
+      </div>
+      {rows.length === 0 ? (
+        <div className="py-1 text-center text-[11px] font-semibold italic text-slate-400">
+          No agent has played {mode === 'lockstep' ? 'lockstep' : 'real-time'} here yet. Agents: add <code>?agent</code> to the URL.
+        </div>
+      ) : (
+        <ol className="space-y-0.5">
+          {rows.map((e, i) => {
+            const mine = last?.mode === mode && last.rank === i + 1;
+            return (
+              <li key={i} className={`flex items-center gap-3 rounded px-1.5 font-display text-sm tabular-nums ${mine ? 'animate-pulse bg-emerald-300/20 text-emerald-200' : i === 0 ? 'text-emerald-300' : 'text-slate-200'}`}>
+                <span className="w-5 text-right text-[11px] font-bold text-slate-500">{i + 1}</span>
+                <span className="min-w-0 flex-1 truncate font-black" title={e.model || undefined}>
+                  {e.name}{e.model && <span className="ml-1.5 text-[10px] font-semibold text-slate-500">{e.model}</span>}
+                </span>
+                <span className="text-right font-black">{fmt(e.score)}</span>
                 <span className="hidden w-20 text-right text-[10px] font-semibold text-slate-500 sm:inline">{e.day}</span>
               </li>
             );

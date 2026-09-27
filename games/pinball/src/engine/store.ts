@@ -8,9 +8,9 @@ import { sound } from './audio';
 import { DIFF, DIFFS, DIFF_ORDER, diffFor, applyDifficultyCfg, setDiffOverrides, type DiffId } from './difficulty';
 import { TABLE, setTable, refreshActive } from './table';
 import {
-  gameRef, resetMutable, spawnBallInLane, spawnBallAt, isTilted, flash, addShake,
+  gameRef, resetMutable, spawnBallInLane, spawnBallAt, isTilted, flash, addShake, later,
 } from './runtime';
-import { scores, cleanInitials, padInitials, today, type ScoreEntry } from './scores';
+import { scores, agentBoard, cleanInitials, padInitials, today, type ScoreEntry, type AgentEntry, type AgentMode } from './scores';
 import { activeTheme, setActiveTheme, themeById, hallThemes, type ThemeDef } from './theme';
 
 // ---------- persistence (per theme × per tier) ----------
@@ -30,6 +30,10 @@ const rankFor = (board: ScoreEntry[], score: number) => {
   const i = board.findIndex((e) => score > e.score);
   return (i < 0 ? board.length : i) + 1;
 };
+const agentBoardsFor = (theme: string, tier: DiffId) => ({
+  realtime: agentBoard.list(theme, 'realtime', tier),
+  lockstep: agentBoard.list(theme, 'lockstep', tier),
+});
 const loadTier = (theme: string): DiffId => {
   const t = ls.get(`${theme}:diff`) as DiffId | null;
   return t && DIFFS[t] ? t : 'medium';
@@ -91,8 +95,25 @@ export interface GameStore {
   initialsEntry: { rank: number; score: number } | null;
   /** Rank of the entry just filed (highlighted on the board), until the next game. */
   lastEntryRank: number | null;
+  /** Agent Board for the current theme × tier, one list per timing mode. */
+  agentBoards: Record<AgentMode, AgentEntry[]>;
+  /** The agent declared on this page (engine/agent.ts), or null for a human. */
+  agent: { name: string; model: string } | null;
+  /** Timing mode for the agent's next game (locked while one is in play). */
+  agentMode: AgentMode;
+  /** ?debug page: ball spawning is exposed, so nothing it scores is ever filed. */
+  unranked: boolean;
+  /** Who is playing the current / last game — captured at start, decides the board. */
+  run: { agent: { name: string; model: string } | null; mode: AgentMode; unranked: boolean };
+  /** Where the last agent game landed on the Agent Board. */
+  lastAgentRank: { mode: AgentMode; rank: number } | null;
 
   setTheme: (id: string) => void;
+  /** Agent API: register this page's agent (see engine/agent.ts). */
+  declareAgent: (agent: { name: string; model: string }) => void;
+  /** Agent API: real-time or lockstep, between games only. Returns false if locked. */
+  setAgentMode: (mode: AgentMode) => boolean;
+  clearAgentBoard: (mode: AgentMode) => void;
   cycleTheme: (dir: 1 | -1) => void;
   setDifficulty: (id: DiffId) => void;
   cycleDifficulty: (dir: 1 | -1) => void;
@@ -126,6 +147,13 @@ export interface GameStore {
   skipInitials: () => void;
   clearBoard: () => void;
 }
+
+/** Shortest flipper stroke, s (a tap is never shorter than this). */
+export const MIN_FLIP_PULSE = 0.08;
+/** A plunger released below this power was a tap … */
+export const TAP_THRESHOLD = 0.05;
+/** … and launches at this power instead. */
+export const TAP_PLUNGE_POWER = 0.6;
 
 let bonusInterval: ReturnType<typeof setInterval> | null = null;
 
@@ -169,6 +197,26 @@ export const useGame = create<GameStore>()((set, get) => ({
   board: [],
   initialsEntry: null,
   lastEntryRank: null,
+  agentBoards: { realtime: [], lockstep: [] },
+  agent: null,
+  agentMode: 'realtime',
+  unranked: false,
+  run: { agent: null, mode: 'realtime', unranked: false },
+  lastAgentRank: null,
+
+  declareAgent: (agent) => set({ agent }),
+
+  setAgentMode: (mode) => {
+    if (get().phase === 'playing') return false;
+    set({ agentMode: mode });
+    return true;
+  },
+
+  clearAgentBoard: (mode) => {
+    const { themeId, difficulty } = get();
+    agentBoard.clear(themeId, mode, difficulty);
+    set({ agentBoards: agentBoardsFor(themeId, difficulty), lastAgentRank: null });
+  },
 
   // Summon a table. Only between games — a live game keeps its table.
   setTheme: (id) => {
@@ -184,6 +232,8 @@ export const useGame = create<GameStore>()((set, get) => ({
       themeId: def.id,
       difficulty: tier,
       ...(() => { const board = scores.list(def.id, tier); return { board, highScore: topScore(board) }; })(),
+      agentBoards: agentBoardsFor(def.id, tier),
+      lastAgentRank: null,
       initialsEntry: null,
       lastEntryRank: null,
       phase: 'attract',
@@ -213,6 +263,8 @@ export const useGame = create<GameStore>()((set, get) => ({
     set({
       difficulty: id,
       ...(() => { const board = scores.list(theme, id); return { board, highScore: topScore(board) }; })(),
+      agentBoards: agentBoardsFor(theme, id),
+      lastAgentRank: null,
       lastEntryRank: null,
       message: `MODE ${cfg.label} — ${cfg.blurb}`,
       messageT: Date.now(),
@@ -285,7 +337,8 @@ export const useGame = create<GameStore>()((set, get) => ({
       multiball: false, multiballT: 0, tiltWarnings: 0, tilted: false,
       plungerPower: 0, plungerCharging: false, popups: [], bonusCounting: false,
       bonusDisplay: 0, extraBallsAwarded: [], ballsInPlay: 1, stuckHint: false,
-      paused: false, lastEntryRank: null,
+      paused: false, lastEntryRank: null, lastAgentRank: null,
+      run: { agent: get().agent, mode: get().agentMode, unranked: get().unranked },
       message: `${DIFF.label} MODE — BALL 1 — HOLD SPACE TO PLUNGE`, messageT: Date.now(),
       bigMessage: 'BALL 1', bigMessageT: Date.now(),
     });
@@ -299,6 +352,22 @@ export const useGame = create<GameStore>()((set, get) => ({
   },
 
   setFlipper: (side, pressed) => {
+    // A tap is a full stroke: a release within MIN_FLIP_PULSE of the press is
+    // held back until the pulse has run (instant key taps — and agents driving
+    // the keyboard — otherwise release before a single physics step).
+    if (pressed) {
+      gameRef.flipPressedAt[side] = gameRef.time;
+    } else {
+      const pressedAt = gameRef.flipPressedAt[side];
+      const held = gameRef.time - pressedAt;
+      if (held < MIN_FLIP_PULSE) {
+        later(MIN_FLIP_PULSE - held, () => {
+          // only if nobody pressed it again in the meantime
+          if (gameRef.flipPressedAt[side] === pressedAt) get().setFlipper(side, false);
+        });
+        return;
+      }
+    }
     if (side === 'left') {
       gameRef.left.pressed = pressed;
       set({ leftPressed: pressed });
@@ -323,7 +392,9 @@ export const useGame = create<GameStore>()((set, get) => ({
   releasePlunger: () => {
     const s = get();
     if (s.phase !== 'playing' || s.ballPhase !== 'plunger') return;
-    const power = gameRef.plungerPower;
+    // a tap (no real hold) is a standard auto-plunge, not a dead-weak dribble
+    const tapped = gameRef.plungerPower < TAP_THRESHOLD;
+    const power = tapped ? TAP_PLUNGE_POWER : gameRef.plungerPower;
     const ball = gameRef.balls.find(b => b.active && b.inLane && b.autoLaunch === undefined);
     if (!ball) return;
     const P = TABLE.plunger;
@@ -338,6 +409,7 @@ export const useGame = create<GameStore>()((set, get) => ({
     addShake(0.12 + power * 0.15);
     set({ plungerCharging: false, plungerPower: 0, ballPhase: 'active', ballsInPlay: gameRef.balls.filter(b => b.active).length });
     activeTheme().rules.onLaunch?.(power);
+    if (tapped) get().setMessage('AUTO PLUNGE — HOLD SPACE FOR POWER');
   },
 
   nudge: (dir) => {
@@ -377,7 +449,8 @@ export const useGame = create<GameStore>()((set, get) => ({
     const gain = Math.round(pts * mult * DIFF.score);
     const score = s.score + gain;
     const patch: Partial<GameStore> = { score, bonus: s.bonus + Math.round(pts * 0.1 * DIFF.score) };
-    if (score > s.highScore) patch.highScore = score; // live "NEW BEST!"; filed on the board at game over
+    // live "NEW BEST!" (human games only; filed on the board at game over)
+    if (score > s.highScore && !s.run.agent && !s.run.unranked) patch.highScore = score;
     EXTRA_BALL_AT.map((t) => Math.round(t * DIFF.score)).forEach((th, i) => {
       if (score >= th && !s.extraBallsAwarded.includes(i)) {
         patch.extraBallsAwarded = [...(patch.extraBallsAwarded ?? s.extraBallsAwarded), i];
@@ -469,6 +542,26 @@ export const useGame = create<GameStore>()((set, get) => ({
     if (s.ball >= s.totalBalls) {
       sound.gameOver();
       const board = scores.list(s.themeId, s.difficulty);
+      const { run } = s;
+      if (run.unranked || run.agent) {
+        // never the human Spirit Board: a ?debug game files nowhere, an agent's
+        // game files straight to the Agent Board under its declared name
+        let lastAgentRank: GameStore['lastAgentRank'] = null;
+        if (run.agent && !run.unranked) {
+          const rank = agentBoard.submit(s.themeId, run.mode, s.difficulty, { ...run.agent, score, day: today() });
+          if (rank) lastAgentRank = { mode: run.mode, rank };
+        }
+        set({
+          phase: 'gameover', score, bonusCounting: false, board, initialsEntry: null,
+          agentBoards: agentBoardsFor(s.themeId, s.difficulty), lastAgentRank,
+          bigMessage: 'GAME OVER', bigMessageT: Date.now(),
+          message: run.unranked ? 'DEBUG GAME — NOT RANKED'
+            : lastAgentRank ? `AGENT BOARD #${lastAgentRank.rank} (${run.mode.toUpperCase()})` : 'AGENT GAME OVER',
+        });
+        resetMutable();
+        spawnBallAt(0, 12, 40, 10);
+        return;
+      }
       const qualifies = scores.qualifies(s.themeId, s.difficulty, score);
       set({
         phase: 'gameover', score, highScore, bonusCounting: false, board,
@@ -505,9 +598,9 @@ export const useGame = create<GameStore>()((set, get) => ({
       tilted: true, tiltWarnings: 0, leftPressed: false, rightPressed: false,
       bigMessage: 'TILT!', bigMessageT: Date.now(), message: 'TILT — FLIPPERS DEAD FOR 5s',
     });
-    setTimeout(() => {
+    later(5, () => {
       set({ tilted: false, message: 'RECOVERED — EASY ON THE NUDGE' });
-    }, 5000);
+    });
   },
 
   startMultiball: () => {

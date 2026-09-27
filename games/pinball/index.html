@@ -7,9 +7,19 @@
     <title>Flipper Séance — Misfire Arcade pinball</title>
     <link rel="icon" type="image/png" href="../../favicon/RosettasKeysLogoFavi2-512x402.png" vite-ignore />
     <meta name="description" content="A pinball hall where you summon the table. Keyboard: Z/M flippers, Space plunger, A/W/D nudge, T next table." />
+    <meta name="agent-api" content="Add ?agent to the URL, then call flipperSeance.help()" />
   </head>
   <body>
     <div id="root"></div>
+    <!-- For AI agents playing through browser control: synthetic key taps work,
+         but there is a proper API. Details below and via flipperSeance.help(). -->
+    <div id="agent-readme" hidden>
+      AI agents: reload this page with ?agent added to the URL (e.g. pinball.html?agent),
+      then call flipperSeance.help() in the page's JavaScript. Declare yourself with
+      flipperSeance.declare({ name: 'Your Model Name' }); you get flipper/plunger/nudge calls,
+      a JSON getState(), and an optional lockstep mode (the game only advances when you call
+      step(ms)). Agent games are ranked on the separate AGENT BOARD, never the human Spirit Board.
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
