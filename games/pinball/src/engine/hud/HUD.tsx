@@ -393,7 +393,10 @@ function AttractScreen() {
   const { Title } = theme;
   return (
     <div className="absolute inset-0 z-40 flex items-center justify-center bg-gradient-to-b from-slate-950/60 via-slate-950/40 to-slate-950/80 p-4">
-      <div className="attract-in w-full max-w-2xl rounded-3xl border border-pa-400/25 bg-slate-950/85 p-6 sm:p-10 text-center shadow-[0_0_80px_color-mix(in_srgb,var(--color-pa-400)_25%,transparent)] backdrop-blur-xl">
+      <div className="attract-in max-h-[calc(100dvh-2rem)] w-full max-w-2xl overflow-y-auto rounded-3xl border border-pa-400/25 bg-slate-950/85 p-6 sm:p-10 text-center shadow-[0_0_80px_color-mix(in_srgb,var(--color-pa-400)_25%,transparent)] backdrop-blur-xl">
+        <div className="mb-3 inline-flex items-center gap-1.5 rounded-full border border-amber-400/40 bg-amber-950/40 px-3 py-0.5 text-[10px] font-black tracking-[0.3em] text-amber-300">
+          WORK IN PROGRESS · MORE TABLES BEING SUMMONED
+        </div>
         <ThemePicker />
         <div className="mb-1 mt-5 text-[11px] font-black tracking-[0.5em] text-pa-400">INSERT COIN • 3 BALLS</div>
         <Title />

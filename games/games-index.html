@@ -387,6 +387,13 @@
             animation: none;
         }
 
+        /* still-being-built cabinets: pulses like the ghost slot, in the warning colour */
+        .wip-tag {
+            border-color: var(--border);
+            color: var(--border);
+            animation: badge-pulse 2.4s ease-in-out infinite;
+        }
+
         .play-badge {
             display: inline-block;
             font-size: 1.2rem;
@@ -1122,6 +1129,10 @@
                 animation: none !important;
             }
 
+            .wip-tag {
+                animation: none !important;
+            }
+
             .pinball-ball,
             .pinball-flip {
                 animation: none !important;
@@ -1292,6 +1303,7 @@
                 <span class="card-index">07</span>
                 <span class="play-badge">Play Now</span>
                 <span class="badge compatibility-tag">Keyboard best</span>
+                <span class="badge compatibility-tag wip-tag">Work in progress</span>
                 <h2>Flipper S&eacute;ance</h2>
                 <p>
                     A pinball hall with no hall. You don't walk to a table &mdash; you
