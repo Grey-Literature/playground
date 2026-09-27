@@ -170,7 +170,7 @@ function MessageBar() {
   if (phase !== 'playing') return null;
   return (
     <div className="pointer-events-none absolute bottom-3 left-0 right-0 z-20 flex justify-center px-4">
-      <div key={messageT} className="msg-pop max-w-[46vw] truncate rounded-full border border-slate-600/60 bg-slate-950/75 px-4 py-1 text-center text-xs font-bold tracking-wide text-slate-100 backdrop-blur-md">
+      <div key={messageT} className="msg-pop max-w-[46vw] lg:max-w-[38vw] truncate rounded-full border border-slate-600/60 bg-slate-950/75 px-4 py-1 text-center text-xs font-bold tracking-wide text-slate-100 backdrop-blur-md">
         {message}
       </div>
     </div>
@@ -213,7 +213,7 @@ function PlungerMeter() {
   const phase = useGame((s) => s.phase);
   if (phase !== 'playing' || ballPhase !== 'plunger') return null;
   return (
-    <div className="pointer-events-none absolute bottom-40 right-4 sm:right-8 lg:right-44 z-20 flex flex-col items-center gap-2">
+    <div className="pointer-events-none absolute bottom-40 right-4 sm:right-8 lg:bottom-20 lg:right-44 z-20 flex flex-col items-center gap-2">
       <div className="text-[10px] font-black tracking-[0.25em] text-slate-300">POWER</div>
       <div className="relative h-44 w-5 overflow-hidden rounded-full border border-slate-600 bg-slate-900/90">
         {/* skill zone */}
@@ -244,7 +244,11 @@ function ControlsBar() {
   const phase = useGame((s) => s.phase);
   void st;
   return (
-    <div className="absolute top-24 sm:top-28 right-3 sm:right-4 z-30 flex flex-col gap-2">
+    // Small screens: a column on the right edge (no side panels there).
+    // Large screens: the theme's side panels own the right edge, so the
+    // buttons move to the bottom-right corner, mirroring the key legend: a
+    // two-row block under the panel column on narrower desktops, one row at xl.
+    <div className="absolute top-24 sm:top-28 right-3 sm:right-4 z-30 flex flex-col gap-2 lg:top-auto lg:bottom-3 lg:right-3 lg:w-36 lg:flex-row lg:flex-wrap lg:items-center lg:justify-center lg:gap-1.5 lg:rounded-xl lg:border lg:border-slate-700/50 lg:bg-slate-950/75 lg:p-1.5 lg:backdrop-blur-md xl:w-auto xl:flex-nowrap">
       {[
         { icon: muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />, fn: toggleMute, label: muted ? 'Unmute' : 'Mute', active: !muted },
         { icon: <Camera className="h-4 w-4" />, fn: cycleCamera, label: `Cam: ${cameraMode}`, active: true },
@@ -255,7 +259,7 @@ function ControlsBar() {
           key={i}
           onClick={b.fn}
           title={b.label}
-          className={`pointer-events-auto flex h-9 w-9 items-center justify-center rounded-lg border backdrop-blur-md transition-all hover:scale-105 active:scale-95 ${
+          className={`pointer-events-auto flex h-9 w-9 lg:h-8 lg:w-8 items-center justify-center rounded-lg border backdrop-blur-md transition-all hover:scale-105 active:scale-95 ${
             b.active ? 'border-pa-400/40 bg-slate-900/80 text-pa-300' : 'border-slate-700/60 bg-slate-900/80 text-slate-400'
           }`}
         >
@@ -264,24 +268,25 @@ function ControlsBar() {
       ))}
       {phase === 'playing' && (
         <>
+          <span className="hidden h-6 w-px bg-slate-700 xl:block" aria-hidden="true" />
           <button
             onClick={() => useGame.getState().reserveBall()}
             title="Ball reset (B) — frees a stuck ball, no ball lost"
-            className="pointer-events-auto flex h-9 w-9 items-center justify-center rounded-lg border border-amber-400/50 bg-slate-900/80 text-amber-300 backdrop-blur-md transition-all hover:scale-105 active:scale-95"
+            className="pointer-events-auto flex h-9 w-9 lg:h-8 lg:w-8 items-center justify-center rounded-lg border border-amber-400/50 bg-slate-900/80 text-amber-300 backdrop-blur-md transition-all hover:scale-105 active:scale-95"
           >
             <LifeBuoy className="h-4 w-4" />
           </button>
           <button
             onClick={() => setPaused(!paused)}
             title={paused ? 'Resume' : 'Pause'}
-            className="pointer-events-auto flex h-9 w-9 items-center justify-center rounded-lg border border-slate-700/60 bg-slate-900/80 text-slate-300 backdrop-blur-md transition-all hover:scale-105 active:scale-95"
+            className="pointer-events-auto flex h-9 w-9 lg:h-8 lg:w-8 items-center justify-center rounded-lg border border-slate-700/60 bg-slate-900/80 text-slate-300 backdrop-blur-md transition-all hover:scale-105 active:scale-95"
           >
             {paused ? <Play className="h-4 w-4" /> : <Pause className="h-4 w-4" />}
           </button>
           <button
             onClick={() => useGame.getState().startGame()}
             title="Restart"
-            className="pointer-events-auto flex h-9 w-9 items-center justify-center rounded-lg border border-slate-700/60 bg-slate-900/80 text-slate-300 backdrop-blur-md transition-all hover:scale-105 active:scale-95"
+            className="pointer-events-auto flex h-9 w-9 lg:h-8 lg:w-8 items-center justify-center rounded-lg border border-slate-700/60 bg-slate-900/80 text-slate-300 backdrop-blur-md transition-all hover:scale-105 active:scale-95"
           >
             <RotateCcw className="h-4 w-4" />
           </button>
