@@ -77,7 +77,7 @@ export function StatusPanels() {
 export function Title() {
   return (
     <>
-      <h1 className="font-display text-6xl sm:text-8xl font-black uppercase leading-none tracking-tight">
+      <h1 className="font-display text-5xl sm:text-7xl font-black uppercase leading-none tracking-tight">
         <span className="bg-gradient-to-b from-yellow-200 via-pa-400 to-red-700 bg-clip-text text-transparent drop-shadow-[0_0_30px_color-mix(in_srgb,var(--color-pa-500)_55%,transparent)]">SALAMANDER</span>
       </h1>
       <div className="mt-1 text-sm font-bold tracking-[0.35em] text-pb-300">THE FIRE TRIAL</div>

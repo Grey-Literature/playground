@@ -151,6 +151,7 @@ function useThemeVars(): CSSProperties {
   const vars: Record<string, string> = {
     '--pb-font-display': p.fontDisplay,
     '--pb-font-body': p.fontBody,
+    '--pb-bg': p.bg,
     background: p.bg,
   };
   for (const [k, v] of Object.entries(p.a)) vars[`--color-pa-${k}`] = v;

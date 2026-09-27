@@ -399,7 +399,7 @@ function AttractScreen() {
   const { Title } = theme;
   return (
     <div className="absolute inset-0 z-40 flex items-center justify-center bg-gradient-to-b from-slate-950/60 via-slate-950/40 to-slate-950/80 p-4">
-      <div className="attract-in max-h-[calc(100dvh-2rem)] w-full max-w-2xl overflow-y-auto rounded-3xl border border-pa-400/25 bg-slate-950/85 p-6 sm:p-10 text-center shadow-[0_0_80px_color-mix(in_srgb,var(--color-pa-400)_25%,transparent)] backdrop-blur-xl">
+      <div className="attract-in max-h-[calc(100dvh-2rem)] w-full max-w-2xl overflow-y-auto rounded-3xl border border-pa-400/25 bg-[color-mix(in_srgb,var(--pb-bg,#020617)_85%,transparent)] p-6 sm:p-10 text-center shadow-[0_0_80px_color-mix(in_srgb,var(--color-pa-400)_25%,transparent)] backdrop-blur-xl">
         <div className="mb-3 inline-flex items-center gap-1.5 rounded-full border border-amber-400/40 bg-amber-950/40 px-3 py-0.5 text-[10px] font-black tracking-[0.3em] text-amber-300">
           WORK IN PROGRESS · MORE TABLES BEING SUMMONED
         </div>
@@ -465,7 +465,7 @@ function GameOverScreen() {
   const cfg = diffFor(difficulty);
   return (
     <div className="absolute inset-0 z-40 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-[2px]">
-      <div className="attract-in max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-3xl border border-pb-400/30 bg-slate-950/90 p-8 text-center shadow-[0_0_60px_color-mix(in_srgb,var(--color-pb-400)_30%,transparent)] backdrop-blur-xl">
+      <div className="attract-in max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-3xl border border-pb-400/30 bg-[color-mix(in_srgb,var(--pb-bg,#020617)_90%,transparent)] p-8 text-center shadow-[0_0_60px_color-mix(in_srgb,var(--color-pb-400)_30%,transparent)] backdrop-blur-xl">
         <div className="flex items-center justify-center gap-2 text-[11px] font-black tracking-[0.4em] text-pb-400">
           GAME OVER
           <span className="rounded-full px-2 py-0.5 text-[10px] tracking-[0.2em]" style={{ color: cfg.accent, background: `${cfg.accent}1a`, border: `1px solid ${cfg.accent}55` }}>

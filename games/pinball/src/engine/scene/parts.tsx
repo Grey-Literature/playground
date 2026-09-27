@@ -100,11 +100,13 @@ export function Slings({ tris, glow = '#ef4444', body = '#f1f5f9', rubber = '#dc
 }
 
 // ---------------- Pop bumpers ----------------
-export function Bumpers({ colors = ['#22d3ee', '#e879f9', '#fbbf24', '#4ade80', '#f472b6'], skirt = '#f8fafc', cap = '#0f172a' }: {
+export function Bumpers({ colors = ['#22d3ee', '#e879f9', '#fbbf24', '#4ade80', '#f472b6'], skirt = '#f8fafc', cap = '#0f172a', only }: {
   colors?: string[]; skirt?: string; cap?: string;
+  /** Draw only the bumpers this accepts (a theme custom-draws the rest). */
+  only?: (id: string) => boolean;
 }) {
   useTier();
-  const list = ACTIVE.bumpers;
+  const list = only ? ACTIVE.bumpers.filter((b) => only(b.id)) : ACTIVE.bumpers;
   const mats = useRef<(THREE.MeshStandardMaterial | null)[]>([]);
   const caps = useRef<(THREE.MeshStandardMaterial | null)[]>([]);
   const lights = useRef<(THREE.PointLight | null)[]>([]);
@@ -281,8 +283,10 @@ export function Flippers({ left = { body: '#fb923c', glow: '#9a3412', inlay: '#f
 }
 
 // ---------------- Balls ----------------
-export function Balls({ color = '#f8fafc', light = '#bfd9ff', metalness = 1, roughness = 0.06, map, beacon = '#fbbf24' }: {
+export function Balls({ color = '#f8fafc', light = '#bfd9ff', metalness = 1, roughness = 0.06, map, emissive, beacon = '#fbbf24' }: {
   color?: string; light?: string; metalness?: number; roughness?: number; map?: THREE.Texture;
+  /** Self-glow (e.g. a molten ball); `map` doubles as the emissive map when set. */
+  emissive?: { color: string; intensity: number };
   /** Colour of the under-deck beacon ring. */
   beacon?: string;
 }) {
@@ -338,7 +342,10 @@ export function Balls({ color = '#f8fafc', light = '#bfd9ff', metalness = 1, rou
       {[0, 1, 2, 3].map((i) => (
         <mesh key={i} ref={(el) => { meshes.current[i] = el; }} castShadow>
           <sphereGeometry args={[BALL_RADIUS, 32, 32]} />
-          <meshStandardMaterial color={color} metalness={metalness} roughness={roughness} envMapIntensity={1.6} map={map ?? null} />
+          <meshStandardMaterial
+            color={color} metalness={metalness} roughness={roughness} envMapIntensity={1.6} map={map ?? null}
+            emissive={emissive?.color ?? '#000000'} emissiveIntensity={emissive?.intensity ?? 0} emissiveMap={emissive ? map ?? null : null}
+          />
         </mesh>
       ))}
       {[0, 1, 2, 3].map((i) => (
@@ -395,9 +402,13 @@ export function Decks({ color = '#64748b', edge = '#67e8f9', hole = '#e879f9', o
 }
 
 /** Plain wire rails along every ride path — for tables without bespoke ramp art. */
-export function RideWires({ color = '#cbd5e1', glow = '#22d3ee' }: { color?: string; glow?: string }) {
+export function RideWires({ color = '#cbd5e1', glow = '#22d3ee', only }: {
+  color?: string; glow?: string;
+  /** Wire only the rides this accepts (a theme custom-draws the rest). */
+  only?: (id: string) => boolean;
+}) {
   useTier();
-  const wires = useMemo(() => ACTIVE.rides.filter((r) => !r.hideBall).map((r) => {
+  const wires = useMemo(() => ACTIVE.rides.filter((r) => !r.hideBall && (!only || only(r.id))).map((r) => {
     const pts = r.path.map((p) => ({ ...p, h: p.h + 0.45 }));
     return { id: r.id, a: makeTrackTube(pts, 0.14, -1.6), b: makeTrackTube(pts, 0.14, 1.6), path: r.path };
   }), []);

@@ -17,7 +17,7 @@ copy.
 | Theme id        | Display name         | Status                              |
 | --------------- | -------------------- | ----------------------------------- |
 | `deadStarDisco` | Dead Star Disco      | Phase 1: the reference chassis      |
-| `salamander`    | Salamander           | Phase 2b, recreated (not ported)    |
+| `salamander`    | Salamander           | Phase 2b: built, awaiting playtest  |
 | _tbd_           | a MISFIRE ARCADE callback | Phase 4                        |
 | _tbd_           | a Snoopy Axolotl     | Phase 5                             |
 
@@ -119,6 +119,24 @@ Grey-Literature/playground#2). The two branches work like this:
     so gravity never parks a ball in a corner; and keep every drop hole and
     waterfall landing clear of field toys. `layers.check` gates both.
   - Layer Lab (`?theme=layerLab`, hidden) is the reference layered table.
+- **Moving and scripted mechanics** (2b). All of them are optional fields, so
+  tables that don't use them are untouched. `mechanics.check` covers each.
+  - `KinematicDef.motion: 'swing'` (with `amp`, `base`) makes a bar flap
+    instead of spin. `kind: 'orbiter'` is a round body circling
+    `(cx, cy)` at `orbit`. Read a pose with `kinematicPose()`.
+  - `Sensor.blast` turns a sensor into a blast pad: the ball's velocity is
+    replaced on entry, then the pad recharges. `gameRef.padCool` shows the
+    charge.
+  - Rules may call `ejectIntoRide(captureId, rideId)` from a `capture` event,
+    so the next eject starts that ride instead of the normal kick.
+    `RideDef.internal` rides are only ever started that way.
+  - `gate.minLaunchPower` only admits the ball just plunged at or above that
+    power, whatever the tier.
+- **Scene parts.** `engine/scene/parts.tsx` draws everything table-driven
+  (walls, slings, bumpers, posts, flippers, balls, decks, ride wires) from
+  look props; `only` filters let a theme custom-draw some bumpers or rides.
+  `engine/scene/cabinet.tsx` is the shared cabinet, coloured by a
+  `CabinetLook` (Dead Star Disco's is the default).
 - **Spirit Board (scores).** `src/engine/scores.ts` keeps a top 10 per
   theme × tier, with 3-letter arcade initials entered at game over.
   - It's stored in this browser's localStorage under
@@ -162,7 +180,12 @@ Run `npm test`. It runs `stuckcheck`, `launchcheck` and `feelcheck` for
   control); per-layer body sets partition the table. `stuck` also soaks
   every deck.
 - `rules`: drives the real store with synthetic events and checks scoring,
-  modes, the ball lifecycle, tilt, and per-theme × per-tier bests.
+  modes, the ball lifecycle, tilt, and per-theme × per-tier bests. Each real
+  theme has its own section.
+- `mechanics`: swing bars stay in range with the right surface speed,
+  orbiters stay on their circle, blast pads fire once and recharge,
+  capture→ride redirects deliver, internal rides are never auto-entered,
+  and the launch-power gate holds at every tier.
 
 Paste the before and after output into the commit message whenever a change
 touches geometry, physics or difficulty.
@@ -177,6 +200,46 @@ touches geometry, physics or difficulty.
   waterfall. All 500 of 500 random nest balls leave the deck at every tier,
   about 20% through a hole and 80% over the waterfall.
 - Cross-layer collisions: 0.
+
+### Phase 2b results (Salamander)
+
+- Dead Star Disco's numbers are identical to 2a (stuck trials
+  801/758/753/753/737, launch, camera, rules), and its cabinet renders the
+  same after moving to the shared `Cabinet` (compared by screenshot).
+- Salamander: `stuck=0` on the field (937–944 trials per tier) and on the
+  nest at every tier, where all 34 nest trials per tier fall off. The pin
+  tests for the pendulum and both moons report 0. Every ride enters and
+  ejects, and the internal Volcano/Maw-spit rides deliver to the nest.
+- `layers`: both ramps and the Skyshot land on the nest. Hole landings have
+  4.15 clearance and waterfall landings 0.78. All 500 of 500 nest balls leave
+  at every tier (about 45–60% through a hole). Cross-layer collisions: 0.
+- Launch: the skill-zone plunge reaches a top lane at every tier. (The sweep
+  runs without a live launch, so it never trips the Skyshot gate; the browser
+  smoke test covers the full-power Skyshot.)
+- Layout lesson: an earlier tight Fire Bell triangle left a pocket where a
+  ball ping-ponged between two bells forever. The bells now sit 3.76 apart
+  and the middle bell seals the back rail.
+- Feel signature (the Phase 3 starting point for Salamander):
+
+  | Tier       | flipExit (min) | bumpExit | life  | mid/off/out % | p95/max |
+  | ---------- | -------------- | -------- | ----- | ------------- | ------- |
+  | SUPER EASY | 202 (166)      | 80       | 45.0s | 100/0/0       | 0.85    |
+  | EASY       | 225 (199)      | 93       | 45.0s | 100/0/0       | 0.93    |
+  | MEDIUM     | 249 (235)      | 105      | 45.0s | 100/0/0       | 0.96    |
+  | HARD       | 282 (282)      | 121      | 45.0s | 97/0/3        | 0.92    |
+  | IMPOSSIBLE | 315 (131)      | 138      | 45.0s | 88/3/9        | 0.80    |
+
+  Flipper and bumper exits match Dead Star Disco (same chassis). Timestep
+  parity is exact (spread 0.0).
+- **Open items for Phase 3:**
+  - **Salamander is gentler than Dead Star Disco.** The auto-flipper's
+    median ball life hits the 45 s cap at every tier (DSD impossible: 12.2 s).
+    The ramp → nest → drop hole → flipper loop feeds the ball straight back.
+  - **The Inferno Vents save balls.** They blast straight up the table (about
+    450 blasts in 40 impossible balls), and the impossible flip-exit reading
+    (315, weakest 131) is the vent catching the cradle shot. The prototype
+    pushed the ball radially away from the vent with a sideways kick; try
+    that, or angle the blasts, so impossible actually gets harder.
 
 ### Phase 1 measurements (the baseline Phase 3 starts from)
 
