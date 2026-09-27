@@ -387,6 +387,13 @@
             animation: none;
         }
 
+        /* still-being-built cabinets: pulses like the ghost slot, in the warning colour */
+        .wip-tag {
+            border-color: var(--border);
+            color: var(--border);
+            animation: badge-pulse 2.4s ease-in-out infinite;
+        }
+
         .play-badge {
             display: inline-block;
             font-size: 1.2rem;
@@ -619,6 +626,84 @@
             50% {
                 opacity: 0.25;
             }
+        }
+
+        /* ---------- FLIPPER SEANCE preview: one ball, two flippers, no hall ---------- */
+        .pinball-preview {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: radial-gradient(ellipse at 50% 120%, rgba(157, 21, 255, 0.35), transparent 60%), #07060d;
+            border-radius: 4px;
+        }
+
+        .pinball-ball {
+            position: absolute;
+            left: calc(50% - 6px);
+            bottom: 14px;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: radial-gradient(circle at 35% 30%, #fff, #9aa3b5 60%, #3a3f4c);
+            box-shadow: 0 0 8px rgba(255, 255, 255, 0.5);
+            animation: pinball-arc 1.8s cubic-bezier(0.3, 0, 0.7, 1) infinite;
+        }
+
+        .pinball-flip {
+            position: absolute;
+            bottom: 8px;
+            width: 38px;
+            height: 6px;
+            border-radius: 3px;
+            background: var(--accent2);
+            box-shadow: 0 0 8px var(--accent2);
+        }
+
+        .pinball-flip.left {
+            right: calc(50% + 7px);
+            transform-origin: 0 50%;
+            transform: rotate(22deg);
+            animation: pinball-flip-l 1.8s ease-in-out infinite;
+        }
+
+        .pinball-flip.right {
+            left: calc(50% + 7px);
+            transform-origin: 100% 50%;
+            transform: rotate(-22deg);
+            animation: pinball-flip-r 1.8s ease-in-out infinite;
+        }
+
+        .pinball-caption {
+            position: absolute;
+            top: 6px;
+            left: 0;
+            right: 0;
+            text-align: center;
+            font-family: 'Courier New', monospace;
+            font-size: 0.66rem;
+            letter-spacing: 0.12em;
+            color: var(--accent);
+            text-shadow: 0 0 5px var(--shadow);
+            opacity: 0.85;
+        }
+
+        @keyframes pinball-arc {
+            0%, 100% { transform: translate(0, 0); }
+            45% { transform: translate(-26px, -46px); }
+            55% { transform: translate(-18px, -48px); }
+        }
+
+        @keyframes pinball-flip-l {
+            0%, 8%, 100% { transform: rotate(22deg); }
+            3% { transform: rotate(-12deg); }
+        }
+
+        @keyframes pinball-flip-r {
+            0%, 100% { transform: rotate(-22deg); }
+            50% { transform: rotate(-22deg); }
+            53% { transform: rotate(12deg); }
+            58% { transform: rotate(-22deg); }
         }
 
         /* ---------- CHROMATIC CAULDRON preview: one ingredient, dubious vessel ---------- */
@@ -1044,6 +1129,15 @@
                 animation: none !important;
             }
 
+            .wip-tag {
+                animation: none !important;
+            }
+
+            .pinball-ball,
+            .pinball-flip {
+                animation: none !important;
+            }
+
             .card:hover {
                 transform: none;
             }
@@ -1201,6 +1295,28 @@
                         <span class="potion-pebble" aria-hidden="true"></span>
                         <span class="potion-spark" aria-hidden="true">✦</span>
                         <span class="potion-pot" aria-hidden="true"></span>
+                    </div>
+                </div>
+            </a>
+
+            <a class="card" id="card-pinball" href="./pinball/pinball.html">
+                <span class="card-index">07</span>
+                <span class="play-badge">Play Now</span>
+                <span class="badge compatibility-tag">Keyboard best</span>
+                <span class="badge compatibility-tag wip-tag">Work in progress</span>
+                <h2>Flipper S&eacute;ance</h2>
+                <p>
+                    A pinball hall with no hall. You don't walk to a table &mdash; you
+                    summon one. First through the veil: Dead Star Disco, a synthwave
+                    cabinet built around a sun that already went out. Real flippers,
+                    real drains, real TILT. The other tables are still knocking.
+                </p>
+                <div class="card-preview">
+                    <div class="pinball-preview" aria-label="A pinball arcing between two flippers">
+                        <span class="pinball-ball" aria-hidden="true"></span>
+                        <span class="pinball-flip left" aria-hidden="true"></span>
+                        <span class="pinball-flip right" aria-hidden="true"></span>
+                        <span class="pinball-caption">SUMMONING: DEAD STAR DISCO</span>
                     </div>
                 </div>
             </a>

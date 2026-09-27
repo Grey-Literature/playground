@@ -43,6 +43,10 @@ A few conventions that hold regardless of the current roster:
   the other cabinets: `index.html` is the dev entry, `dist/index.html` is
   the build output, `itops.html` is the deploy artifact actually linked from
   the games index. Don't assume static HTML there.
+- `pinball/` (Flipper Séance) is also a Vite/React build, but single-file:
+  `index.html` is the dev entry, `npm run build` regenerates the committed
+  deploy artifact `pinball.html`. Its own `pinball/CLAUDE.md` (while it's
+  mid-build) overrides the no-build and no-fail-state defaults for itself.
 - A game subfolder's own CLAUDE.md is expected to be retired once its game
   ships (see §5) — don't be surprised when one's missing for a completed
   game, and don't treat that as a broken link.
