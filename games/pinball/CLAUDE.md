@@ -111,6 +111,9 @@ Run `npm test`. It runs `stuckcheck`, `launchcheck` and `feelcheck` for
   how often un-wedge fires. Dead Star Disco is the reference envelope, and
   other themes should sit inside it.
 
+- `camera`: the auto camera's framing solver must keep the flippers and every
+  ball (multiball included) inside the HUD-safe box on landscape and portrait
+  screens; also reports how much of the top arch is visible.
 - `rules`: drives the real store with synthetic events and checks scoring,
   modes, the ball lifecycle, tilt, and per-theme × per-tier bests.
 
