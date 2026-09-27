@@ -7,10 +7,13 @@
 //               which lands on its exitLayer
 //   internal    an internal ride is never auto-entered
 //   launch gate minLaunchPower: only the just-plunged ball at ≥ that power
+//   carry       a carry ride runs at clamp(entry × keep, min, max) and leaves
+//               along its end tangent at that speed; a riding ball reports a
+//               velocity; a `dur` ride still exits on its fixed `exit`
 // Then every real table's internal rides are force-started and must deliver.
 
 import { TABLES, TABLE, DIFF_ORDER, gameRef, useTable, resetField, mkBall, step, reseed, FIELD, type TableEntry } from './harness';
-import { kinematicPose } from '../src/engine/table';
+import { kinematicPose, pathTangent } from '../src/engine/table';
 import { ejectIntoRide } from '../src/engine/runtime';
 import type { TableDef } from '../src/engine/types';
 import { table as disco } from '../src/themes/deadStarDisco/table';
@@ -158,6 +161,50 @@ for (const tier of DIFF_ORDER) {
   };
   const low = trial(0.6), high = trial(1.0);
   expect(`${tier}: launch gate — p0.60 no Skyshot, p1.00 Skyshot`, !low && high);
+}
+
+// carry rides keep momentum; dur rides unchanged
+{
+  const CARRY = { keep: 0.5, min: 35, max: 80 };
+  const path = [{ x: -12, y: -5, h: 0.3 }, { x: -12, y: 4, h: 2 }, { x: -9, y: 10, h: 3 }, { x: -4, y: 12, h: 3 }];
+  lab.rides.push(
+    { id: 'carry', entry: { x: -12, y: -5, r: 1.8 }, dur: 5, path, exit: { vx: 0, vy: -50 }, gate: {}, carry: CARRY },
+    { id: 'durRide', entry: { x: -12, y: -5, r: 0 }, internal: true, dur: 0.5, path, exit: { vx: 7, vy: -3 }, gate: {} },
+  );
+  useTable(entry, 'medium');
+  const run = (speed: number) => {
+    resetField();
+    const b = mkBall(-12, -9, 0, speed, 0);
+    gameRef.balls.push(b);
+    let riding = 0, ridingSpeed = 0, out: { vx: number; vy: number } | null = null;
+    for (let s = 0; s < 120 * 3 && !out; s++) {
+      for (const e of step()) if (e.type === 'rideExit') out = { vx: b.vx, vy: b.vy };
+      if (b.ride) { riding++; ridingSpeed = Math.max(ridingSpeed, Math.hypot(b.vx, b.vy)); }
+    }
+    return { out, riding, ridingSpeed };
+  };
+  const end = pathTangent(path, 1);
+  for (const v of [60, 110, 240]) {
+    const r = run(v);
+    const want = Math.max(CARRY.min, Math.min(CARRY.max, v * CARRY.keep));
+    // the ball decelerates a little on its way to the mouth, and the exit step's
+    // remaining substeps apply gravity, so allow a few u/s
+    const got = r.out ? Math.hypot(r.out.vx, r.out.vy) : 0;
+    const dirOk = r.out ? Math.abs((r.out.vx * end.x + r.out.vy * end.y) / Math.max(got, 1e-6) - 1) < 0.01 : false;
+    expect(`carry: entry ${v} → exit ${got.toFixed(0)} u/s (want ≈${want.toFixed(0)}) along the end tangent`, !!r.out && Math.abs(got - want) < 4 && dirOk);
+    expect(`carry: riding ball reports its speed (${r.ridingSpeed.toFixed(0)} u/s)`, r.riding > 0 && Math.abs(r.ridingSpeed - got) < 1);
+  }
+  resetField();
+  const b = mkBall(-12, -5, 0, 0, 0);
+  b.ride = { id: 'durRide', t: 0 };
+  gameRef.balls.push(b);
+  let vDuring = 0, out: { vx: number; vy: number } | null = null, steps = 0;
+  for (let s = 0; s < 240 && !out; s++) {
+    for (const e of step()) if (e.type === 'rideExit') out = { vx: b.vx, vy: b.vy };
+    if (b.ride) { vDuring = Math.max(vDuring, Math.hypot(b.vx, b.vy)); steps++; }
+  }
+  expect('dur ride: exits on its fixed exit vector after `dur`', !!out && Math.abs(out.vx - 7) < 1.5 && Math.abs(out.vy + 3) < 1.5 && Math.abs(steps / 120 - 0.5) < 0.02, `${steps} steps, exit ${out?.vx.toFixed(1)},${out?.vy.toFixed(1)}`);
+  expect('dur ride: riding ball still reports a velocity (the ball visibly rolls)', vDuring > 1, `${vDuring.toFixed(0)} u/s`);
 }
 
 // real tables: every internal ride, force-started, must finish and deliver

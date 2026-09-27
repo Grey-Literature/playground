@@ -39,14 +39,15 @@ const nestRails: WallSeg[] = [
 ];
 
 // Wire lift: mouth on the right field, climbs over the right bank and sets the
-// ball down on the deck's right side heading left.
+// ball down on the deck's right side, thrown left fast enough to sail past the
+// centre hole (layers.check's landing-flow gate: no straight-down-a-hole rides).
 export const LIFT_PATH: PathPt[] = [
   { x: 12.8, y: -4.0, h: 0.3 },
   { x: 13.6, y: 2.0, h: 2.2 },
   { x: 13.4, y: 9.0, h: 4.6 },
   { x: 11.8, y: 15.5, h: 6.6 },
-  { x: 8.6, y: 19.0, h: 6.8 },
-  { x: 6.0, y: 18.6, h: 6.3 },
+  { x: 9.0, y: 19.4, h: 6.8 },
+  { x: 7.5, y: 19.6, h: 6.3 },
 ];
 
 export const table: TableDef = {
@@ -63,7 +64,7 @@ export const table: TableDef = {
       id: 'lift',
       entry: { x: 12.8, y: -4.0, r: 1.9 },
       path: LIFT_PATH, dur: 1.4,
-      exit: { vx: -22, vy: -6 },
+      exit: { vx: -55, vy: 2 },
       gate: { minSpeed: 45, minVy: 20 },
       exitLayer: NEST,
     },

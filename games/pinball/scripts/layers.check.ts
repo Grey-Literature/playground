@@ -6,13 +6,19 @@
 //                       each fall emits exactly one layer event
 //   4. under = under    a deck ball ignores field bodies and a field ball ignores deck
 //                       rails (no push when overlapping the other layer's collider)
+//   5. landing flow     every ride onto a deck (rules-started ones too), at a spread of
+//                       entry speeds: at most 10% drop straight down a hole within
+//                       1 s of landing, and — on decks with bumpers — at least half
+//                       touch a deck bumper before leaving. (A ramp that dumps its
+//                       ball into a hole makes the deck's toys unreachable.)
 // Tables without layers are skipped.
 
 import {
   TABLES, DIFF_ORDER, DIFF, TABLE, ACTIVE, gameRef, useTable, resetField, mkBall, step,
   clearance, onDeck, segDist, reseed, rnd, pad, FIELD, layerSet, type TableEntry,
 } from './harness';
-import type { LayerDef } from '../src/engine/types';
+import type { LayerDef, RideDef } from '../src/engine/types';
+import { rideSpeed } from '../src/engine/table';
 
 let bad = 0;
 const fail = (msg: string) => { bad++; console.log(`  <-- ${msg}`); };
@@ -38,6 +44,40 @@ function openEdgePoints(deck: LayerDef) {
     }
   }
   return pts;
+}
+
+/** 5. What a ride's ball does in its first moments on the deck. */
+function landingFlow(ride: RideDef, trials = 60) {
+  const deckBumpers = new Set(ACTIVE.bumpers.filter((c) => c.layer === ride.exitLayer).map((c) => c.id));
+  let holeFast = 0, touched = 0;
+  for (let i = 0; i < trials; i++) {
+    resetField();
+    reseed(100 + i);
+    const entrySpeed = ride.internal ? 0 : 60 + rnd() * 180;
+    const p0 = ride.path[0];
+    const b = mkBall(p0.x, p0.y, 0, 0, 0);
+    b.ride = { id: ride.id, t: 0, speed: ride.carry ? rideSpeed(ride, entrySpeed) : undefined };
+    gameRef.balls.push(b);
+    let landedAt = -1, hit = false, t = 0;
+    for (let s = 0; s < 120 * 8 && b.active; s++) {
+      for (const e of step()) {
+        if (e.type === 'layer' && e.via === 'ride') {
+          landedAt = t;
+          // a little spread on the landing direction (real balls never land identically)
+          const a = (rnd() - 0.5) * 0.3, c = Math.cos(a), sn = Math.sin(a);
+          [b.vx, b.vy] = [b.vx * c - b.vy * sn, b.vx * sn + b.vy * c];
+        }
+        if (landedAt >= 0 && e.type === 'bumper' && deckBumpers.has(e.id)) hit = true;
+        if (landedAt >= 0 && e.type === 'layer' && e.from === ride.exitLayer) {
+          if (e.via === 'hole' && t - landedAt < 1.0 && !hit) holeFast++;
+          s = Infinity;
+        }
+      }
+      t += 1 / 120;
+    }
+    if (hit) touched++;
+  }
+  return { holeFast: holeFast / trials, touched: touched / trials, hasBumpers: deckBumpers.size > 0 };
 }
 
 function checkTable(entry: TableEntry) {
@@ -72,6 +112,16 @@ function checkTable(entry: TableEntry) {
       if (!ok) fail(`ride '${ride.id}' did not land cleanly on '${ride.exitLayer}' (layer=${layer} events=${events})`);
       row.push(`${ride.id}→${ride.exitLayer}:${ok ? 'ok' : 'FAIL'}`);
     }
+
+    // 5. landing flow
+    const flow: string[] = [];
+    for (const ride of TABLE.rides.filter((r) => r.exitLayer)) {
+      const f = landingFlow(ride);
+      flow.push(`${ride.id} ${f.hasBumpers ? `bell ${(f.touched * 100).toFixed(0)}%` : ''} hole<1s ${(f.holeFast * 100).toFixed(0)}%`.replace('  ', ' '));
+      if (f.holeFast > 0.1) fail(`ride '${ride.id}' drops ${(f.holeFast * 100).toFixed(0)}% of its balls straight down a hole`);
+      if (f.hasBumpers && f.touched < 0.5) fail(`ride '${ride.id}' reaches a deck bumper only ${(f.touched * 100).toFixed(0)}% of the time`);
+    }
+    if (flow.length) row.push(`\n              landing: ${flow.join(' · ')}\n             `);
 
     for (const deck of decks) {
       // 2. landing zones on the field

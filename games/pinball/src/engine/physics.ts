@@ -9,6 +9,7 @@ import type { BallState, PhysEvent, FlipperSide, FlipperState } from './types';
 import { FIELD } from './types';
 import {
   TABLE, ACTIVE, samplePath, rideById, captureById, kinematicSpeed, kinematicPose, layerSet, layerById, insidePolygon,
+  pathLength, pathTangent, rideSpeed,
 } from './table';
 import { gameRef, isTilted } from './runtime';
 import { DIFF } from './difficulty';
@@ -162,7 +163,7 @@ export function stepPhysics(dt: number): PhysEvent[] {
             delete G.ejectRide[capId];
             ball.captureCooldown = cap?.cooldown ?? 2.5;
             ball.captureId = undefined;
-            ball.ride = { id: redirect.id, t: 0 };
+            ball.ride = { id: redirect.id, t: 0, speed: redirect.carry ? rideSpeed(redirect, 0) : undefined };
             events.push({ type: 'captureEject', id: capId, x: ball.x, y: ball.y });
             events.push({ type: 'rideEnter', id: redirect.id, x: ball.x, y: ball.y, speed: 0 });
             continue;
@@ -185,18 +186,30 @@ export function stepPhysics(dt: number): PhysEvent[] {
       if (ball.ride) {
         const ride = rideById(ball.ride.id);
         if (!ride) { ball.ride = undefined; continue; }
-        ball.ride.t += h / ride.dur;
+        const speed = ball.ride.speed ?? rideSpeed(ride, 0);
+        ball.ride.t += ride.carry ? (h * speed) / pathLength(ride.path) : h / ride.dur;
         const p = samplePath(ride.path, Math.min(1, ball.ride.t));
         ball.x = p.x;
         ball.y = p.y;
         ball.h = p.h;
-        ball.vx = 0;
-        ball.vy = 0;
+        // Velocity along the path while riding. Nothing collides in transit, so
+        // this only feeds the renderer (the ball keeps rolling), the roll sound
+        // and the camera — never the ride itself.
+        const tan = pathTangent(ride.path, ball.ride.t);
+        ball.vx = tan.x * speed;
+        ball.vy = tan.y * speed;
         if (ball.ride.t >= 1) {
           ball.ride = undefined;
           ball.captureCooldown = 0.9;
-          ball.vx = ride.exit.vx;
-          ball.vy = ride.exit.vy;
+          if (ride.carry) {
+            // leave along the end of the path, still carrying the ride's speed
+            const end = pathTangent(ride.path, 1);
+            ball.vx = end.x * speed;
+            ball.vy = end.y * speed;
+          } else {
+            ball.vx = ride.exit.vx;
+            ball.vy = ride.exit.vy;
+          }
           events.push({ type: 'rideExit', id: ride.id, x: ball.x, y: ball.y });
           const from = ball.layer ?? FIELD;
           const to = ride.exitLayer ?? from;
@@ -541,7 +554,7 @@ export function stepPhysics(dt: number): PhysEvent[] {
               && (g.minVy === undefined || ball.vy > g.minVy)
               && (g.minLaunchPower === undefined || (G.skillWindow > 0 && G.lastLaunchPower >= g.minLaunchPower));
             if (ok) {
-              ball.ride = { id: ride.id, t: 0 };
+              ball.ride = { id: ride.id, t: 0, speed: ride.carry ? rideSpeed(ride, sp) : undefined };
               events.push({ type: 'rideEnter', id: ride.id, x: ball.x, y: ball.y, speed: sp });
               break;
             }

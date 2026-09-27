@@ -178,6 +178,40 @@ export function samplePath(pts: PathPt[], t: number): PathPt {
   return { x: cr(p0.x, p1.x, p2.x, p3.x), y: cr(p0.y, p1.y, p2.y, p3.y), h: cr(p0.h, p1.h, p2.h, p3.h) };
 }
 
+const lengths = new WeakMap<PathPt[], number>();
+/** Arc length of a ride path (sampled, cached per path array). */
+export function pathLength(pts: PathPt[]): number {
+  let L = lengths.get(pts);
+  if (L === undefined) {
+    L = 0;
+    let prev = samplePath(pts, 0);
+    for (let i = 1; i <= 64; i++) {
+      const p = samplePath(pts, i / 64);
+      L += Math.hypot(p.x - prev.x, p.y - prev.y, p.h - prev.h);
+      prev = p;
+    }
+    L = Math.max(L, 1e-3);
+    lengths.set(pts, L);
+  }
+  return L;
+}
+
+/** Unit direction of travel (x, y) along a ride path at t (0..1). */
+export function pathTangent(pts: PathPt[], t: number): { x: number; y: number } {
+  const a = samplePath(pts, Math.max(0, Math.min(1, t) - 0.01));
+  const b = samplePath(pts, Math.min(1, Math.max(0, t) + 0.01));
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const d = Math.hypot(dx, dy) || 1;
+  return { x: dx / d, y: dy / d };
+}
+
+/** Ride speed (u/s along the path) for a ball entering at `entrySpeed`. */
+export function rideSpeed(ride: RideDef, entrySpeed: number): number {
+  const c = ride.carry;
+  if (!c) return pathLength(ride.path) / ride.dur;
+  return Math.max(c.min, Math.min(c.max, entrySpeed * c.keep));
+}
+
 export function arcWalls(cx: number, cy: number, radius: number, a0: number, a1: number, n: number, prefix = 'arc', rest = 0.42): WallSeg[] {
   const segs: WallSeg[] = [];
   let px = cx + radius * Math.cos(a0);

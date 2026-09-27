@@ -21,7 +21,7 @@ import { Cabinet, type CabinetLook } from '../../engine/scene/cabinet';
 import { SLING_LEFT, SLING_RIGHT } from '../deadStarDisco/table';
 import {
   table, sensors as SENSORS, NEST, NEST_H, NEST_OUTLINE, nest as NEST_DEF,
-  SERPENT, VOLCANO_L, VOLCANO_R, MAW_SPIT,
+  SERPENT, VOLCANO_L, VOLCANO_R, MAW_SPIT, RAMP_L, RAMP_R,
 } from './table';
 import { useSalamander } from './rules';
 import mascotUrl from './salamander2.svg';
@@ -32,9 +32,11 @@ const TOXIC = '#39ff6a';
 const SOOT = '#100e0c';
 
 const LANES = SENSORS.filter((s) => s.kind === 'lane');
+/** H-O-T inserts sit just below their lanes — in view above the nest's back rail. */
+const LANE_INSERT_DY = 1.2;
 const MAW = table.captures.find((c) => c.id === 'maw')!;
 const HOLDS = table.captures.filter((c) => c.id.startsWith('hold'));
-const BELLS = table.circles.filter((c) => c.id.startsWith('bell'));
+const BELLS = table.circles.filter((c) => c.kind === 'bumper' && c.id.startsWith('bell'));
 
 /** Deterministic rng so the art repaints identically (fonts / mascot load later). */
 function rng(seed: number) {
@@ -125,11 +127,11 @@ function paintPlayfield(g: CanvasRenderingContext2D, mascot: HTMLImageElement | 
   LANES.forEach((l, i) => {
     g.fillStyle = 'rgba(20,12,8,0.9)';
     g.strokeStyle = FLAME; g.lineWidth = 4;
-    g.beginPath(); g.arc(X(l.x), Y(l.y - 2.6), 1.3 * U, 0, 7); g.fill(); g.stroke();
+    g.beginPath(); g.arc(X(l.x), Y(l.y - LANE_INSERT_DY), 1.3 * U, 0, 7); g.fill(); g.stroke();
     g.fillStyle = FLAME;
     g.font = '800 34px "Barlow Condensed", "Arial Narrow", sans-serif';
     g.textAlign = 'center'; g.textBaseline = 'middle';
-    g.fillText('HOT'[i], X(l.x), Y(l.y - 2.6) + 2);
+    g.fillText('HOT'[i], X(l.x), Y(l.y - LANE_INSERT_DY) + 2);
   });
   // labels
   const label = (text: string, x: number, y: number, size: number, color: string, rot = 0) => {
@@ -147,10 +149,10 @@ function paintPlayfield(g: CanvasRenderingContext2D, mascot: HTMLImageElement | 
   label('THE MAW', MAW.x, MAW.y - 3.8, 34, EMBER);
   label('EMBER HOLD', HOLDS[0].x, HOLDS[0].y - 3.4, 24, FLAME);
   label('EMBER HOLD', HOLDS[1].x, HOLDS[1].y - 3.4, 24, FLAME);
-  label('SERPENT ▲', 7.5, -9.3, 26, TOXIC);
-  label('NEST ▲', -17, 2.8, 26, EMBER, 0.12);
-  label('NEST ▲', 12.5, 2.8, 26, EMBER, -0.12);
-  label('EMBER NEST ABOVE', 0, 24, 26, 'rgba(255,139,42,0.55)');
+  label('SERPENT ▲', SERPENT[0].x, SERPENT[0].y - 3.2, 26, TOXIC);
+  label('NEST ▲', RAMP_L[0].x, RAMP_L[0].y + 3, 26, EMBER, 0.05);
+  label('NEST ▲', RAMP_R[0].x + 0.6, RAMP_R[0].y + 3.4, 26, EMBER, -0.05);
+  label('EMBER NEST ABOVE', 0, 19.5, 26, 'rgba(255,139,42,0.55)');
   label('SKYSHOT ▲ FULL HEAT', 19.5, 10, 24, FLAME, -Math.PI / 2);
   // apron
   const apr = g.createLinearGradient(0, H * 0.93, 0, H);
@@ -281,11 +283,14 @@ function NestCracks() {
     }
     const geo = new THREE.ShapeGeometry(shape);
     // UVs across the nest's bounding box
+    const xs = NEST_OUTLINE.map((p) => p[0]), ys = NEST_OUTLINE.map((p) => p[1]);
+    const x0 = Math.min(...xs), y0 = Math.min(...ys);
+    const w = Math.max(...xs) - x0, hgt = Math.max(...ys) - y0;
     const pos = geo.attributes.position;
     const uv = new Float32Array(pos.count * 2);
     for (let i = 0; i < pos.count; i++) {
-      uv[i * 2] = (pos.getX(i) + 16) / 31;
-      uv[i * 2 + 1] = (pos.getY(i) - 18.5) / 13;
+      uv[i * 2] = (pos.getX(i) - x0) / w;
+      uv[i * 2 + 1] = (pos.getY(i) - y0) / hgt;
     }
     geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
     const c = document.createElement('canvas');
@@ -371,15 +376,19 @@ function FireBells() {
   );
 }
 
-/** Blocky guardian (the mascot, in 3D) curled on the nest's back-left corner. */
-function Guardian() {
+/**
+ * Blocky guardian (the mascot, in 3D) clinging to the top of the cabinet's left
+ * side rail, head toward the player. Off the playfield on purpose: anything
+ * tall on the nest's back would hide the H-O-T lanes from the camera.
+ */
+function Guardian({ at, yaw, scale }: { at: [number, number, number]; yaw: number; scale: number }) {
   const root = useRef<THREE.Group>(null!);
   const eyes = useRef<(THREE.Mesh | null)[]>([]);
   const flame = useRef<THREE.Mesh>(null!);
   const flameMat = useRef<THREE.MeshStandardMaterial>(null!);
   useFrame((state) => {
     const t = state.clock.elapsedTime;
-    if (root.current) root.current.position.y = NEST_H + 1.5 + Math.sin(t * 1.6) * 0.12;
+    if (root.current) root.current.position.y = at[1] + Math.sin(t * 1.6) * 0.12;
     // blink every ~4 s
     const blink = (t % 4.2) < 0.12 ? 0.1 : 1;
     eyes.current.forEach((e) => e && e.scale.set(1, blink, 1));
@@ -389,13 +398,11 @@ function Guardian() {
     }
     if (flameMat.current) flameMat.current.emissiveIntensity = 2.2 + Math.sin(t * 11) * 0.5 + flashOf('inferno') * 3;
   });
-  // body runs along the back-left corner rail, head toward the middle
-  const a = Math.atan2(31.5 - 27, -10.5 - -16);
   const segs = [0, 1, 2, 3, 4];
   const skin = <meshStandardMaterial color="#2b2724" roughness={0.6} metalness={0.15} emissive="#2a0e04" emissiveIntensity={0.6} />;
   const spot = <meshStandardMaterial color="#fcc732" emissive="#fcc732" emissiveIntensity={0.6} roughness={0.5} />;
   return (
-    <group ref={root} position={[PX(-13.2), NEST_H + 1.5, PZ(29.3)]} rotation={[0, a, 0]} scale={1.3}>
+    <group ref={root} position={at} rotation={[0, yaw, 0]} scale={scale}>
       {segs.map((i) => (
         <group key={i} position={[-3.2 + i * 1.5, 0, 0]}>
           <mesh castShadow><boxGeometry args={[1.35, 1.0, 1.5]} />{skin}</mesh>
@@ -586,7 +593,7 @@ function LaneLamps() {
   return (
     <group>
       {LANES.map((l, i) => (
-        <mesh key={l.id} position={[PX(l.x), 0.08, PZ(l.y - 2.6)]} rotation={[-Math.PI / 2, 0, 0]}>
+        <mesh key={l.id} position={[PX(l.x), 0.08, PZ(l.y - LANE_INSERT_DY)]} rotation={[-Math.PI / 2, 0, 0]}>
           <circleGeometry args={[1.25, 28]} />
           <meshStandardMaterial ref={(el) => { mats.current[i] = el; }} color="#1a0f08" emissive={FLAME} emissiveIntensity={0.15} transparent opacity={0.55} toneMapped={false} />
         </mesh>
@@ -849,7 +856,6 @@ export function Playfield() {
       <NestCracks />
       <FireBells />
       <Pendulum />
-      <Guardian />
       <RideWires only={isWired} color="#a8a29e" glow={EMBER} />
       <FireArcs />
       <Flippers
@@ -902,7 +908,10 @@ export function Surroundings() {
       <FlickerLights />
       <pointLight position={[0, 20, -34]} intensity={50} distance={90} color="#c2410c" decay={1.9} />
 
-      <Cabinet sideArt={sideArt} look={CABINET} />
+      <Cabinet sideArt={sideArt} look={CABINET}>
+        {/* on the left rail's top (y 5.25): legs straddle it, head toward the player */}
+        <Guardian at={[-25.2, 6.45, -20]} yaw={-Math.PI / 2} scale={1.25} />
+      </Cabinet>
 
       <mesh position={[0, -31.2, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
         <planeGeometry args={[400, 400]} />

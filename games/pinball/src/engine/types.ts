@@ -96,6 +96,13 @@ export interface RideDef extends Gated {
   hideBall?: boolean;
   /** Layer the ball lands on when the ride ends (default: the entry layer). */
   exitLayer?: string;
+  /**
+   * Keep momentum: the ride runs at clamp(entrySpeed × keep, min, max) u/s
+   * instead of the fixed `dur`, and the ball leaves along the path's end
+   * tangent at that speed (`exit` is then unused). Rules-started rides enter
+   * at 0, so they run at `min`.
+   */
+  carry?: { keep: number; min: number; max: number };
 }
 
 /** Saucer / scoop: holds the ball, then kicks it out. */
@@ -205,7 +212,8 @@ export interface BallState {
   h?: number;
   stuck?: number;
   autoLaunch?: number;
-  ride?: { id: string; t: number };
+  /** `speed` (u/s along the path) is set for `carry` rides. */
+  ride?: { id: string; t: number; speed?: number };
   /** Layer the ball is on; undefined = FIELD. */
   layer?: string;
 }

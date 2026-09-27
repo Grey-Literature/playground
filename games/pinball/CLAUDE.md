@@ -132,6 +132,15 @@ Grey-Literature/playground#2). The two branches work like this:
     `RideDef.internal` rides are only ever started that way.
   - `gate.minLaunchPower` only admits the ball just plunged at or above that
     power, whatever the tier.
+  - `RideDef.carry: { keep, min, max }` makes a ride keep momentum. It runs
+    at `clamp(entrySpeed × keep, min, max)` u/s instead of the fixed `dur`,
+    and the ball leaves along the path's end tangent at that speed. Without
+    it, a ride crawls at `dur` and exits on its fixed `exit` vector, which
+    felt like a vacuum on Salamander's ramps. Dead Star Disco doesn't use
+    `carry` yet; that's for the Phase 3 parity pass.
+  - Every riding ball now reports its velocity along the path (nothing
+    collides in transit, so this only feeds the renderer, roll sound and
+    camera), so the ball visibly keeps rolling on a wire.
 - **Scene parts.** `engine/scene/parts.tsx` draws everything table-driven
   (walls, slings, bumpers, posts, flippers, balls, decks, ride wires) from
   look props; `only` filters let a theme custom-draw some bumpers or rides.
@@ -178,7 +187,11 @@ Run `npm test`. It runs `stuckcheck`, `launchcheck` and `feelcheck` for
   waterfalls land on clear field; random deck balls always leave within 6 s
   with exactly one event each; no cross-layer collisions (with a positive
   control); per-layer body sets partition the table. `stuck` also soaks
-  every deck.
+  every deck. **Landing flow:** every ride onto a deck, including the
+  rules-started ones, is run at a spread of entry speeds. At most 10% may
+  drop straight down a hole within 1 s of landing, and on decks with
+  bumpers at least half must touch a deck bumper before leaving. A ramp
+  that dumps its ball into a hole makes the deck's toys unreachable.
 - `rules`: drives the real store with synthetic events and checks scoring,
   modes, the ball lifecycle, tilt, and per-theme × per-tier bests. Each real
   theme has its own section.
@@ -202,6 +215,35 @@ touches geometry, physics or difficulty.
 - Cross-layer collisions: 0.
 
 ### Phase 2b results (Salamander)
+
+**After Rosetta's first playtest** she reported that the ramps killed the
+ball's speed, the ramps dumped straight into a drop hole (so the bells were
+unreachable), and H-O-T was hidden under the nest.
+- Rides gained `carry`.
+- The nest was rebuilt: bigger (about 32 × 15, y 12.5–27.5), lower, and
+  clear of the lanes.
+- Rides now land at the back corners heading into a sealed row of Fire
+  Bells, and the drop holes moved to the front corners.
+- The lane posts moved up to y 31.
+- The Maw, its orbiting Cinder Moons, the bumpers, spinner, saucers and
+  Serpent moved into the front field. The field under the nest is kept
+  clear.
+- The guardian moved to the cabinet rail so it can't hide the lanes.
+- Layer Lab's lift was fixed too, since the new gate caught it dropping
+  100% of balls down a hole.
+
+The current numbers:
+- Salamander: `stuck=0` on the field (946–952 trials per tier) and on the
+  nest (all 67 of 67 nest trials fall, every tier). Pin tests: 0.
+- Landing flow: 100% of landings on every ride reach a Fire Bell, and 0%
+  drop straight down a hole.
+- Holes land with 3.52 clearance and waterfalls with 2.08. All 500 of 500
+  nest balls leave at every tier. Cross-layer collisions: 0.
+- Feel: flipper and bumper exits are unchanged. Median life is still at the
+  45 s cap; the drain mix at hard and impossible is 96/4/0 and 98/2/0
+  (mid/off/out).
+
+**The first 2b pass** (for the record):
 
 - Dead Star Disco's numbers are identical to 2a (stuck trials
   801/758/753/753/737, launch, camera, rules), and its cabinet renders the
@@ -233,8 +275,10 @@ touches geometry, physics or difficulty.
   parity is exact (spread 0.0).
 - **Open items for Phase 3:**
   - **Salamander is gentler than Dead Star Disco.** The auto-flipper's
-    median ball life hits the 45 s cap at every tier (DSD impossible: 12.2 s).
-    The ramp → nest → drop hole → flipper loop feeds the ball straight back.
+    median ball life hits the 45 s cap at every tier (DSD impossible: 12.2 s),
+    before and after the relayout.
+  - **Give Dead Star Disco's ramp and wormhole `carry`** once parity work
+    starts. Its feel numbers will move, so re-baseline them.
   - **The Inferno Vents save balls.** They blast straight up the table (about
     450 blasts in 40 impossible balls), and the impossible flip-exit reading
     (315, weakest 131) is the vent catching the cradle shot. The prototype
