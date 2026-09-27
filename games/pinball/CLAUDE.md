@@ -59,6 +59,23 @@ games/pinball/
   examples/          ← origin zips (reference only; ignored by the dev watcher)
 ```
 
+## 3a. Live vs. in progress
+
+The piece is **live as a work in progress** (published 2026-09-27, merged via
+Grey-Literature/playground#2). The two branches work like this:
+
+- **`main`** is what GitHub Pages serves: the playable snapshot the kids play.
+  The arcade card and the attract screen both say WORK IN PROGRESS.
+- **`pinball`** is where development continues. Nothing on it reaches the live
+  site until it's published again.
+- **To publish a new snapshot:** run `npm test` (must be green) and
+  `npm run build` (commit the regenerated `pinball.html`), then open a PR from
+  `pinball` into `main` and merge it with a merge commit. Only publish at a
+  STOP checkpoint Rosetta has playtested.
+- **When the piece is finished:** remove the `wip-tag` badge in
+  `games/games-index.html` and the WORK IN PROGRESS pill in the engine
+  `AttractScreen` (`src/engine/hud/HUD.tsx`).
+
 ## 4. Design spec: the engine/theme contract
 
 - **Units.** One playfield unit has ball radius 1.55. x runs left to right.
