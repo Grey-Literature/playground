@@ -1,0 +1,86 @@
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@500;600;700;800;900&family=Rajdhani:wght@500;600;700&display=swap');
+@import "tailwindcss";
+
+/* Theme accent families. Defaults = Dead Star Disco; the active theme
+   overrides every --color-pa-* / --color-pb-* on the app root at runtime. */
+@theme {
+  --color-pa-50: #ecfeff; --color-pa-100: #cffafe; --color-pa-200: #a5f3fc; --color-pa-300: #67e8f9;
+  --color-pa-400: #22d3ee; --color-pa-500: #06b6d4; --color-pa-600: #0891b2; --color-pa-700: #0e7490;
+  --color-pa-800: #155e75; --color-pa-900: #164e63; --color-pa-950: #083344;
+  --color-pb-50: #fdf4ff; --color-pb-100: #fae8ff; --color-pb-200: #f5d0fe; --color-pb-300: #f0abfc;
+  --color-pb-400: #e879f9; --color-pb-500: #d946ef; --color-pb-600: #c026d3; --color-pb-700: #a21caf;
+  --color-pb-800: #86198f; --color-pb-900: #701a75; --color-pb-950: #4a044e;
+}
+
+html, body, #root {
+  margin: 0;
+  height: 100%;
+  background: #04050d;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+body {
+  font-family: 'Rajdhani', system-ui, sans-serif;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.font-display {
+  font-family: var(--pb-font-display, 'Orbitron', 'Rajdhani', sans-serif);
+}
+
+canvas {
+  touch-action: none;
+}
+
+/* message pop */
+@keyframes msgPop {
+  0% { transform: scale(0.82) translateY(6px); opacity: 0; }
+  18% { transform: scale(1.04) translateY(0); opacity: 1; }
+  35% { transform: scale(1); }
+  100% { transform: scale(1); opacity: 1; }
+}
+.msg-pop { animation: msgPop 0.35s ease-out; }
+
+/* score popups */
+@keyframes popupRise {
+  0% { transform: translateX(24px); opacity: 0; }
+  15% { transform: translateX(0); opacity: 1; }
+  80% { opacity: 1; }
+  100% { transform: translateY(-8px); opacity: 0.9; }
+}
+.popup-rise { animation: popupRise 0.4s ease-out; }
+
+/* big center message */
+@keyframes bigPop {
+  0% { transform: scale(0.4); opacity: 0; filter: blur(6px); }
+  18% { transform: scale(1.12); opacity: 1; filter: blur(0); }
+  32% { transform: scale(1); }
+  82% { transform: scale(1); opacity: 1; }
+  100% { transform: scale(1.04); opacity: 1; }
+}
+.big-pop { animation: bigPop 0.55s cubic-bezier(0.2, 1.4, 0.4, 1); }
+
+/* attract card */
+@keyframes attractIn {
+  0% { transform: translateY(26px) scale(0.96); opacity: 0; }
+  100% { transform: translateY(0) scale(1); opacity: 1; }
+}
+.attract-in { animation: attractIn 0.6s cubic-bezier(0.2, 1.2, 0.4, 1); }
+
+/* tilt red flash border */
+@keyframes tiltFlash {
+  0%, 100% { box-shadow: inset 0 0 90px rgba(239, 68, 68, 0.55); }
+  50% { box-shadow: inset 0 0 160px rgba(239, 68, 68, 0.95); }
+}
+.tilt-flash {
+  border: 3px solid rgba(239, 68, 68, 0.8);
+  animation: tiltFlash 0.5s linear infinite;
+}
+
+/* thin scrollbars for help */
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-track { background: #0f172a; }
+::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
