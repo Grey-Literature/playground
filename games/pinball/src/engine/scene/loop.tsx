@@ -1,7 +1,7 @@
 import { useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { useFrame, useThree } from '@react-three/fiber';
-import { MAX_SPEED } from '../constants';
+import { MAX_SPEED, PLAYFIELD_TILT } from '../constants';
 import { TABLE } from '../table';
 import { gameRef, spawnBallAt } from '../runtime';
 import { useGame } from '../store';
@@ -110,9 +110,41 @@ export function PhysicsLoop() {
   return null;
 }
 
+// Keep the flippers inside this fraction of the lower half-screen (NDC y). The
+// strip below is reserved for the message pill, so the bats are never hidden.
+const FLIPPER_NDC_LIMIT = 0.8;
+
+/** World-space (y, z) of the lowest point of either flipper, after the playfield tilt. */
+function flipperAnchor() {
+  const F = TABLE.flippers;
+  const low = Math.min(
+    F.left.pivot.y, F.left.pivot.y + Math.sin(F.left.rest) * F.len,
+    F.right.pivot.y, F.right.pivot.y + Math.sin(F.right.rest) * F.len,
+  ) - F.r;
+  // physics (x, y) -> local (x, h, -y), then the playfield group's rotation about x
+  const ly = 0.4, lz = -low;
+  const c = Math.cos(PLAYFIELD_TILT), s = Math.sin(PLAYFIELD_TILT);
+  return { y: ly * c - lz * s, z: ly * s + lz * c };
+}
+
+/**
+ * Slide the look target toward the player just enough that the flippers stay
+ * on screen. Works in the vertical plane: pitch below horizontal to the anchor
+ * minus pitch to the look point must fit inside the (margin-trimmed) half-FOV.
+ */
+function keepFlippersInFrame(pos: THREE.Vector3, look: THREE.Vector3, fovDeg: number) {
+  const a = flipperAnchor();
+  const limit = Math.atan(FLIPPER_NDC_LIMIT * Math.tan(THREE.MathUtils.degToRad(fovDeg) / 2));
+  const pitchTo = (y: number, z: number) => Math.atan2(pos.y - y, pos.z - z);
+  const anchorPitch = pitchTo(a.y, a.z);
+  if (anchorPitch - pitchTo(look.y, look.z) <= limit) return;
+  const want = anchorPitch - limit;
+  look.z = pos.z - (pos.y - look.y) / Math.tan(want);
+}
+
 export function CameraRig() {
   const { camera } = useThree();
-  const pos = useRef(new THREE.Vector3(0, 72, 50));
+  const pos = useRef(new THREE.Vector3(0, 75, 50));
   const look = useRef(new THREE.Vector3(0, 0, -3));
   const targetPos = useMemo(() => new THREE.Vector3(), []);
   const targetLook = useMemo(() => new THREE.Vector3(), []);
@@ -142,8 +174,12 @@ export function CameraRig() {
       targetPos.set(Math.sin(a) * 30, 60 + Math.sin(t * 0.4) * 7, 46 + Math.cos(a) * 9);
       targetLook.set(bx * 0.3, 0, -4 - by * 0.1);
     } else {
-      targetPos.set(bx * 0.22, 71 - (by + 6) * 0.14, 49);
+      targetPos.set(bx * 0.22, 75 - (by + 6) * 0.14, 50);
       targetLook.set(bx * 0.34, 0, -3.5 - by * 0.2);
+    }
+    // on a real machine you always see the flippers — they win over the top arch
+    if (mode !== 'cinematic') {
+      keepFlippersInFrame(targetPos, targetLook, (camera as THREE.PerspectiveCamera).fov);
     }
     const k = 1 - Math.exp(-3.2 * Math.min(dt, 0.05));
     pos.current.lerp(targetPos, k);

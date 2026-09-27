@@ -1,6 +1,7 @@
 import { useGame } from '../store';
 import { themeById } from '../theme';
 import { PhysicsLoop, CameraRig } from './loop';
+import { PLAYFIELD_TILT } from '../constants';
 
 // Engine root: the simulation + camera, then the active theme's playfield
 // (inside the ~6.5° tilted group, far edge raised) and its surroundings.
@@ -14,7 +15,7 @@ export function PinballScene() {
       <CameraRig />
       {theme && (
         <group key={theme.id}>
-          <group rotation={[0.115, 0, 0]}>
+          <group rotation={[PLAYFIELD_TILT, 0, 0]}>
             <theme.Playfield />
           </group>
           <theme.Surroundings />

@@ -226,14 +226,25 @@ export function Flippers({ left = { body: '#fb923c', glow: '#9a3412', inlay: '#f
   const FL = TABLE.flippers;
   const leftG = useRef<THREE.Group>(null!);
   const rightG = useRef<THREE.Group>(null!);
+  const mats = useRef<(THREE.MeshStandardMaterial | null)[]>([]);
+  const glows = useRef<(THREE.PointLight | null)[]>([]);
+  const heat = useRef([0, 0]);
   const batGeometry = useMemo(() => makeFlipperGeometry(FL.len, FL.r * 0.78, 1.05), [FL.len, FL.r]);
-  useFrame(() => {
+  useFrame((_, dt) => {
     const a = gameRef.alpha;
     const L = gameRef.left, R = gameRef.right;
     if (leftG.current) leftG.current.rotation.y = L.prevAngle + (L.angle - L.prevAngle) * a;
     if (rightG.current) rightG.current.rotation.y = R.prevAngle + (R.angle - R.prevAngle) * a;
+    // press feedback: bats flare while held and ease back on release
+    [L, R].forEach((st, i) => {
+      const target = st.pressed ? 1 : 0;
+      heat.current[i] += (target - heat.current[i]) * Math.min(1, dt * (st.pressed ? 30 : 6));
+      const h = heat.current[i];
+      if (mats.current[i]) mats.current[i]!.emissiveIntensity = 1.4 + h * 1.2;
+      if (glows.current[i]) glows.current[i]!.intensity = 7 + h * 16;
+    });
   });
-  const bat = (ref: React.Ref<THREE.Group>, pivot: { x: number; y: number }, look: { body: string; glow: string; inlay: string }) => (
+  const bat = (i: number, ref: React.Ref<THREE.Group>, pivot: { x: number; y: number }, look: { body: string; glow: string; inlay: string }) => (
     <group ref={ref} position={[PX(pivot.x), 0.35, PZ(pivot.y)]}>
       <mesh position={[0, 0.06, 0]} castShadow>
         <cylinderGeometry args={[1.12, 1.3, 0.72, 24]} />
@@ -244,25 +255,27 @@ export function Flippers({ left = { body: '#fb923c', glow: '#9a3412', inlay: '#f
         <meshStandardMaterial color="#e2e8f0" metalness={0.95} roughness={0.2} />
       </mesh>
       <mesh geometry={batGeometry} position={[0, 0.38, 0]} rotation={[-Math.PI / 2, 0, 0]} castShadow receiveShadow>
-        <meshStandardMaterial color={look.body} roughness={0.27} metalness={0.16} emissive={look.glow} emissiveIntensity={0.8} />
+        <meshStandardMaterial ref={(el) => { mats.current[i] = el; }} color={look.body} roughness={0.27} metalness={0.16} emissive={look.glow} emissiveIntensity={1.4} />
       </mesh>
-      {/* bright inlay makes both paddles readable from the playfield camera */}
-      <mesh position={[FL.len * 0.52, 1.48, 0]}>
-        <boxGeometry args={[FL.len * 0.64, 0.08, 0.28]} />
-        <meshStandardMaterial color="#fff7ed" emissive={look.inlay} emissiveIntensity={1.5} toneMapped={false} />
+      {/* bright inlay stripe makes both paddles readable from the playfield camera */}
+      <mesh position={[FL.len * 0.5, 1.48, 0]}>
+        <boxGeometry args={[FL.len * 0.78, 0.1, 0.5]} />
+        <meshStandardMaterial color="#fff7ed" emissive={look.inlay} emissiveIntensity={2.4} toneMapped={false} />
       </mesh>
-      {[-0.58, 0.58].map((z, i) => (
-        <mesh key={i} position={[0, 0.51, z]}>
+      {[-0.58, 0.58].map((z, k) => (
+        <mesh key={k} position={[0, 0.51, z]}>
           <cylinderGeometry args={[0.12, 0.12, 0.08, 12]} />
           <meshStandardMaterial color="#f8fafc" metalness={1} roughness={0.16} />
         </mesh>
       ))}
+      {/* a pool of light on the playfield under the bat, so its position reads at a glance */}
+      <pointLight ref={(el) => { glows.current[i] = el; }} position={[FL.len * 0.5, 2.6, 0]} color={look.inlay} intensity={7} distance={12} decay={1.6} />
     </group>
   );
   return (
     <group>
-      {bat(leftG, FL.left.pivot, left)}
-      {bat(rightG, FL.right.pivot, right)}
+      {bat(0, leftG, FL.left.pivot, left)}
+      {bat(1, rightG, FL.right.pivot, right)}
     </group>
   );
 }

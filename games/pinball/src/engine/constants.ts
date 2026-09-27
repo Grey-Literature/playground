@@ -14,3 +14,7 @@ export const SLOPE_G = 165;
 export const STEP = 1 / 120;
 export const SUBSTEPS = 3;
 export const MAX_CATCHUP_STEPS = 8;
+
+// Playfield slope (~6.5°, far edge raised). The scene tilts the playfield group
+// by this; the camera uses it to know where the flippers really are.
+export const PLAYFIELD_TILT = 0.115;

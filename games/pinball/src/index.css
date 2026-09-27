@@ -1,6 +1,9 @@
 @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@500;600;700;800;900&family=Rajdhani:wght@500;600;700&display=swap');
 @import "tailwindcss";
 
+/* viewport tall enough for the key legend to sit under the theme's side panels */
+@custom-variant tall (@media (min-height: 860px));
+
 /* Theme accent families. Defaults = Dead Star Disco; the active theme
    overrides every --color-pa-* / --color-pb-* on the app root at runtime. */
 @theme {

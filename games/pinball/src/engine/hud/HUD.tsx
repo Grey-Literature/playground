@@ -167,8 +167,8 @@ function MessageBar() {
   const phase = useGame((s) => s.phase);
   if (phase !== 'playing') return null;
   return (
-    <div className="pointer-events-none absolute bottom-24 sm:bottom-20 left-0 right-0 z-20 flex justify-center px-4">
-      <div key={messageT} className="msg-pop rounded-full border border-slate-600/60 bg-slate-950/75 px-5 py-1.5 text-center text-xs sm:text-sm font-bold tracking-wide text-slate-100 backdrop-blur-md">
+    <div className="pointer-events-none absolute bottom-3 left-0 right-0 z-20 flex justify-center px-4">
+      <div key={messageT} className="msg-pop max-w-[46vw] truncate rounded-full border border-slate-600/60 bg-slate-950/75 px-4 py-1 text-center text-xs font-bold tracking-wide text-slate-100 backdrop-blur-md">
         {message}
       </div>
     </div>
@@ -211,7 +211,7 @@ function PlungerMeter() {
   const phase = useGame((s) => s.phase);
   if (phase !== 'playing' || ballPhase !== 'plunger') return null;
   return (
-    <div className="pointer-events-none absolute bottom-40 right-4 sm:right-8 z-20 flex flex-col items-center gap-2">
+    <div className="pointer-events-none absolute bottom-40 right-4 sm:right-8 lg:right-44 z-20 flex flex-col items-center gap-2">
       <div className="text-[10px] font-black tracking-[0.25em] text-slate-300">POWER</div>
       <div className="relative h-44 w-5 overflow-hidden rounded-full border border-slate-600 bg-slate-900/90">
         {/* skill zone */}
@@ -289,51 +289,36 @@ function ControlsBar() {
   );
 }
 
+// Compact key legend tucked into the bottom-left corner, off the playfield.
+// Fades back while the ball is live so it never competes with the table.
 function KeyHints() {
   const leftPressed = useGame((s) => s.leftPressed);
   const rightPressed = useGame((s) => s.rightPressed);
   const plungerCharging = useGame((s) => s.plungerCharging);
   const phase = useGame((s) => s.phase);
+  const ballPhase = useGame((s) => s.ballPhase);
+  const live = phase === 'playing' && ballPhase === 'active';
+  // During play on large-but-short screens the theme's side panels fill the
+  // left column; the legend steps aside (keys stay in the help modal / attract card).
+  const rows: { keys: React.ReactNode; label: string }[] = [
+    { keys: <><Kbd active={leftPressed}>Z</Kbd><Kbd active={leftPressed}>◀</Kbd></>, label: 'LEFT' },
+    { keys: <><Kbd active={rightPressed}>M</Kbd><Kbd active={rightPressed}>▶</Kbd></>, label: 'RIGHT' },
+    { keys: <Kbd active={plungerCharging} wide>SPACE</Kbd>, label: 'PLUNGE' },
+    { keys: <><Kbd>A</Kbd><Kbd>W</Kbd><Kbd>D</Kbd></>, label: 'NUDGE' },
+    { keys: <Kbd>B</Kbd>, label: 'BALL RESET' },
+    { keys: <><Kbd>1</Kbd><Kbd>…</Kbd><Kbd>5</Kbd></>, label: 'MODE' },
+    { keys: <Kbd>⏎</Kbd>, label: phase === 'playing' ? 'START' : 'PLAY' },
+  ];
   return (
-    <div className="pointer-events-none absolute bottom-0 left-0 right-0 z-20 hidden justify-center pb-3 sm:flex">
-      <div className="flex items-center gap-4 rounded-2xl border border-slate-700/50 bg-slate-950/75 px-5 py-2.5 backdrop-blur-md">
-        <div className="flex items-center gap-1.5">
-          <Kbd active={leftPressed}>Z</Kbd>
-          <Kbd active={leftPressed}>◀</Kbd>
-          <span className="ml-1 text-[11px] font-bold text-slate-300">LEFT</span>
+    <div
+      className={`absolute bottom-3 left-3 z-20 hidden flex-col gap-1 rounded-xl border border-slate-700/50 bg-slate-950/75 px-3 py-2 backdrop-blur-md transition-opacity duration-500 hover:opacity-100 sm:flex ${live ? 'opacity-35' : 'opacity-100'} ${phase === 'playing' ? 'lg:hidden lg:tall:flex' : ''}`}
+    >
+      {rows.map((r) => (
+        <div key={r.label} className="flex items-center gap-1">
+          {r.keys}
+          <span className="ml-1 text-[10px] font-bold tracking-wide text-slate-300">{r.label}</span>
         </div>
-        <div className="h-6 w-px bg-slate-700" />
-        <div className="flex items-center gap-1.5">
-          <Kbd active={rightPressed}>M</Kbd>
-          <Kbd active={rightPressed}>▶</Kbd>
-          <span className="ml-1 text-[11px] font-bold text-slate-300">RIGHT</span>
-        </div>
-        <div className="h-6 w-px bg-slate-700" />
-        <div className="flex items-center gap-1.5">
-          <Kbd active={plungerCharging} wide>SPACE</Kbd>
-          <span className="ml-1 text-[11px] font-bold text-slate-300">PLUNGE</span>
-        </div>
-        <div className="h-6 w-px bg-slate-700" />
-        <div className="flex items-center gap-1">
-          <Kbd>A</Kbd><Kbd>W</Kbd><Kbd>D</Kbd>
-          <span className="ml-1 text-[11px] font-bold text-slate-300">NUDGE</span>
-        </div>
-        <div className="h-6 w-px bg-slate-700" />
-        <div className="flex items-center gap-1.5">
-          <Kbd>B</Kbd>
-          <span className="ml-1 text-[11px] font-bold text-slate-300">BALL RESET</span>
-        </div>
-        <div className="h-6 w-px bg-slate-700" />
-        <div className="flex items-center gap-1">
-          <Kbd>1</Kbd><Kbd>…</Kbd><Kbd>5</Kbd>
-          <span className="ml-1 text-[11px] font-bold text-slate-300">MODE</span>
-        </div>
-        <div className="h-6 w-px bg-slate-700" />
-        <div className="flex items-center gap-1.5">
-          <Kbd>⏎</Kbd>
-          <span className="ml-1 text-[11px] font-bold text-slate-300">{phase === 'playing' ? 'START' : 'PLAY'}</span>
-        </div>
-      </div>
+      ))}
     </div>
   );
 }
