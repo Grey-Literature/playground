@@ -6,6 +6,12 @@
 // AGENT BOARD as "Reference Bot". Everything it does goes through
 // window.flipperSeance — see flipperSeance.help() for the full API.
 //
+// Lockstep limits: from medium up, each step() is capped (250/100/50 ms) and the
+// game only waits a short real-time budget between calls (1500/700/350 ms, see
+// getState().limits.holdRemainingMs) before it runs on in real time. This bot
+// runs inside the page and answers in microseconds, so it never overruns — an
+// agent thinking over the network should keep an eye on holdRemainingMs.
+//
 // Policy: plunge into the skill-shot zone; flip a side whenever a live ball is
 // over that flipper and falling. In lockstep that's frame-perfect, and a
 // frame-perfect player never drains — so the bot RETIRES after `minutes` of

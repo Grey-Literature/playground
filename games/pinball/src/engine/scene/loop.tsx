@@ -8,7 +8,7 @@ import { gameRef } from '../runtime';
 import { useGame } from '../store';
 import { sound } from '../audio';
 import { simulate, resetStepper } from '../sim';
-import { isLockstepHeld } from '../agent';
+import { isLockstepFrozen } from '../agent';
 
 // Drives the simulation: frame-rate independent fixed steps, then hands every
 // physics event to the active theme's rules. Mounted first so it runs before
@@ -16,14 +16,16 @@ import { isLockstepHeld } from '../agent';
 /**
  * Drives the simulation from the render clock (see engine/sim.ts), then sets the
  * rolling sound. Mounted first so it runs before any visual useFrame reads
- * gameRef. In agent lockstep mode the agent advances the game; this only draws.
+ * gameRef. In agent lockstep mode the agent advances the game and this only
+ * draws — unless the agent overruns its hold budget (engine/agent.ts), when the
+ * game resumes here in real time until the agent acts again.
  */
 export function PhysicsLoop() {
   const rollRef = useRef(0);
   useFrame((_, rawDt) => {
     const dt = Math.min(rawDt, 0.25);
     const st = useGame.getState();
-    if (st.paused || isLockstepHeld()) { resetStepper(); sound.setRoll(0); return; }
+    if (st.paused || isLockstepFrozen()) { resetStepper(); sound.setRoll(0); return; }
     simulate(dt);
 
     // rolling sound

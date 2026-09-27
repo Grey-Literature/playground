@@ -8,7 +8,7 @@ import { registerTheme, type ThemeDef } from '../src/engine/theme';
 import { gameRef } from '../src/engine/runtime';
 import { TABLE } from '../src/engine/table';
 import { STEP } from '../src/engine/constants';
-import { createAgentApi, isLockstepHeld, agentKey, stateText } from '../src/engine/agent';
+import { createAgentApi, isLockstepHeld, isLockstepFrozen, agentKey, stateText, setAgentClockForTests, HOLD_GRACE_MS } from '../src/engine/agent';
 import { installWebMcp, resetWebMcpForTests, type WebMcpTool } from '../src/engine/webmcp';
 import { agentBoard, scores } from '../src/engine/scores';
 import { table as discoTable, diffOverrides as discoOverrides } from '../src/themes/deadStarDisco/table';
@@ -34,6 +34,11 @@ const expect = (label: string, ok: boolean, detail = '') => {
 const g = () => useGame.getState();
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const api = createAgentApi();
+// the hold budget runs on the wall clock — drive it by hand so the checks are deterministic
+let wall = 0;
+setAgentClockForTests(() => wall);
+/** Advance `ms` of game time in as many capped steps as it takes. */
+const advance = (ms: number) => { const end = gameRef.time + ms / 1000 - 1e-9; while (gameRef.time < end && isLockstepHeld()) api.step(Math.min(1000, (end - gameRef.time) * 1000 + 1)); };
 
 /** End the current game from ball 1: last ball, drain, wait out the bonus count-up. */
 async function endGame(score: number) {
@@ -57,11 +62,11 @@ const st = api.start({ theme: 'deadStarDisco', tier: 'medium' });
 expect('start() → playing, lockstep held', st.ok && g().phase === 'playing' && isLockstepHeld());
 expect('mode is locked during play', api.setMode('realtime').ok === false);
 const t0 = gameRef.time;
-const s1 = api.step(500);
-expect('step(500) advances exactly 500 ms of game time', s1.ok && Math.abs(gameRef.time - t0 - 0.5) < STEP / 2, `${(gameRef.time - t0).toFixed(4)} s`);
+const s1 = api.step(200);
+expect('step(200) advances exactly 200 ms of game time', s1.ok && Math.abs(gameRef.time - t0 - 0.2) < STEP / 2, `${(gameRef.time - t0).toFixed(4)} s`);
 const big = gameRef.time;
 api.step(60000);
-expect('step() is capped at 1000 ms per call', Math.abs(gameRef.time - big - 1) < STEP / 2);
+expect('step() is capped at the tier\'s step cap (medium: 250 ms)', Math.abs(gameRef.time - big - 0.25) < STEP / 2, `${((gameRef.time - big) * 1000).toFixed(0)} ms`);
 
 const p = api.plunge(0);
 expect('a zero-power plunge is a tap → standard auto-plunge (0.6)', p.ok && 'power' in p && p.power === 0.6 && g().ballPhase === 'active');
@@ -91,9 +96,9 @@ expect('getState() returns a copy (editing it moves nothing)', again.ok && again
 
 for (let i = 0; i < 6 && !g().tilted; i++) api.nudge('up');
 expect('nudging too hard tilts', g().tilted);
-api.step(1000); api.step(1000); api.step(1000); api.step(1000);
+advance(4000);
 expect('… still tilted after 4 s of game time', g().tilted);
-api.step(1000); api.step(200);
+advance(1200);
 expect('… recovered after 5 s of GAME time (lockstep-fair timer)', !g().tilted);
 
 console.log('[agent API] filing');
@@ -136,7 +141,7 @@ console.log('[agent keys] the no-script route');
 tt = gameRef.time;
 expect('"." steps 100 ms', agentKey('Period', false) && Math.abs(gameRef.time - tt - 0.1) < STEP / 2);
 tt = gameRef.time;
-expect('">" (Shift + .) steps 500 ms', agentKey('Period', true) && Math.abs(gameRef.time - tt - 0.5) < STEP / 2);
+expect('">" (Shift + .) steps 500 ms — capped to 250 on medium', agentKey('Period', true) && Math.abs(gameRef.time - tt - 0.25) < STEP / 2);
 api.step(300);
 tt = gameRef.time;
 // a 100 ms tap inside a 100 ms step: the bat has swung and is on its way back down
@@ -177,5 +182,38 @@ expect('read-only tools are annotated', tool('pinball_state').annotations?.readO
 resetWebMcpForTests();
 let provided: WebMcpTool[] = [];
 expect('provideContext style', installWebMcp({ modelContext: { provideContext: (c: { tools: WebMcpTool[] }) => { provided = c.tools; } } }) === 'provideContext' && provided.length === 6);
+
+// ---------------- lockstep limits per tier ----------------
+console.log('[lockstep limits] step cap + hold budget per tier');
+const endNow = async () => { if (g().phase === 'playing') await endGame(1); };
+await endNow();
+for (const [tier, cap, hold] of [['easy', 1000, 0], ['medium', 250, 1500], ['hard', 100, 700], ['impossible', 50, 350]] as const) {
+  api.start({ tier, mode: 'lockstep' });
+  const t0 = gameRef.time;
+  api.step(5000);
+  const got = Math.round((gameRef.time - t0) * 1000);
+  const lim = api.getState();
+  const limits = lim.ok ? lim.limits : null;
+  expect(`${tier}: step cap ${cap} ms (advanced ${got} ms)`, Math.abs(got - cap) <= 5 && limits?.stepCapMs === cap);
+  if (!hold) {
+    wall += 60000;
+    expect(`${tier}: no hold budget — the game waits forever`, isLockstepFrozen() && limits?.holdMs === null);
+  } else {
+    wall += hold - 10;
+    const mid = api.getState();
+    expect(`${tier}: frozen inside the budget (${hold} + ${HOLD_GRACE_MS} grace)`, isLockstepFrozen() && mid.ok && mid.limits.holdRemainingMs === HOLD_GRACE_MS + 10);
+    wall += HOLD_GRACE_MS + 20;
+    const late = api.getState();
+    expect(`${tier}: past the budget → overdue, the game runs in real time`, !isLockstepFrozen() && late.ok && late.limits.overdue && late.limits.holdRemainingMs === 0);
+    wall += 5000; api.getState();
+    expect(`${tier}: reading state does not reset the clock`, !isLockstepFrozen());
+    api.step(10);
+    expect(`${tier}: the next step() freezes it again`, isLockstepFrozen());
+    wall += hold + HOLD_GRACE_MS + 1;
+    api.flip('left', 80);
+    expect(`${tier}: an input also resets the clock`, isLockstepFrozen());
+  }
+  await endGame(1);
+}
 
 process.exit(bad ? 1 : 0);

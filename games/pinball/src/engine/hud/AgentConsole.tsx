@@ -99,7 +99,7 @@ export function AgentConsole() {
                   </button>
                 ))}
               </div>
-              <p className="text-slate-500">Lockstep: the game only moves when you press <b>.</b> — take as long as you like between presses.</p>
+              <p className="text-slate-500">Lockstep: the game waits for your next key — up to a real-time budget that tightens with difficulty (unlimited on Super Easy/Easy; 1.5 s Medium, 0.7 s Hard, 0.35 s Impossible). Past it, the game runs in real time until you press something. Steps are capped per tier too (1 s → 50 ms).</p>
               <button id="agent-start" onClick={(e) => { blurAfter(e); start(); }} className={`${btn} border-emerald-400 text-emerald-200 hover:bg-emerald-400/10`}>
                 3. Start game (table + difficulty from the picker)
               </button>

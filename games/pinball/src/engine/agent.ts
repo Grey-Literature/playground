@@ -27,10 +27,43 @@ import type { DiffId } from './types';
 export const stepListeners = new Set<() => void>();
 const changed = () => { for (const l of stepListeners) l(); };
 
-/** True while a lockstep agent game is in play: the render loop must not advance it. */
+/** True while a lockstep agent game is in play. */
 export function isLockstepHeld(): boolean {
   const s = useGame.getState();
   return s.phase === 'playing' && !!s.run.agent && s.run.mode === 'lockstep';
+}
+
+// ---------------- lockstep limits (per tier, engine/difficulty.ts) ----------------
+// Waiting for an agent is only fair if it costs something, so each tier sets
+//   agentStepCapMs — the most one step() may advance (coarse steps = easier), and
+//   agentHoldMs    — the real time an agent may spend between step/input calls.
+// Past its hold budget the game stops waiting: it resumes IN REAL TIME with the
+// flippers as last set, until the agent acts again (or the ball drains) — the
+// same price a human pays for hesitating. Reading state doesn't reset the
+// clock (polling mustn't buy thinking time); every step or input does.
+// HOLD_GRACE_MS is added to every budget to absorb a tool call's round trip.
+
+export const HOLD_GRACE_MS = 75;
+let clock: () => number = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+let lastAct = 0;
+/** The agent stepped or pressed something: its hold clock restarts. */
+function acted() { lastAct = clock(); }
+
+/** Headless check only: drive the hold clock by hand. */
+export function setAgentClockForTests(fn: () => number) { clock = fn; lastAct = fn(); }
+
+/** The agent's hold budget right now (null remaining = unlimited, or not a lockstep game). */
+export function holdBudget(): { holdMs: number; remainingMs: number | null; overdue: boolean } {
+  const holdMs = DIFF.agentHoldMs;
+  if (!holdMs || !isLockstepHeld()) return { holdMs, remainingMs: null, overdue: false };
+  const left = holdMs + HOLD_GRACE_MS - (clock() - lastAct);
+  return { holdMs, remainingMs: Math.max(0, Math.round(left)), overdue: left <= 0 };
+}
+
+/** True while a lockstep game waits for its agent. False when the agent is past its
+ *  hold budget — then the render loop runs the game in real time. */
+export function isLockstepFrozen(): boolean {
+  return isLockstepHeld() && !holdBudget().overdue;
 }
 
 type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string };
@@ -84,6 +117,17 @@ function state() {
       inLane: b.inLane,
     })),
     flippers: { left: flip(gameRef.left), right: flip(gameRef.right) },
+    /** Lockstep limits for this tier; holdRemainingMs counts down in real time. */
+    limits: (() => {
+      const hb = holdBudget();
+      return {
+        stepCapMs: Math.min(MAX_STEP_MS, DIFF.agentStepCapMs),
+        holdMs: hb.holdMs || null,
+        graceMs: hb.holdMs ? HOLD_GRACE_MS : 0,
+        holdRemainingMs: hb.remainingMs,
+        overdue: hb.overdue,
+      };
+    })(),
   };
 }
 
@@ -112,8 +156,19 @@ const HELP = `FLIPPER SÉANCE — agent API (window.flipperSeance)
 1. flipperSeance.declare({ name: 'Your Model Name', model?: 'model-id' })   ← required first
 2. flipperSeance.setMode('realtime' | 'lockstep')   (between games; default realtime)
      realtime: the game runs on its own clock, like for a human.
-     lockstep: the game only advances when you call step(ms) — think as long as you like.
-     Scores are ranked separately per mode on the AGENT BOARD.
+     lockstep: the game waits for you between step(ms) calls — within limits that grow
+       with the difficulty (getState().limits):
+         tier          step cap   hold budget (real time between step/input calls)
+         supereasy     1000 ms    unlimited
+         easy          1000 ms    unlimited
+         medium         250 ms    1500 ms
+         hard           100 ms     700 ms
+         impossible      50 ms     350 ms
+       (+${HOLD_GRACE_MS} ms grace on every hold, for tool-call round trips.) Past the hold
+       budget the game stops waiting and RUNS IN REAL TIME with your flippers as last set,
+       until your next step/input. Reading state doesn't reset the clock; acting does.
+       getState().limits.holdRemainingMs shows what's left.
+     Scores are ranked separately per mode (and per tier) on the AGENT BOARD.
 3. flipperSeance.start({ theme?: 'deadStarDisco' | 'salamander', tier?: 'supereasy'|'easy'|'medium'|'hard'|'impossible' })
 4. Play:
      plunge(power 0..1)          launch the ball waiting in the shooter lane (0.32–0.48 = skill shot zone;
@@ -121,7 +176,7 @@ const HELP = `FLIPPER SÉANCE — agent API (window.flipperSeance)
      flip('left'|'right', ms)    press a flipper for ms (min 80), then release
      hold('left'|'right', down)  press / release a flipper and keep it there (cradling)
      nudge('left'|'right'|'up')  bump the table — too many in 2.5 s TILTs
-     step(ms)                    lockstep only: advance up to ${MAX_STEP_MS} ms; returns getState()
+     step(ms)                    lockstep only: advance up to the tier's step cap; returns getState()
 5. Read:
      getState()   score, ball, phase, every live ball's x/y/vx/vy, flipper angles … (a copy)
      getTable()   flipper pivots / angles, drain line, deck outlines, bumpers
@@ -188,6 +243,7 @@ function api() {
       events = [];
       resetStepper();
       useGame.getState().startGame();
+      acted();
       changed();
       return { ok: true, state: state() };
     },
@@ -195,12 +251,15 @@ function api() {
     step(ms = 100): Result<{ state: ReturnType<typeof state> }> {
       const err = declared(); if (err) return no(err);
       if (!isLockstepHeld()) return no('step() is for lockstep games (setMode("lockstep") before start())');
-      const n = Math.max(1, Math.min(Math.round(MAX_STEP_MS / 1000 / STEP), Math.round((Number(ms) || 0) / 1000 / STEP)));
+      acted();
+      const cap = Math.min(MAX_STEP_MS, DIFF.agentStepCapMs);
+      const n = Math.max(1, Math.min(Math.round(cap / 1000 / STEP), Math.round((Number(ms) || 0) / 1000 / STEP)));
       for (let i = 0; i < n; i++) {
         if (useGame.getState().paused) useGame.getState().setPaused(false);
         simulateStep();
         if (!isLockstepHeld()) break; // game over
       }
+      acted(); // the budget for the NEXT decision starts once this step is done
       changed();
       return { ok: true, state: state() };
     },
@@ -210,6 +269,7 @@ function api() {
       if (side !== 'left' && side !== 'right') return no("side must be 'left' or 'right'");
       const st = useGame.getState();
       if (st.phase !== 'playing') return no('no game in play');
+      acted();
       st.setFlipper(side, true);
       const hold = Math.max(80, Math.min(5000, Number(ms) || 0)) / 1000;
       const pressedAt = gameRef.flipPressedAt[side];
@@ -223,6 +283,7 @@ function api() {
       const err = declared(); if (err) return no(err);
       if (side !== 'left' && side !== 'right') return no("side must be 'left' or 'right'");
       if (useGame.getState().phase !== 'playing') return no('no game in play');
+      acted();
       useGame.getState().setFlipper(side, !!down);
       changed();
       return { ok: true };
@@ -233,6 +294,7 @@ function api() {
       const st = useGame.getState();
       if (!(st.phase === 'playing' && st.ballPhase === 'plunger')) return no('no ball waiting in the shooter lane (getState().plungerReady)');
       const p = Math.max(0, Math.min(1, Number(power) || 0));
+      acted();
       st.chargePlunger();
       gameRef.plungerPower = p;
       st.releasePlunger();
@@ -244,6 +306,7 @@ function api() {
       const err = declared(); if (err) return no(err);
       if (!['left', 'right', 'up'].includes(dir)) return no("dir must be 'left', 'right' or 'up'");
       if (useGame.getState().phase !== 'playing') return no('no game in play');
+      acted();
       useGame.getState().nudge(dir);
       changed();
       return { ok: true };
@@ -335,6 +398,9 @@ export function formatStateText(s: ReturnType<typeof state> = state()): string {
     `t=${s.t.toFixed(3)} mode=${s.mode} phase=${s.phase}/${s.ballPhase} ball=${s.ball}/${s.totalBalls} score=${s.score} x${s.multiplier}${s.multiball ? ' MULTIBALL' : ''}`,
     `plungerReady=${s.plungerReady ? 'yes' : 'no'} tilted=${s.tilted ? 'yes' : 'no'} tiltWarnings=${s.tiltWarnings}`,
     ...(s.balls.length ? s.balls.map((b) => `ball#${b.id} x=${f2(b.x)} y=${f2(b.y)} vx=${f1(b.vx)} vy=${f1(b.vy)} ${b.layer}${b.riding ? ` riding=${b.riding}` : ''}${b.captured ? ' captured' : ''}${b.inLane ? ' inLane' : ''}`) : ['(no live ball)']),
+    s.mode === 'lockstep'
+      ? `lockstep: stepCap=${s.limits.stepCapMs}ms hold=${s.limits.holdMs === null ? 'unlimited' : `${s.limits.holdMs}ms(+${s.limits.graceMs} grace)`}${s.limits.holdRemainingMs === null ? '' : s.limits.overdue ? ' OVERDUE — the game is running in real time until you act' : ` holdRemaining=${s.limits.holdRemainingMs}ms`}`
+      : 'realtime: the game runs on its own clock',
     `flipper L angle=${f2(s.flippers.left.angle)} ${s.flippers.left.pressed ? 'UP' : 'down'}  pivot=(${F.left.pivot.x},${F.left.pivot.y})`,
     `flipper R angle=${f2(s.flippers.right.angle)} ${s.flippers.right.pressed ? 'UP' : 'down'}  pivot=(${F.right.pivot.x},${F.right.pivot.y})  length=${F.len}`,
     `message: ${s.message}`,

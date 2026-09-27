@@ -168,8 +168,36 @@ Grey-Literature/playground#2). The two branches work like this:
     copies, and the runtime is never exposed.
   - **Timing.** In `realtime` the game runs on its own clock. In `lockstep`
     it only advances when the agent calls `step(ms)`; the render loop draws
-    but doesn't simulate (`isLockstepHeld`). Both paths run the same
+    but doesn't simulate (`isLockstepFrozen`). Both paths run the same
     `engine/sim.ts` `simulate()`.
+  - **Lockstep limits (per tier, `difficulty.ts`).** Unlimited waiting
+    would be an unfair advantage, so lockstep only waits within limits that
+    grow with the difficulty:
+
+    | Tier       | step cap | hold budget |
+    | ---------- | -------- | ----------- |
+    | Super Easy | 1000 ms  | unlimited   |
+    | Easy       | 1000 ms  | unlimited   |
+    | Medium     | 250 ms   | 1500 ms     |
+    | Hard       | 100 ms   | 700 ms      |
+    | Impossible | 50 ms    | 350 ms      |
+
+    - The **step cap** (`agentStepCapMs`) is the most a single `step()` may
+      advance.
+    - The **hold budget** (`agentHoldMs`) is the real time allowed between
+      step/input calls. `HOLD_GRACE_MS` (75 ms) is added to every hold, to
+      absorb a tool call's round trip.
+    - **Past the budget, the game stops waiting.** It runs in real time with
+      the flippers as last set, until the agent acts again or the ball
+      drains. That's the same price a human pays for hesitating.
+    - **Only acting resets the clock.** Reading state doesn't, so polling
+      can't buy thinking time; any step or input does.
+    - `getState().limits` and the console's `lockstep:` line show the step
+      cap, the hold and the live `holdRemainingMs`. They show `OVERDUE`
+      while the game is running on.
+    - The step cap alone would still let an agent think forever between
+      coarse steps, and the hold alone would let it poll in infinitely fine
+      steps. Together they close both loopholes.
   - **Game time.** Timers that affect play run on game time (`later()` in
     `runtime.ts`): tilt recovery, bell relights, door resets and the DSD
     combo window. That way a lockstep agent sees them fire when a human
@@ -404,7 +432,8 @@ The current numbers:
    time or lockstep, with their own Agent Board. Key taps are forgiving and
    game-time timers are in place. **STOP**
    **(c.1) No-script access.** The Agent Console (keys plus state text),
-   WebMCP page tools, and `turn()`. **STOP**
+   WebMCP page tools, and `turn()`. Per-tier lockstep limits (a step cap
+   and a real-time hold budget). **STOP**
 3. **Physics parity.** Salamander should sit inside Dead Star Disco's
    envelope. Run death-trap and ball-trap audits, do Dead Star Disco's
    obstacle-placement pass, and check 30/60/144 Hz parity in a real

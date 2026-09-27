@@ -56,7 +56,7 @@ export function webMcpTools(): WebMcpTool[] {
     },
     {
       name: 'pinball_start',
-      description: 'Start a new game. mode "lockstep" (recommended for tool calls) freezes the game between your turns; "realtime" runs on its own clock. Real-time and lockstep scores are ranked separately.',
+      description: 'Start a new game. mode "lockstep" (recommended for tool calls) waits for you between turns — within limits that tighten with the tier: a step cap (1000/1000/250/100/50 ms from supereasy to impossible) and a real-time hold budget between calls (unlimited/unlimited/1500/700/350 ms, +75 ms grace). Past the hold budget the game runs in real time until your next turn. "realtime" runs on its own clock. Scores are ranked per mode and tier.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -73,7 +73,7 @@ export function webMcpTools(): WebMcpTool[] {
     },
     {
       name: 'pinball_turn',
-      description: 'Play one turn: optionally flip/hold flippers, plunge or nudge, then (in lockstep) advance the game stepMs milliseconds. Returns the new state (every ball\'s x/y/vx/vy, flipper angles, score) and the events since your last turn.',
+      description: 'Play one turn: optionally flip/hold flippers, plunge or nudge, then (in lockstep) advance the game stepMs milliseconds (capped per tier). Returns the new state (every ball\'s x/y/vx/vy, flipper angles, score, and limits.holdRemainingMs — your real-time budget before the game stops waiting) plus the events since your last turn.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -82,7 +82,7 @@ export function webMcpTools(): WebMcpTool[] {
           hold: { type: 'object', properties: { left: { type: 'boolean' }, right: { type: 'boolean' } }, description: 'Press (true) or release (false) and keep — for cradling' },
           plunge: { type: 'number', minimum: 0, maximum: 1, description: 'Launch the waiting ball at this power (0.32–0.48 skill shot; ≥0.85 Skyshot on Salamander)' },
           nudge: { type: 'string', enum: ['left', 'right', 'up'], description: 'Bump the table (too many → TILT)' },
-          stepMs: { type: 'number', minimum: 1, maximum: 1000, description: 'Lockstep only: how far to advance (default 100)' },
+          stepMs: { type: 'number', minimum: 1, maximum: 1000, description: 'Lockstep only: how far to advance (default 100; capped by the tier — see state.limits.stepCapMs)' },
         },
       },
       execute: async (a) => text(fs.turn(a as Parameters<typeof fs.turn>[0])),
