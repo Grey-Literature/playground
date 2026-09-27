@@ -3,11 +3,13 @@
 // rebuilt only when the table or tier changes, never per step.
 
 import type {
-  TableDef, WallSeg, CircleBody, Sensor, RideDef, CaptureDef, KinematicDef, PathPt,
+  TableDef, WallSeg, CircleBody, Sensor, RideDef, CaptureDef, KinematicDef, PathPt, LayerDef,
 } from './types';
+import { FIELD } from './types';
 import { DIFF, tierAllows } from './difficulty';
 
 const EMPTY_TABLE: TableDef = {
+  layers: [],
   id: 'none',
   drainY: -41,
   bounds: { minX: -24, maxX: 24, maxY: 40 },
@@ -44,10 +46,16 @@ export interface ActiveSet {
   circles: CircleBody[];
 }
 
-export const ACTIVE: ActiveSet = {
+const emptySet = (): ActiveSet => ({
   walls: [], bumpers: [], posts: [], kickers: [], targets: [], drops: [],
   sensors: [], rides: [], captures: [], kinematics: [], circles: [],
-};
+});
+
+/**
+ * Everything live at this tier on ALL layers (the scene renders this), plus
+ * `byLayer[id]` — the same split per layer, which is what physics iterates.
+ */
+export const ACTIVE: ActiveSet & { byLayer: Record<string, ActiveSet> } = { ...emptySet(), byLayer: {} };
 
 let version = 0;
 /** Bumps whenever the active set changes — scene components key off it. */
@@ -68,11 +76,52 @@ export function refreshActive() {
   ACTIVE.rides = ok(TABLE.rides);
   ACTIVE.captures = ok(TABLE.captures);
   ACTIVE.kinematics = ok(TABLE.kinematics);
+  const ids = [FIELD, ...(TABLE.layers ?? []).map((l) => l.id)];
+  const on = <T extends { layer?: string }>(list: T[], id: string) => list.filter((b) => (b.layer ?? FIELD) === id);
+  ACTIVE.byLayer = {};
+  for (const id of ids) {
+    const set = emptySet();
+    for (const k of Object.keys(set) as (keyof ActiveSet)[]) {
+      (set[k] as { layer?: string }[]) = on(ACTIVE[k] as { layer?: string }[], id);
+    }
+    ACTIVE.byLayer[id] = set;
+  }
   version++;
 }
 
+/** Physics view of one layer (unknown ids fall back to the field). */
+export function layerSet(id: string | undefined) {
+  return ACTIVE.byLayer[id ?? FIELD] ?? ACTIVE.byLayer[FIELD];
+}
+
+export function layerById(id: string | undefined): LayerDef | undefined {
+  return id && id !== FIELD ? TABLE.layers?.find((l) => l.id === id) : undefined;
+}
+
+/** Render height of a layer's surface (field = 0). */
+export function layerHeight(id: string | undefined) {
+  return layerById(id)?.height ?? 0;
+}
+
+/** Even-odd point-in-polygon. */
+export function insidePolygon(x: number, y: number, poly: [number, number][]) {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [xi, yi] = poly[i], [xj, yj] = poly[j];
+    if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+
+/** The deck a field point lies UNDER, if any. */
+export function deckAbove(x: number, y: number): LayerDef | undefined {
+  return TABLE.layers?.find((l) => insidePolygon(x, y, l.outline));
+}
+
 export function setTable(def: TableDef) {
-  Object.assign(TABLE, def);
+  // reset first so optional fields (layers, flashDecay…) never leak between themes
+  for (const k of Object.keys(TABLE)) delete (TABLE as unknown as Record<string, unknown>)[k];
+  Object.assign(TABLE, EMPTY_TABLE, def);
   refreshActive();
 }
 

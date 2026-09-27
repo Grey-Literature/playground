@@ -6,7 +6,10 @@ import {
   BALL_RADIUS, WALL_PAD, GRAVITY, AIR_DRAG, ROLL_FRICTION, SLOPE_G, SUBSTEPS,
 } from './constants';
 import type { BallState, PhysEvent, FlipperSide, FlipperState } from './types';
-import { TABLE, ACTIVE, samplePath, rideById, captureById, kinematicSpeed } from './table';
+import { FIELD } from './types';
+import {
+  TABLE, ACTIVE, samplePath, rideById, captureById, kinematicSpeed, layerSet, layerById, insidePolygon,
+} from './table';
 import { gameRef, isTilted } from './runtime';
 import { DIFF } from './difficulty';
 
@@ -178,16 +181,24 @@ export function stepPhysics(dt: number): PhysEvent[] {
           ball.captureCooldown = 0.9;
           ball.vx = ride.exit.vx;
           ball.vy = ride.exit.vy;
-          ball.h = 0;
           events.push({ type: 'rideExit', id: ride.id, x: ball.x, y: ball.y });
+          const from = ball.layer ?? FIELD;
+          const to = ride.exitLayer ?? from;
+          ball.layer = to === FIELD ? undefined : to;
+          if (to !== from) events.push({ type: 'layer', id: ride.id, from, to, via: 'ride', x: ball.x, y: ball.y });
         }
         continue;
       }
 
+      // Which playfield layer this ball lives on this substep. Plunger, flippers,
+      // drain and the height field only exist on the main field.
+      const onField = ball.layer === undefined || ball.layer === FIELD;
+      const S = layerSet(ball.layer);
+
       // plunger hold: a ball resting at the bottom of the shooter lane while charging
       const inLaneArea = ball.x > P.dividerX && ball.y < P.laneTopY;
-      ball.inLane = inLaneArea;
-      if (inLaneArea && ball.y < P.holdBelowY && G.plungerCharging && ball.vy < 1) {
+      ball.inLane = onField && inLaneArea;
+      if (onField && inLaneArea && ball.y < P.holdBelowY && G.plungerCharging && ball.vy < 1) {
         ball.x = P.x;
         ball.y = P.restY;
         ball.vx = 0; ball.vy = 0;
@@ -210,7 +221,7 @@ export function stepPhysics(dt: number): PhysEvent[] {
         const e = 0.35;
         const gx = (T.heightAt(ball.x + e, ball.y) - T.heightAt(ball.x - e, ball.y)) / (2 * e);
         const gy = (T.heightAt(ball.x, ball.y + e) - T.heightAt(ball.x, ball.y - e)) / (2 * e);
-        if (gx !== 0 || gy !== 0) {
+        if (onField && (gx !== 0 || gy !== 0)) {
           const sg = SLOPE_G * DIFF.grav;
           ball.vx -= sg * gx * h;
           ball.vy -= sg * gy * h;
@@ -244,7 +255,7 @@ export function stepPhysics(dt: number): PhysEvent[] {
 
       // ---- one-way gate: block playfield -> lane above the divider top ----
       const dX = P.dividerX;
-      if (ball.y > P.gate.yMin && ball.y < P.gate.yMax && ball.x > dX - BALL_RADIUS - WALL_PAD && ball.x < dX + 1 && ball.vx > 0 && ball.x - ball.vx * h < dX) {
+      if (onField && ball.y > P.gate.yMin && ball.y < P.gate.yMax && ball.x > dX - BALL_RADIUS - WALL_PAD && ball.x < dX + 1 && ball.vx > 0 && ball.x - ball.vx * h < dX) {
         // Park it exactly on the divider's collision surface, otherwise the gate and
         // the wall fight each other and the ball buzzes in place.
         ball.x = dX - BALL_RADIUS - WALL_PAD;
@@ -252,7 +263,7 @@ export function stepPhysics(dt: number): PhysEvent[] {
       }
 
       // ---- walls ----
-      for (const w of ACTIVE.walls) {
+      for (const w of S.walls) {
         const col = collideSegment(ball, w.ax, w.ay, w.bx, w.by, BALL_RADIUS + WALL_PAD);
         if (col.overlap > 0) {
           ball.x += col.nx * col.overlap;
@@ -273,7 +284,7 @@ export function stepPhysics(dt: number): PhysEvent[] {
       }
 
       // divider top cap (rounded)
-      {
+      if (onField) {
         const col = collideCircle(ball, P.cap.x, P.cap.y, P.cap.r);
         if (col.overlap > 0) {
           ball.x += col.nx * col.overlap;
@@ -287,7 +298,7 @@ export function stepPhysics(dt: number): PhysEvent[] {
       }
 
       // ---- bumpers ----
-      for (const b of ACTIVE.bumpers) {
+      for (const b of S.bumpers) {
         const col = collideCircle(ball, b.x, b.y, b.r);
         if (col.overlap > 0) {
           ball.x += col.nx * col.overlap;
@@ -310,7 +321,7 @@ export function stepPhysics(dt: number): PhysEvent[] {
       }
 
       // ---- passive posts ----
-      for (const p of ACTIVE.posts) {
+      for (const p of S.posts) {
         const col = collideCircle(ball, p.x, p.y, p.r);
         if (col.overlap > 0) {
           ball.x += col.nx * col.overlap;
@@ -326,7 +337,7 @@ export function stepPhysics(dt: number): PhysEvent[] {
       }
 
       // ---- kickers: spring posts that punch the ball away ----
-      for (const fk of ACTIVE.kickers) {
+      for (const fk of S.kickers) {
         const col = collideCircle(ball, fk.x, fk.y, fk.r);
         if (col.overlap > 0) {
           ball.x += col.nx * col.overlap;
@@ -341,7 +352,7 @@ export function stepPhysics(dt: number): PhysEvent[] {
       }
 
       // ---- kinematic bars: rotating obstacles that swat the ball ----
-      for (const k of ACTIVE.kinematics) {
+      for (const k of S.kinematics) {
         const ang = G.kin[k.id] ?? 0;
         const dirX = Math.cos(ang), dirY = Math.sin(ang);
         const ax = k.cx - dirX * k.half, ay = k.cy - dirY * k.half;
@@ -368,7 +379,7 @@ export function stepPhysics(dt: number): PhysEvent[] {
       }
 
       // ---- standup targets ----
-      for (const t of ACTIVE.targets) {
+      for (const t of S.targets) {
         const col = collideCircle(ball, t.x, t.y, t.r);
         if (col.overlap > 0) {
           ball.x += col.nx * col.overlap;
@@ -384,7 +395,7 @@ export function stepPhysics(dt: number): PhysEvent[] {
       }
 
       // ---- drop targets (no collision once down) ----
-      for (const t of ACTIVE.drops) {
+      for (const t of S.drops) {
         if (G.dropDown[t.id]) continue;
         const col = collideCircle(ball, t.x, t.y, t.r);
         if (col.overlap > 0) {
@@ -404,7 +415,7 @@ export function stepPhysics(dt: number): PhysEvent[] {
       // the pivot with a larger radius, and an extra disc only creates a wedge pocket.
 
       // ---- flippers (segments) ----
-      for (let fi = 0; fi < 2; fi++) {
+      for (let fi = 0; onField && fi < 2; fi++) {
         const side = fi === 0 ? FL.left : FL.right;
         const st = fi === 0 ? G.left : G.right;
         const pivot = side.pivot;
@@ -441,7 +452,7 @@ export function stepPhysics(dt: number): PhysEvent[] {
       }
 
       // ---- rollover sensors ----
-      for (const sn of ACTIVE.sensors) {
+      for (const sn of S.sensors) {
         const inside = Math.hypot(ball.x - sn.x, ball.y - sn.y) < sn.r;
         const was = ball.inside.has(sn.id);
         if (inside && !was) {
@@ -456,7 +467,7 @@ export function stepPhysics(dt: number): PhysEvent[] {
 
       // ---- captures (saucers / scoops) ----
       let taken = false;
-      for (const cap of ACTIVE.captures) {
+      for (const cap of S.captures) {
         const key = `cap:${cap.id}`;
         const inside = Math.hypot(ball.x - cap.x, ball.y - cap.y) < cap.r;
         const was = ball.inside.has(key);
@@ -476,7 +487,7 @@ export function stepPhysics(dt: number): PhysEvent[] {
 
       // ---- ride entries ----
       if (!taken) {
-        for (const ride of ACTIVE.rides) {
+        for (const ride of S.rides) {
           const key = `ride:${ride.id}`;
           const inside = Math.hypot(ball.x - ride.entry.x, ball.y - ride.entry.y) < ride.entry.r;
           const was = ball.inside.has(key);
@@ -499,8 +510,24 @@ export function stepPhysics(dt: number): PhysEvent[] {
         }
       }
 
+      // ---- deck exits: drop holes and rail-less (waterfall) edges ----
+      if (!onField && ball.active) {
+        const deck = layerById(ball.layer);
+        let via: 'hole' | 'edge' | null = null, id = '';
+        if (deck) {
+          const hole = deck.holes.find((hl) => Math.hypot(ball.x - hl.x, ball.y - hl.y) < hl.r);
+          if (hole) { via = 'hole'; id = hole.id; }
+          else if (!insidePolygon(ball.x, ball.y, deck.outline)) { via = 'edge'; id = deck.id; }
+        } else { via = 'edge'; id = String(ball.layer); } // unknown layer: fail safe to the field
+        if (via) {
+          const from = ball.layer ?? FIELD;
+          ball.layer = undefined;
+          events.push({ type: 'layer', id, from, to: FIELD, via, x: ball.x, y: ball.y });
+        }
+      }
+
       // ---- drain ----
-      if (ball.y < T.drainY) {
+      if (onField && ball.y < T.drainY) {
         ball.active = false;
         ball.vx = 0; ball.vy = 0;
         events.push({ type: 'drain', id: ball.id, x: ball.x, y: ball.y });
@@ -515,8 +542,8 @@ export function stepPhysics(dt: number): PhysEvent[] {
       const corrY = ball.y - solveY;
       const corrMag = Math.hypot(corrX, corrY);
       const speedNow = Math.hypot(ball.vx, ball.vy);
-      const onFlipper = ball.y < T.restZone.maxY && Math.abs(ball.x) < T.restZone.halfX;
-      const inLaneRest = ball.x > P.dividerX;
+      const onFlipper = onField && ball.y < T.restZone.maxY && Math.abs(ball.x) < T.restZone.halfX;
+      const inLaneRest = onField && ball.x > P.dividerX;
       if (corrMag > 0.02 && speedNow < 26 && !onFlipper && !inLaneRest) {
         ball.stuck = (ball.stuck ?? 0) + h;
         if (ball.stuck > 0.25) {
@@ -543,6 +570,7 @@ export function stepPhysics(dt: number): PhysEvent[] {
     for (let i = 0; i < actives.length; i++) {
       for (let j = i + 1; j < actives.length; j++) {
         const a = actives[i], b = actives[j];
+        if ((a.layer ?? FIELD) !== (b.layer ?? FIELD)) continue; // one on the deck, one under it
         const dx = b.x - a.x, dy = b.y - a.y;
         const dist = Math.hypot(dx, dy);
         const minD = BALL_RADIUS * 2;

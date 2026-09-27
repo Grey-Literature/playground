@@ -10,7 +10,7 @@ import { TABLE, setTable, refreshActive } from './table';
 import {
   gameRef, resetMutable, spawnBallInLane, spawnBallAt, isTilted, flash, addShake,
 } from './runtime';
-import { activeTheme, setActiveTheme, themeById, allThemes, type ThemeDef } from './theme';
+import { activeTheme, setActiveTheme, themeById, hallThemes, type ThemeDef } from './theme';
 
 // ---------- persistence (per theme × per tier) ----------
 const NS = 'flipper-seance';
@@ -161,7 +161,7 @@ export const useGame = create<GameStore>()((set, get) => ({
     const tier = loadTier(def.id);
     activateRuntime(def, tier);
     def.rules.reset();
-    ls.set('theme', def.id);
+    if (!def.hidden) ls.set('theme', def.id);
     spawnBallAt(0, 10, 30, 0);
     set({
       themeId: def.id,
@@ -176,9 +176,10 @@ export const useGame = create<GameStore>()((set, get) => ({
   },
 
   cycleTheme: (dir) => {
-    const ids = allThemes().map((t) => t.id);
-    if (ids.length < 2) return;
-    const i = ids.indexOf(get().themeId);
+    const ids = hallThemes().map((t) => t.id);
+    if (!ids.length) return;
+    const i = ids.indexOf(get().themeId); // a hidden table cycles back into the hall
+    if (ids.length < 2 && i >= 0) return;
     get().setTheme(ids[(i + dir + ids.length) % ids.length]);
   },
 
@@ -538,6 +539,8 @@ export const useGame = create<GameStore>()((set, get) => ({
 export function bootTheme() {
   let wanted: string | null = null;
   try { wanted = new URLSearchParams(window.location.search).get('theme'); } catch { /* no window */ }
-  const def = themeById(wanted) ?? themeById(ls.get('theme')) ?? allThemes()[0];
+  // a hidden fixture table is only ever entered by explicit link, never remembered
+  const remembered = themeById(ls.get('theme'));
+  const def = themeById(wanted) ?? (remembered && !remembered.hidden ? remembered : undefined) ?? hallThemes()[0];
   useGame.getState().setTheme(def.id);
 }

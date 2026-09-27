@@ -104,6 +104,20 @@ Grey-Literature/playground#2). The two branches work like this:
   API: `addScore`, `popup`, `message`, `bigMessage`, `startMultiball`,
   `flash`, `shake` and sound. Any theme-only state lives in that theme's own
   store.
+- **Layers (decks).** A table may list `layers: LayerDef[]`. Each is a raised
+  deck with a footprint `outline`, drop `holes` and a render `height`. Any
+  body can carry `layer: '<deck id>'`; leaving it out means `'field'`.
+  - Physics runs each ball against its own layer's bodies only, so balls roll
+    on the deck or under it.
+  - A ball leaves a deck through a hole, or by crossing a rail-less stretch
+    of the outline (a waterfall), and drops to the field.
+  - Rides reach a deck with `exitLayer`.
+  - The plunger, flippers, drain and height field exist on the field only.
+  - Every transition emits a `layer` event for rules to score.
+  - Two rules for deck designers: slope any front rails toward a waterfall,
+    so gravity never parks a ball in a corner; and keep every drop hole and
+    waterfall landing clear of field toys. `layers.check` gates both.
+  - Layer Lab (`?theme=layerLab`, hidden) is the reference layered table.
 - **Clearance rule.** A ball passes a gap only if the centre-to-centre width
   is more than the sum of the two inflated radii:
   - wall to wall: 3.8
@@ -131,11 +145,27 @@ Run `npm test`. It runs `stuckcheck`, `launchcheck` and `feelcheck` for
 - `camera`: the auto camera's framing solver must keep the flippers and every
   ball (multiball included) inside the HUD-safe box on landscape and portrait
   screens; also reports how much of the top arch is visible.
+- `layers` (tables with decks): rides land on their deck; drop holes and
+  waterfalls land on clear field; random deck balls always leave within 6 s
+  with exactly one event each; no cross-layer collisions (with a positive
+  control); per-layer body sets partition the table. `stuck` also soaks
+  every deck.
 - `rules`: drives the real store with synthetic events and checks scoring,
   modes, the ball lifecycle, tilt, and per-theme × per-tier bests.
 
 Paste the before and after output into the commit message whenever a change
 touches geometry, physics or difficulty.
+
+### Phase 2a results (engine layers)
+
+- Dead Star Disco has no layers, and every one of its numbers is identical
+  to Phase 1. That covers stuck, launch, feel, camera and rules.
+- On Layer Lab, `stuck=0` on the field and on the nest at every tier, and all
+  84 nest trials per tier fall off (none park).
+- Nest landing clearance is 0.93 or more at the drop holes and 1.69 at the
+  waterfall. All 500 of 500 random nest balls leave the deck at every tier,
+  about 20% through a hole and 80% over the waterfall.
+- Cross-layer collisions: 0.
 
 ### Phase 1 measurements (the baseline Phase 3 starts from)
 

@@ -1,7 +1,7 @@
 import { useGame } from '../store';
 import { DIFF_ORDER, DIFF, diffFor } from '../difficulty';
 import { obstacleCount } from '../table';
-import { activeTheme, allThemes, themeById } from '../theme';
+import { activeTheme, hallThemes, themeById } from '../theme';
 import {
   Volume2, VolumeX, Camera, Vibrate, VibrateOff, CircleHelp,
   Play, Pause, RotateCcw, Trophy, Zap, TriangleAlert, LifeBuoy, Ghost,
@@ -582,7 +582,9 @@ function HelpModal() {
 function ThemePicker() {
   const themeId = useGame((s) => s.themeId);
   const setTheme = useGame((s) => s.setTheme);
-  const themes = allThemes();
+  const current = themeById(themeId);
+  // a hidden fixture table shows itself in the picker only while it's active
+  const themes = current?.hidden ? [...hallThemes(), current] : hallThemes();
   return (
     <div className="mx-auto max-w-xl text-left">
       <div className="mb-2 flex items-center justify-between">

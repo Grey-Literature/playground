@@ -10,8 +10,30 @@ export type DiffId = 'supereasy' | 'easy' | 'medium' | 'hard' | 'impossible';
 export interface Pt { x: number; y: number }
 export interface PathPt { x: number; y: number; h: number }
 
-/** Anything that only exists from a given difficulty tier upward. */
-interface Gated { minTier?: DiffId }
+/**
+ * Anything that only exists from a given difficulty tier upward, and on a
+ * given playfield layer. `layer` omitted = 'field' (the main playfield).
+ */
+interface Gated { minTier?: DiffId; layer?: string }
+
+/** Layer id of the main playfield. */
+export const FIELD = 'field';
+
+/**
+ * A raised deck the ball can roll ON while other balls roll UNDER it.
+ * The ball stays on the deck while its centre is inside `outline` and not in
+ * a hole; leaving the outline anywhere without a rail (a "waterfall" gap) or
+ * entering a hole drops it to the field. Rails are ordinary walls with
+ * `layer: <deck id>`. Balls reach a deck via a ride with `exitLayer`.
+ */
+export interface LayerDef {
+  id: string;
+  /** Render height of the deck surface above the playfield. */
+  height: number;
+  /** Deck footprint polygon (physics x,y), any winding. */
+  outline: [number, number][];
+  holes: { id: string; x: number; y: number; r: number }[];
+}
 
 export interface WallSeg extends Gated {
   ax: number; ay: number; bx: number; by: number;
@@ -60,6 +82,8 @@ export interface RideDef extends Gated {
   gate: { minSpeed?: number; maxSpeed?: number; minVy?: number };
   /** Hide the ball while riding (opaque pipes) — the scene draws a trail instead. */
   hideBall?: boolean;
+  /** Layer the ball lands on when the ride ends (default: the entry layer). */
+  exitLayer?: string;
 }
 
 /** Saucer / scoop: holds the ball, then kicks it out. */
@@ -139,6 +163,8 @@ export interface TableDef {
   camera: { clampX: number; minY: number; maxY: number };
   /** Flash decay rates per flash-key prefix (before ':'). Default 2.5/s. */
   flashDecay?: Record<string, number>;
+  /** Raised decks (see LayerDef). Omit for a single-level table. */
+  layers?: LayerDef[];
 }
 
 export interface BallState {
@@ -158,6 +184,8 @@ export interface BallState {
   stuck?: number;
   autoLaunch?: number;
   ride?: { id: string; t: number };
+  /** Layer the ball is on; undefined = FIELD. */
+  layer?: string;
 }
 
 export interface FlipperState {
@@ -179,4 +207,5 @@ export type PhysEvent =
   | { type: 'rideEnter'; id: string; x: number; y: number; speed: number }
   | { type: 'rideExit'; id: string; x: number; y: number }
   | { type: 'drain'; id: number; x: number; y: number }
+  | { type: 'layer'; id: string; from: string; to: string; via: 'hole' | 'edge' | 'ride'; x: number; y: number }
   | { type: 'autoLaunch'; x: number; y: number };

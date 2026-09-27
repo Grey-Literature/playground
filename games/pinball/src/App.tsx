@@ -5,11 +5,19 @@ import { PinballScene } from './engine/scene/PinballScene';
 import { HUD } from './engine/hud/HUD';
 import { useGame, bootTheme } from './engine/store';
 import { themeById } from './engine/theme';
-import { gameRef } from './engine/runtime';
+import { gameRef, spawnBallAt } from './engine/runtime';
 import { DIFF_ORDER } from './engine/difficulty';
 import { sound } from './engine/audio';
 
 bootTheme();
+
+// ?debug exposes the live runtime for browser-driven checks (Playwright screenshots
+// of specific ball states). Opt-in only; nothing is exposed on a normal visit.
+try {
+  if (new URLSearchParams(window.location.search).has('debug')) {
+    (window as unknown as { __pinball: unknown }).__pinball = { gameRef, useGame, spawnBallAt };
+  }
+} catch { /* no window */ }
 
 function useKeyboard() {
   useEffect(() => {

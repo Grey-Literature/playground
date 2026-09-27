@@ -5,12 +5,13 @@
 import { STEP, BALL_RADIUS, WALL_PAD } from '../src/engine/constants';
 import { stepPhysics } from '../src/engine/physics';
 import { gameRef, resetMutable } from '../src/engine/runtime';
-import { TABLE, ACTIVE, setTable, refreshActive } from '../src/engine/table';
+import { TABLE, ACTIVE, setTable, refreshActive, layerSet, layerById, insidePolygon } from '../src/engine/table';
+import { FIELD } from '../src/engine/types';
 import { applyDifficultyCfg, setDiffOverrides, DIFF, DIFF_ORDER, type DiffId } from '../src/engine/difficulty';
 import type { BallState } from '../src/engine/types';
 import { TABLES, type TableEntry } from '../src/themes/tables';
 
-export { STEP, BALL_RADIUS, stepPhysics, gameRef, TABLE, ACTIVE, DIFF, DIFF_ORDER, TABLES };
+export { STEP, BALL_RADIUS, stepPhysics, gameRef, TABLE, ACTIVE, DIFF, DIFF_ORDER, TABLES, FIELD, layerSet, layerById, insidePolygon };
 export type { DiffId, TableEntry, BallState };
 
 // ---------- deterministic randomness (physics uses Math.random for ejects) ----------
@@ -45,10 +46,11 @@ export function resetField() {
   gameRef.unwedgeCount = 0;
 }
 
-export function mkBall(x: number, y: number, vx: number, vy: number, cooldown = 3): BallState {
+export function mkBall(x: number, y: number, vx: number, vy: number, cooldown = 3, layer: string = FIELD): BallState {
   return {
     id: 1, x, y, vx, vy, px: x, py: y, active: true, inLane: false,
     captured: 0, captureCooldown: cooldown, inside: new Set(), spin: 0,
+    layer: layer === FIELD ? undefined : layer,
   };
 }
 
@@ -74,19 +76,33 @@ function flipperSegs() {
   }));
 }
 
-/** Free space around (x,y) for a ball centre at the ACTIVE tier (static colliders only). */
-export function clearance(x: number, y: number) {
+/** Free space around (x,y) for a ball centre on `layer` at the ACTIVE tier (static colliders only). */
+export function clearance(x: number, y: number, layer: string = FIELD) {
+  const S = layerSet(layer);
   let m = Infinity;
-  for (const w of ACTIVE.walls) m = Math.min(m, segDist(x, y, w.ax, w.ay, w.bx, w.by) - (BALL_RADIUS + WALL_PAD));
-  for (const c of ACTIVE.circles) m = Math.min(m, Math.hypot(x - c.x, y - c.y) - (c.r + BALL_RADIUS));
+  for (const w of S.walls) m = Math.min(m, segDist(x, y, w.ax, w.ay, w.bx, w.by) - (BALL_RADIUS + WALL_PAD));
+  for (const c of S.circles) m = Math.min(m, Math.hypot(x - c.x, y - c.y) - (c.r + BALL_RADIUS));
+  if (layer !== FIELD) return m; // no plunger or flippers up on a deck
   const cap = TABLE.plunger.cap;
   m = Math.min(m, Math.hypot(x - cap.x, y - cap.y) - (cap.r + BALL_RADIUS));
   for (const f of flipperSegs()) m = Math.min(m, segDist(x, y, f.ax, f.ay, f.bx, f.by) - (BALL_RADIUS + TABLE.flippers.r));
   return m;
 }
 
-/** Slow ball in the shooter lane or cradled on a flipper — a legitimate rest. */
-export function legitRest(x: number, y: number) {
+/** A ball centre that a deck would hold (inside its outline, not over a hole). */
+export function onDeck(x: number, y: number, layer: string) {
+  const d = layerById(layer);
+  return !!d && insidePolygon(x, y, d.outline) && !d.holes.some((h) => Math.hypot(x - h.x, y - h.y) < h.r);
+}
+
+/** Every layer id of the active table, field first. */
+export function layerIds() {
+  return [FIELD, ...(TABLE.layers ?? []).map((l) => l.id)];
+}
+
+/** Slow ball in the shooter lane or cradled on a flipper — a legitimate rest. Never on a deck. */
+export function legitRest(x: number, y: number, layer: string = FIELD) {
+  if (layer !== FIELD) return false;
   if (x > TABLE.plunger.dividerX - 0.5) return true;
   for (const f of flipperSegs()) {
     if (segDist(x, y, f.ax, f.ay, f.bx, f.by) < BALL_RADIUS + TABLE.flippers.r + 0.6) return true;
@@ -99,17 +115,29 @@ export function gridBounds() {
   return { X0: B.minX + 1, X1: B.maxX - 1, Y0: TABLE.drainY - 1, Y1: B.maxY - 2 };
 }
 
-/** Flood-fill reachable free space from the shooter lane. */
-export function reachability(STEP_ = 0.7) {
+/**
+ * Flood-fill reachable free space on `layer`. The field is seeded from the
+ * shooter lane; a deck from every ride that lands on it, clipped to its
+ * outline minus holes.
+ */
+export function reachability(layer: string = FIELD, STEP_ = 0.7) {
   const { X0, X1, Y0, Y1 } = gridBounds();
   const NX = Math.round((X1 - X0) / STEP_) + 1;
   const NY = Math.round((Y1 - Y0) / STEP_) + 1;
+  const deck = layer !== FIELD;
   const free = new Uint8Array(NX * NY);
-  for (let i = 0; i < NX; i++) for (let j = 0; j < NY; j++) free[i * NY + j] = clearance(X0 + i * STEP_, Y0 + j * STEP_) > 0 ? 1 : 0;
+  for (let i = 0; i < NX; i++) for (let j = 0; j < NY; j++) {
+    const x = X0 + i * STEP_, y = Y0 + j * STEP_;
+    free[i * NY + j] = clearance(x, y, layer) > 0 && (!deck || onDeck(x, y, layer)) ? 1 : 0;
+  }
   const seen = new Uint8Array(NX * NY);
+  const cell = (x: number, y: number) => Math.round((x - X0) / STEP_) * NY + Math.round((y - Y0) / STEP_);
   const P = TABLE.plunger;
-  const q = [Math.round((P.x - X0) / STEP_) * NY + Math.round((P.restY + 15 - Y0) / STEP_)];
-  seen[q[0]] = 1;
+  const seeds = deck
+    ? TABLE.rides.filter((r) => r.exitLayer === layer).map((r) => r.path[r.path.length - 1]).map((p) => cell(p.x, p.y))
+    : [cell(P.x, P.restY + 15)];
+  const q = seeds.filter((c) => free[c]);
+  for (const c of q) seen[c] = 1;
   while (q.length) {
     const cur = q.pop()!;
     const ci = Math.floor(cur / NY), cj = cur % NY;
