@@ -8,7 +8,8 @@ import { themeById } from './engine/theme';
 import { gameRef, spawnBallAt } from './engine/runtime';
 import { DIFF_ORDER } from './engine/difficulty';
 import { sound } from './engine/audio';
-import { createAgentApi } from './engine/agent';
+import { createAgentApi, agentKey } from './engine/agent';
+import { installWebMcp } from './engine/webmcp';
 
 bootTheme();
 
@@ -22,8 +23,12 @@ try {
     (window as unknown as { __pinball: unknown }).__pinball = { gameRef, useGame, spawnBallAt };
     useGame.setState({ unranked: true });
   }
+  // WebMCP page tools on every page (feature-detected: nothing happens without
+  // navigator.modelContext) — for agent browsers that can't reach page globals
+  installWebMcp();
   if (q.has('agent')) {
     (window as unknown as { flipperSeance: unknown }).flipperSeance = createAgentApi();
+    useGame.setState({ agentPage: true });
     console.info('%cFLIPPER SÉANCE — agent API ready: flipperSeance.help()', 'color:#fbbf24;font-weight:bold');
   }
 } catch { /* no window */ }
@@ -40,6 +45,8 @@ function useKeyboard() {
       }
       if (e.repeat) return;
       sound.ensure();
+      // a declared agent's extra keys (lockstep stepping, digit plunges, flip+step)
+      if (agentKey(e.code, e.shiftKey)) { e.preventDefault(); return; }
 
       if (e.code === 'KeyH') { st.toggleHelp(); return; }
       if (e.code === 'Escape') {

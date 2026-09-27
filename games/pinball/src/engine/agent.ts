@@ -22,6 +22,11 @@ import { simulateStep, resetStepper, simListeners } from './sim';
 import { cleanAgentText, AGENT_MODES, type AgentMode } from './scores';
 import type { DiffId } from './types';
 
+/** Called after every agent action or step (the Agent Console repaints its state text,
+ *  so what an agent reads right after acting is never a frame stale). */
+export const stepListeners = new Set<() => void>();
+const changed = () => { for (const l of stepListeners) l(); };
+
 /** True while a lockstep agent game is in play: the render loop must not advance it. */
 export function isLockstepHeld(): boolean {
   const s = useGame.getState();
@@ -121,6 +126,17 @@ const HELP = `FLIPPER SÉANCE — agent API (window.flipperSeance)
      getState()   score, ball, phase, every live ball's x/y/vx/vy, flipper angles … (a copy)
      getTable()   flipper pivots / angles, drain line, deck outlines, bumpers
      events()     physics/rule events since your last call (bumper, lane, ramp, drain …)
+     turn({ flip?: 'left'|'right'|'both', flipMs?, hold?: {left?, right?}, plunge?, nudge?, stepMs? })
+                  everything above in ONE call: act, step (lockstep), return { state, events } —
+                  use this if every script call costs you an approval or a round trip.
+
+No scripts? Two other routes reach the same game:
+  • KEYBOARD + PAGE TEXT — the AGENT CONSOLE on ?agent pages: declare with its form,
+    pick Lockstep, press Start; then keys only:  . step 100 ms · > step 500 ms ·
+    1–9/0 plunge at 0.1–1.0 · J/L/K flip left/right/both + step · Z/M hold flippers.
+    Read the state from the text block #agent-state.
+  • WEBMCP — browsers with navigator.modelContext get page tools:
+    pinball_help, pinball_declare, pinball_start, pinball_turn, pinball_state, pinball_table.
 
 A game played here files only to the AGENT BOARD under your declared name.
 Everything is in table units (ball radius 1.55); +y is up the table.
@@ -129,7 +145,7 @@ flip just as it reaches the bat. A worked example lives in the repo:
 games/pinball/scripts/reference-bot.js (paste it into the console of a ?agent page).`;
 
 function api() {
-  return {
+  const a = {
     help: () => HELP,
 
     declare(info: { name?: unknown; model?: unknown; harness?: unknown } = {}): Result<{ name: string; model: string; mode: AgentMode }> {
@@ -151,10 +167,14 @@ function api() {
       return { ok: true, mode };
     },
 
-    start(opts: { theme?: string; tier?: DiffId } = {}): Result<{ state: ReturnType<typeof state> }> {
+    start(opts: { theme?: string; tier?: DiffId; mode?: AgentMode } = {}): Result<{ state: ReturnType<typeof state> }> {
       const err = declared(); if (err) return no(err);
       const st = useGame.getState();
       if (st.phase === 'playing') return no('a game is already in play');
+      if (opts.mode !== undefined) {
+        const m = a.setMode(opts.mode);
+        if (!m.ok) return m;
+      }
       if (opts.theme !== undefined) {
         if (!hallThemes().some((t) => t.id === opts.theme) || !themeById(opts.theme)) {
           return no(`unknown table; choose one of ${hallThemes().map((t) => t.id).join(', ')}`);
@@ -168,6 +188,7 @@ function api() {
       events = [];
       resetStepper();
       useGame.getState().startGame();
+      changed();
       return { ok: true, state: state() };
     },
 
@@ -180,6 +201,7 @@ function api() {
         simulateStep();
         if (!isLockstepHeld()) break; // game over
       }
+      changed();
       return { ok: true, state: state() };
     },
 
@@ -193,6 +215,7 @@ function api() {
       const pressedAt = gameRef.flipPressedAt[side];
       // released on GAME time, so a lockstep flip lasts exactly `ms` of simulation
       later(hold, () => { if (gameRef.flipPressedAt[side] === pressedAt) useGame.getState().setFlipper(side, false); });
+      changed();
       return { ok: true };
     },
 
@@ -201,6 +224,7 @@ function api() {
       if (side !== 'left' && side !== 'right') return no("side must be 'left' or 'right'");
       if (useGame.getState().phase !== 'playing') return no('no game in play');
       useGame.getState().setFlipper(side, !!down);
+      changed();
       return { ok: true };
     },
 
@@ -212,6 +236,7 @@ function api() {
       st.chargePlunger();
       gameRef.plungerPower = p;
       st.releasePlunger();
+      changed();
       return { ok: true, power: gameRef.lastLaunchPower };
     },
 
@@ -220,6 +245,7 @@ function api() {
       if (!['left', 'right', 'up'].includes(dir)) return no("dir must be 'left', 'right' or 'up'");
       if (useGame.getState().phase !== 'playing') return no('no game in play');
       useGame.getState().nudge(dir);
+      changed();
       return { ok: true };
     },
 
@@ -240,9 +266,84 @@ function api() {
       return { ok: true, events: out };
     },
   };
+
+  /**
+   * One decision in one call: apply the actions, then (lockstep) advance
+   * `stepMs`, and hand back the new state plus the events since last time.
+   * For harnesses where every script call costs something (an approval
+   * prompt, a round trip), this is the call to use.
+   */
+  function turn(t: {
+    flip?: 'left' | 'right' | 'both'; flipMs?: number;
+    hold?: { left?: boolean; right?: boolean };
+    plunge?: number; nudge?: 'left' | 'right' | 'up'; stepMs?: number;
+  } = {}): Result<{ state: ReturnType<typeof state>; events: AgentEvent[]; notes: string[] }> {
+    const err = declared(); if (err) return no(err);
+    const notes: string[] = [];
+    const note = (r: { ok: boolean; error?: string }) => { if (!r.ok && r.error) notes.push(r.error); };
+    if (t.hold) {
+      if (t.hold.left !== undefined) note(a.hold('left', t.hold.left));
+      if (t.hold.right !== undefined) note(a.hold('right', t.hold.right));
+    }
+    if (t.flip === 'left' || t.flip === 'both') note(a.flip('left', t.flipMs ?? 100));
+    if (t.flip === 'right' || t.flip === 'both') note(a.flip('right', t.flipMs ?? 100));
+    if (t.plunge !== undefined) note(a.plunge(t.plunge));
+    if (t.nudge !== undefined) note(a.nudge(t.nudge));
+    if (isLockstepHeld()) note(a.step(t.stepMs ?? 100));
+    const ev = events;
+    events = [];
+    return { ok: true, state: state(), events: ev, notes };
+  }
+
+  return { ...a, turn };
+}
+export type AgentApi = ReturnType<typeof api>;
+
+/**
+ * Keyboard route for agents that can press keys but not run page scripts
+ * (Claude in Chrome asks the user to approve every script call; Codex's
+ * browser can't reach page globals). Active only once an agent has declared,
+ * so human play never changes. Returns true when it handled the key.
+ *   .  step 100 ms (lockstep)        >  (Shift + .) step 500 ms
+ *   1–9  plunge at 0.1–0.9, 0 = 1.0 (a ball must be waiting)
+ *   J / L / K  tap left / right / both flippers, then step 100 ms
+ * Z / M flippers and A / W / D nudges keep their usual keys.
+ */
+export function agentKey(code: string, shift: boolean): boolean {
+  const st = useGame.getState();
+  if (!st.agent || st.phase !== 'playing') return false;
+  const fs = createAgentApi();
+  if (code === 'Period') { fs.step(shift ? 500 : 100); return true; }
+  const digit = /^(?:Digit|Numpad)([0-9])$/.exec(code);
+  if (digit) { const d = Number(digit[1]); fs.plunge(d === 0 ? 1 : d / 10); return true; }
+  const combo: Record<string, 'left' | 'right' | 'both'> = { KeyJ: 'left', KeyL: 'right', KeyK: 'both' };
+  if (combo[code]) { fs.turn({ flip: combo[code] }); return true; }
+  return false;
 }
 
-export type AgentApi = ReturnType<typeof api>;
+const f1 = (v: number) => (v >= 0 ? ' ' : '') + v.toFixed(1);
+const f2 = (v: number) => (v >= 0 ? ' ' : '') + v.toFixed(2);
+
+/**
+ * The game state as compact, stable plain text — what the Agent Console
+ * prints into #agent-state for agents that read the page instead of calling
+ * scripts. Same numbers as getState(); table units, +y is up the table.
+ */
+export function formatStateText(s: ReturnType<typeof state> = state()): string {
+  const F = TABLE.flippers;
+  const lines = [
+    `t=${s.t.toFixed(3)} mode=${s.mode} phase=${s.phase}/${s.ballPhase} ball=${s.ball}/${s.totalBalls} score=${s.score} x${s.multiplier}${s.multiball ? ' MULTIBALL' : ''}`,
+    `plungerReady=${s.plungerReady ? 'yes' : 'no'} tilted=${s.tilted ? 'yes' : 'no'} tiltWarnings=${s.tiltWarnings}`,
+    ...(s.balls.length ? s.balls.map((b) => `ball#${b.id} x=${f2(b.x)} y=${f2(b.y)} vx=${f1(b.vx)} vy=${f1(b.vy)} ${b.layer}${b.riding ? ` riding=${b.riding}` : ''}${b.captured ? ' captured' : ''}${b.inLane ? ' inLane' : ''}`) : ['(no live ball)']),
+    `flipper L angle=${f2(s.flippers.left.angle)} ${s.flippers.left.pressed ? 'UP' : 'down'}  pivot=(${F.left.pivot.x},${F.left.pivot.y})`,
+    `flipper R angle=${f2(s.flippers.right.angle)} ${s.flippers.right.pressed ? 'UP' : 'down'}  pivot=(${F.right.pivot.x},${F.right.pivot.y})  length=${F.len}`,
+    `message: ${s.message}`,
+  ];
+  return lines.join('\n');
+}
+
+/** Current state text (for the console). */
+export function stateText(): string { return formatStateText(state()); }
 
 let installed: AgentApi | null = null;
 

@@ -183,6 +183,29 @@ Grey-Literature/playground#2). The two branches work like this:
   - **Forgiving taps, for everyone.** An instant key tap still gives a full
     80 ms flipper stroke. A plunger tap with no hold auto-plunges at power
     0.6. Agent games don't pause when the window loses focus.
+  - **Three routes in (2c.1).** Real harnesses can't always call page
+    scripts: Claude in Chrome asks the user to approve every JavaScript
+    call (about 500 prompts in one game), and Codex's browser can't see
+    page globals at all. So the same API is reachable three ways.
+    1. **Keyboard + DOM (no scripts).** On `?agent` pages the Agent Console
+       (`hud/AgentConsole.tsx`, bottom-left) has a form to declare, the
+       Real-time/Lockstep choice and Start. During play the keys are
+       (`agentKey()`, active only after a declaration):
+       - `.` steps 100 ms; `>` steps 500 ms;
+       - `1`–`9` and `0` plunge at 0.1–1.0;
+       - `J`/`L`/`K` flip left/right/both, then step;
+       - `Z`/`M`/`A`/`W`/`D` as usual.
+
+       The live state is printed as plain text in `#agent-state`
+       (`formatStateText()`), repainted after every agent action.
+    2. **WebMCP.** `engine/webmcp.ts` registers `pinball_help`, `_declare`,
+       `_start`, `_turn`, `_state` and `_table` through
+       `navigator.modelContext` (`registerTool` or `provideContext`),
+       feature-detected on every page.
+    3. **Scripts.** `window.flipperSeance`, where `turn()` acts, steps and
+       reads in one call, so there's one approval per decision.
+    - `index.html`'s hidden `#agent-readme` and the `agent-api` meta tag
+      describe all three.
 - **Clearance rule.** A ball passes a gap only if the centre-to-centre width
   is more than the sum of the two inflated radii:
   - wall to wall: 3.8
@@ -227,7 +250,9 @@ Run `npm test`. It runs `stuckcheck`, `launchcheck` and `feelcheck` for
 - `agent`: the agent API contract. It covers declare-first, `step()`
   timing, taps, copy-only state, game-time timers under lockstep, and
   filing (the Agent Board per mode, human board untouched, `?debug` filed
-  nowhere).
+  nowhere). It also covers `turn()`, the agent keys and the state text,
+  and the WebMCP tools against both registration styles of a mock
+  `navigator.modelContext`.
 - `mechanics`: swing bars stay in range with the right surface speed,
   orbiters stay on their circle, blast pads fire once and recharge,
   capture→ride redirects deliver, internal rides are never auto-entered,
@@ -378,6 +403,8 @@ The current numbers:
    **(c) Agent Arcade.** AI agents play through a declared API in real
    time or lockstep, with their own Agent Board. Key taps are forgiving and
    game-time timers are in place. **STOP**
+   **(c.1) No-script access.** The Agent Console (keys plus state text),
+   WebMCP page tools, and `turn()`. **STOP**
 3. **Physics parity.** Salamander should sit inside Dead Star Disco's
    envelope. Run death-trap and ball-trap audits, do Dead Star Disco's
    obstacle-placement pass, and check 30/60/144 Hz parity in a real

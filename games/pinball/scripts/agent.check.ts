@@ -6,8 +6,10 @@
 import { useGame } from '../src/engine/store';
 import { registerTheme, type ThemeDef } from '../src/engine/theme';
 import { gameRef } from '../src/engine/runtime';
+import { TABLE } from '../src/engine/table';
 import { STEP } from '../src/engine/constants';
-import { createAgentApi, isLockstepHeld } from '../src/engine/agent';
+import { createAgentApi, isLockstepHeld, agentKey, stateText } from '../src/engine/agent';
+import { installWebMcp, resetWebMcpForTests, type WebMcpTool } from '../src/engine/webmcp';
 import { agentBoard, scores } from '../src/engine/scores';
 import { table as discoTable, diffOverrides as discoOverrides } from '../src/themes/deadStarDisco/table';
 import { rules as discoRules } from '../src/themes/deadStarDisco/rules';
@@ -114,5 +116,66 @@ api.start();
 await endGame(99999);
 expect('a ?debug game files nowhere', agentBoard.list('deadStarDisco', 'realtime', 'medium').every((e) => e.score < 99999)
   && scores.list('deadStarDisco', 'medium').length === 0 && g().initialsEntry === null);
+
+// ---------------- 2c.1: one-call turns, the keyboard route, WebMCP ----------------
+console.log('[agent API] turn() and start({ mode })');
+useGame.setState({ unranked: false });
+const st2 = api.start({ mode: 'lockstep' });
+expect('start({ mode: lockstep }) sets the mode in the same call', st2.ok && isLockstepHeld() && g().run.mode === 'lockstep');
+let tt = gameRef.time;
+const t1 = api.turn({ plunge: 0.45, stepMs: 200 });
+expect('turn({ plunge, stepMs }) plunges and steps in one call', t1.ok && gameRef.lastLaunchPower === 0.45 && Math.abs(gameRef.time - tt - 0.2) < STEP / 2);
+tt = gameRef.time;
+const t2 = api.turn({ flip: 'both', flipMs: 150, stepMs: 100 });
+expect('turn({ flip: both }) → both flippers up mid-stroke', t2.ok && gameRef.left.pressed && gameRef.right.pressed);
+expect('turn() returns state + events together', t2.ok && Array.isArray(t2.events) && typeof t2.state.score === 'number');
+const t3 = api.turn({ plunge: 0.5 });
+expect('turn() reports a refused action as a note, not a failure', t3.ok && t3.notes.length === 1);
+
+console.log('[agent keys] the no-script route');
+tt = gameRef.time;
+expect('"." steps 100 ms', agentKey('Period', false) && Math.abs(gameRef.time - tt - 0.1) < STEP / 2);
+tt = gameRef.time;
+expect('">" (Shift + .) steps 500 ms', agentKey('Period', true) && Math.abs(gameRef.time - tt - 0.5) < STEP / 2);
+api.step(300);
+tt = gameRef.time;
+// a 100 ms tap inside a 100 ms step: the bat has swung and is on its way back down
+const swung = (side: 'left' | 'right') => Math.abs(gameRef[side].angle - TABLE.flippers[side].rest) > 0.2;
+expect('"J" taps left + steps', agentKey('KeyJ', false) && swung('left') && Math.abs(gameRef.time - tt - 0.1) < STEP / 2, `angle Δ ${(gameRef.left.angle - TABLE.flippers.left.rest).toFixed(2)}`);
+api.step(300);
+expect('"L" taps right + steps', agentKey('KeyL', false) && swung('right'), `angle Δ ${(gameRef.right.angle - TABLE.flippers.right.rest).toFixed(2)}`);
+expect('"Z" is left to the normal keyboard (not an agent key)', agentKey('KeyZ', false) === false);
+// get a ball back into the lane for the digit plunge
+useGame.setState({ ballPhase: 'plunger' });
+for (const b of gameRef.balls) b.active = false;
+const lane = { ...TABLE.plunger };
+gameRef.balls.push({ id: 999, x: lane.x, y: lane.restY, vx: 0, vy: 0, px: lane.x, py: lane.restY, active: true, inLane: true, captured: 0, captureCooldown: 0, inside: new Set(), spin: 0 });
+expect('digit "7" plunges at 0.7', agentKey('Digit7', false) && gameRef.lastLaunchPower === 0.7);
+const snapA = stateText(), snapB = stateText();
+expect('state text is stable between steps', snapA === snapB);
+expect('state text has the ball, flipper and plunger lines', /ball#\d+ x=/.test(snapA) && /flipper L angle=/.test(snapA) && /plungerReady=/.test(snapA), snapA.split('\n')[0]);
+const who = g().agent;
+useGame.setState({ agent: null });
+expect('keys do nothing for an undeclared page (human play unchanged)', agentKey('Period', false) === false && agentKey('Digit5', false) === false);
+useGame.setState({ agent: who });
+
+console.log('[WebMCP] page tools');
+const got: WebMcpTool[] = [];
+expect('no navigator.modelContext → nothing registered', installWebMcp({}) === 'none');
+expect('registerTool style', installWebMcp({ modelContext: { registerTool: (t: WebMcpTool) => void got.push(t) } }) === 'registerTool');
+expect('six tools: help, declare, start, turn, state, table', got.map((t) => t.name).join(',') === 'pinball_help,pinball_declare,pinball_start,pinball_turn,pinball_state,pinball_table');
+const tool = (n: string) => got.find((t) => t.name === n)!;
+const parse = async (n: string, args: Record<string, unknown> = {}) => JSON.parse((await tool(n).execute(args)).content[0].text);
+const stJson = await parse('pinball_state');
+expect('pinball_state returns the JSON state', stJson.ok === true && typeof stJson.score === 'number' && Array.isArray(stJson.balls));
+tt = gameRef.time;
+const turnJson = await parse('pinball_turn', { flip: 'left', stepMs: 100 });
+expect('pinball_turn acts + steps and returns state', turnJson.ok === true && Math.abs(gameRef.time - tt - 0.1) < STEP / 2 && typeof turnJson.state.t === 'number');
+const bad2 = await tool('pinball_start').execute({ theme: 'nope' });
+expect('a refused call comes back as isError with the reason', bad2.isError === true && /already in play|unknown table/.test(bad2.content[0].text));
+expect('read-only tools are annotated', tool('pinball_state').annotations?.readOnlyHint === true && !tool('pinball_turn').annotations?.readOnlyHint);
+resetWebMcpForTests();
+let provided: WebMcpTool[] = [];
+expect('provideContext style', installWebMcp({ modelContext: { provideContext: (c: { tools: WebMcpTool[] }) => { provided = c.tools; } } }) === 'provideContext' && provided.length === 6);
 
 process.exit(bad ? 1 : 0);

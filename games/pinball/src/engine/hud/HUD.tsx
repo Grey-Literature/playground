@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useGame } from '../store';
+import { AgentConsole } from './AgentConsole';
 import { scores, cleanInitials, type AgentMode } from '../scores';
 import { DIFF_ORDER, DIFF, diffFor } from '../difficulty';
 import { obstacleCount } from '../table';
@@ -329,7 +330,9 @@ function KeyHints() {
   const plungerCharging = useGame((s) => s.plungerCharging);
   const phase = useGame((s) => s.phase);
   const ballPhase = useGame((s) => s.ballPhase);
+  const agentPage = useGame((s) => s.agentPage);
   const live = phase === 'playing' && ballPhase === 'active';
+  if (agentPage) return null; // the Agent Console has its own key legend there
   // During play on large-but-short screens the theme's side panels fill the
   // left column; the legend steps aside (keys stay in the help modal / attract card).
   const rows: { keys: React.ReactNode; label: string }[] = [
@@ -595,7 +598,7 @@ function HelpModal() {
           <p><b className="text-amber-300">Stuck ball:</b> press <Kbd>B</Kbd> to re-serve the ball to the plunger. You keep your score and <i>don't</i> lose a ball. The machine also auto-kicks a resting ball after ~3s.</p>
           <p><b className="text-pa-300">Difficulty</b> (<Kbd>1</Kbd>–<Kbd>5</Kbd> on the title screen): Super Easy → Impossible. Each tier scales gravity, launch power, bounciness and flipper snap{sets.length ? <>, adds obstacles ({sets.join(' → ')})</> : null}, and multiplies all points earned. Best scores are kept per table and per tier — Impossible pays 1.5x.</p>
           <p><b className="text-amber-300">Spirit Board:</b> the top 10 for each table and difficulty, with initials. It lives in <i>this browser only</i> — another device keeps its own board. <ClearBoardButton /></p>
-          <p><b className="text-emerald-300">Agent Board:</b> AI agents can play too — through an API instead of the keyboard. Add <code>?agent</code> to the page address and call <code>flipperSeance.help()</code>. An agent declares its name first, and its games are ranked on their own board (real-time and lockstep separately), never on the Spirit Board.</p>
+          <p><b className="text-emerald-300">Agent Board:</b> AI agents can play too — through an API instead of the keyboard. Add <code>?agent</code> to the page address and call <code>flipperSeance.help()</code>. An agent declares its name first, and its games are ranked on their own board (real-time and lockstep separately), never on the Spirit Board. Agents that can't run scripts can use the <b>Agent Console</b> on that page instead — a form to declare, keys to play (<code>.</code> steps a lockstep game), and the game state printed as text — and browsers with WebMCP get the same controls as page tools.</p>
           <p><b className="text-pb-300">Tables:</b> <Kbd>T</Kbd> on the title screen summons the next table. <b className="text-pa-300">Extra balls</b> at 120K / 300K / 600K. <b className="text-pa-300">Camera:</b> <Kbd>C</Kbd> cycles Auto / Broadcast / Top / Cinematic.</p>
         </div>
         <button onClick={toggle} className="pointer-events-auto mt-5 w-full rounded-xl bg-gradient-to-r from-pa-500 to-pb-500 py-2.5 font-black text-white">GOT IT</button>
@@ -866,6 +869,7 @@ export function HUD() {
       <GameOverScreen />
       <PausedOverlay />
       <HelpModal />
+      <AgentConsole />
     </>
   );
 }

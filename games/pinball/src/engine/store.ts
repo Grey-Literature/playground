@@ -103,6 +103,8 @@ export interface GameStore {
   agentMode: AgentMode;
   /** ?debug page: ball spawning is exposed, so nothing it scores is ever filed. */
   unranked: boolean;
+  /** ?agent page: show the Agent Console (hud/AgentConsole.tsx). */
+  agentPage: boolean;
   /** Who is playing the current / last game — captured at start, decides the board. */
   run: { agent: { name: string; model: string } | null; mode: AgentMode; unranked: boolean };
   /** Where the last agent game landed on the Agent Board. */
@@ -201,6 +203,7 @@ export const useGame = create<GameStore>()((set, get) => ({
   agent: null,
   agentMode: 'realtime',
   unranked: false,
+  agentPage: false,
   run: { agent: null, mode: 'realtime', unranked: false },
   lastAgentRank: null,
 
