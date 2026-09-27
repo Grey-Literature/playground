@@ -45,7 +45,8 @@ function flipShot(advance: () => void, seconds = 3, frac = 0.65) {
     advance();
     t += gameRef.time - before;
     // speed + heading once the swing has finished and the per-tier cap has been applied
-    if (exit === 0 && t >= 0.1) { exit = Math.hypot(b.vx, b.vy); angle = Math.atan2(b.vy, b.vx) * 180 / Math.PI; }
+    // (epsilon: 3 × 1/30 s sums to 0.0999…, which would sample a step late at 30 Hz)
+    if (exit === 0 && t >= 0.1 - 1e-9) { exit = Math.hypot(b.vx, b.vy); angle = Math.atan2(b.vy, b.vx) * 180 / Math.PI; }
     if (!b.ride && b.captured <= 0) apex = Math.max(apex, b.y);
   }
   gameRef.left.pressed = false;
@@ -67,7 +68,7 @@ function flipSpread(makeAdvance: () => () => void) {
 }
 
 function bumperExit() {
-  const bumper = ACTIVE.bumpers[0];
+  const bumper = ACTIVE.byLayer.field?.bumpers[0]; // the probe ball starts on the field
   if (!bumper) return NaN;
   resetField();
   const b = mkBall(bumper.x, bumper.y - bumper.r - BALL_RADIUS - 4, 0, 60, 0);

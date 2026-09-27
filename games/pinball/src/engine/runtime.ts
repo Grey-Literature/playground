@@ -19,8 +19,12 @@ export interface MutableGame {
   dropDown: Record<string, boolean>;
   /** Spinner angle/velocity by sensor id. */
   spinners: Record<string, { angle: number; vel: number }>;
-  /** Kinematic obstacle angle by id. */
+  /** Kinematic obstacle phase by id (see kinematicPose). */
   kin: Record<string, number>;
+  /** Blast pads: seconds until each pad (sensor id) is charged again. */
+  padCool: Record<string, number>;
+  /** Capture id → ride the next eject from that capture starts (see ejectIntoRide). */
+  ejectRide: Record<string, string>;
   bumperCombo: number;
   bumperComboTimer: number;
   nudgeTimes: number[];
@@ -56,6 +60,8 @@ export const gameRef: MutableGame = {
   dropDown: {},
   spinners: {},
   kin: {},
+  padCool: {},
+  ejectRide: {},
   bumperCombo: 0,
   bumperComboTimer: 0,
   nudgeTimes: [],
@@ -83,6 +89,8 @@ export function resetMutable() {
   gameRef.dropDown = {};
   gameRef.spinners = {};
   gameRef.kin = {};
+  gameRef.padCool = {};
+  gameRef.ejectRide = {};
   gameRef.bumperCombo = 0;
   gameRef.bumperComboTimer = 0;
   gameRef.nudgeTimes = [];
@@ -136,6 +144,15 @@ export function flashOf(key: string) {
 
 export function addShake(v: number) {
   gameRef.shake = Math.min(1, gameRef.shake + v);
+}
+
+/**
+ * Rules hook: make the ball currently held in `captureId` leave on `rideId`
+ * (e.g. a saucer's VOLCANO launch) instead of the capture's normal kick.
+ * Call it from the `capture` event; the ride's path should start at the capture.
+ */
+export function ejectIntoRide(captureId: string, rideId: string) {
+  gameRef.ejectRide[captureId] = rideId;
 }
 
 export function spinnerOf(id: string) {

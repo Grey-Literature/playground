@@ -8,7 +8,7 @@ import {
 import type { BallState, PhysEvent, FlipperSide, FlipperState } from './types';
 import { FIELD } from './types';
 import {
-  TABLE, ACTIVE, samplePath, rideById, captureById, kinematicSpeed, layerSet, layerById, insidePolygon,
+  TABLE, ACTIVE, samplePath, rideById, captureById, kinematicSpeed, kinematicPose, layerSet, layerById, insidePolygon,
 } from './table';
 import { gameRef, isTilted } from './runtime';
 import { DIFF } from './difficulty';
@@ -94,6 +94,10 @@ export function stepPhysics(dt: number): PhysEvent[] {
   if (G.skillWindow > 0) G.skillWindow -= dt;
   if (G.launchCooldown > 0) G.launchCooldown -= dt;
 
+  for (const id of Object.keys(G.padCool)) {
+    G.padCool[id] = Math.max(0, G.padCool[id] - dt);
+  }
+
   for (const id of Object.keys(G.spinners)) {
     const sp = G.spinners[id];
     sp.angle += sp.vel * dt;
@@ -151,6 +155,18 @@ export function stepPhysics(dt: number): PhysEvent[] {
         }
         ball.vx = 0; ball.vy = 0;
         if (ball.captured <= 0) {
+          const capId = ball.captureId ?? '';
+          const redirect = G.ejectRide[capId] ? rideById(G.ejectRide[capId]) : undefined;
+          if (redirect) {
+            // rules asked for this eject to leave on a ride (e.g. a volcano launch)
+            delete G.ejectRide[capId];
+            ball.captureCooldown = cap?.cooldown ?? 2.5;
+            ball.captureId = undefined;
+            ball.ride = { id: redirect.id, t: 0 };
+            events.push({ type: 'captureEject', id: capId, x: ball.x, y: ball.y });
+            events.push({ type: 'rideEnter', id: redirect.id, x: ball.x, y: ball.y, speed: 0 });
+            continue;
+          }
           const ej = cap?.eject ?? { angle: Math.PI / 2, spread: 0.9, speed: 130, speedJitter: 30 };
           ball.captureCooldown = cap?.cooldown ?? 2.5;
           const a = ej.angle + (Math.random() - 0.5) * ej.spread;
@@ -351,19 +367,34 @@ export function stepPhysics(dt: number): PhysEvent[] {
         }
       }
 
-      // ---- kinematic bars: rotating obstacles that swat the ball ----
+      // ---- kinematic obstacles: moving bars and orbiting posts that swat the ball ----
       for (const k of S.kinematics) {
-        const ang = G.kin[k.id] ?? 0;
-        const dirX = Math.cos(ang), dirY = Math.sin(ang);
-        const ax = k.cx - dirX * k.half, ay = k.cy - dirY * k.half;
-        const bx = k.cx + dirX * k.half, by = k.cy + dirY * k.half;
-        const col = collideSegment(ball, ax, ay, bx, by, BALL_RADIUS + k.r);
+        const pose = kinematicPose(k, G.kin[k.id] ?? 0);
+        if (pose.kind === 'orbiter') {
+          const col = collideCircle(ball, pose.x, pose.y, k.r);
+          if (col.overlap > 0) {
+            ball.x += col.nx * col.overlap;
+            ball.y += col.ny * col.overlap;
+            const rvx = ball.vx - pose.vx, rvy = ball.vy - pose.vy;
+            const vn = rvx * col.nx + rvy * col.ny;
+            if (vn < 0) {
+              const rest = bounciness(k.rest);
+              ball.vx -= (1 + rest) * vn * col.nx;
+              ball.vy -= (1 + rest) * vn * col.ny;
+              ball.vx += pose.vx * k.swat;
+              ball.vy += pose.vy * k.swat;
+              events.push({ type: 'post', id: k.id, x: ball.x, y: ball.y });
+            }
+          }
+          continue;
+        }
+        const col = collideSegment(ball, pose.ax, pose.ay, pose.bx, pose.by, BALL_RADIUS + k.r);
         if (col.overlap > 0) {
           ball.x += col.nx * col.overlap;
           ball.y += col.ny * col.overlap;
-          // surface velocity of the spinning bar at the contact point (v = ω × r)
+          // surface velocity of the moving bar at the contact point (v = ω × r)
           const dx = col.cx - k.cx, dy = col.cy - k.cy;
-          const w = kinematicSpeed(k);
+          const w = pose.angVel;
           const vsx = -w * dy, vsy = w * dx;
           const rvx = ball.vx - vsx, rvy = ball.vy - vsy;
           const vn = rvx * col.nx + rvy * col.ny;
@@ -460,6 +491,14 @@ export function stepPhysics(dt: number): PhysEvent[] {
           if (!sn.minSpeed || Math.hypot(ball.vx, ball.vy) > sn.minSpeed) {
             events.push({ type: 'sensor', kind: sn.kind, id: sn.id, x: ball.x, y: ball.y });
           }
+          if (sn.blast && (G.padCool[sn.id] ?? 0) <= 0) {
+            const a = sn.blast.angle + (Math.random() - 0.5) * sn.blast.spread;
+            ball.vx = Math.cos(a) * sn.blast.speed;
+            ball.vy = Math.sin(a) * sn.blast.speed;
+            ball.stuck = 0;
+            G.padCool[sn.id] = sn.blast.cooldown;
+            events.push({ type: 'blast', id: sn.id, x: ball.x, y: ball.y });
+          }
         } else if (!inside && was) {
           ball.inside.delete(sn.id);
         }
@@ -488,6 +527,7 @@ export function stepPhysics(dt: number): PhysEvent[] {
       // ---- ride entries ----
       if (!taken) {
         for (const ride of S.rides) {
+          if (ride.internal) continue; // only ever started by a capture redirect
           const key = `ride:${ride.id}`;
           const inside = Math.hypot(ball.x - ride.entry.x, ball.y - ride.entry.y) < ride.entry.r;
           const was = ball.inside.has(key);
@@ -498,7 +538,8 @@ export function stepPhysics(dt: number): PhysEvent[] {
             const ok = ball.captureCooldown <= 0
               && (g.minSpeed === undefined || sp > g.minSpeed)
               && (g.maxSpeed === undefined || sp < g.maxSpeed)
-              && (g.minVy === undefined || ball.vy > g.minVy);
+              && (g.minVy === undefined || ball.vy > g.minVy)
+              && (g.minLaunchPower === undefined || (G.skillWindow > 0 && G.lastLaunchPower >= g.minLaunchPower));
             if (ok) {
               ball.ride = { id: ride.id, t: 0 };
               events.push({ type: 'rideEnter', id: ride.id, x: ball.x, y: ball.y, speed: sp });

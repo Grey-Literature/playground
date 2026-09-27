@@ -833,7 +833,7 @@ function Wrecker() {
   });
   if (!W) return null;
   const WRECKER = W;
-  const len = WRECKER.half * 2 + WRECKER.r * 2;
+  const len = (WRECKER.half ?? 0) * 2 + WRECKER.r * 2;
   return (
     <group position={[PX(WRECKER.cx), 0.7, PZ(WRECKER.cy)]}>
       <group ref={bar}>

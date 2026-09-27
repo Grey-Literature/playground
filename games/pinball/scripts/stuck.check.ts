@@ -6,7 +6,7 @@
 
 import {
   TABLES, DIFF_ORDER, DIFF, STEP, TABLE, ACTIVE, gameRef, useTable, setTier, resetField,
-  mkBall, step, clearance, legitRest, reachability, gridBounds, reseed, rnd, pad, FIELD, layerIds,
+  mkBall, step, clearance, legitRest, reachability, gridBounds, reseed, rnd, pad, FIELD, layerIds, onDeck,
 } from './harness';
 import { samplePath } from '../src/engine/table';
 
@@ -80,8 +80,9 @@ for (const entry of TABLES) {
   // every ride must always eject with real velocity
   useTable(entry, 'medium');
   console.log(`[${entry.id}] ride tests (medium):`);
-  for (const ride of TABLE.rides) {
+  for (const ride of TABLE.rides.filter((r) => !r.internal)) { // internal rides: mechanics.check
     resetField();
+    if (ride.gate.minLaunchPower !== undefined) { gameRef.skillWindow = 5; gameRef.lastLaunchPower = 1; }
     const p0 = ride.path[0], p1 = ride.path[1];
     const dl = Math.hypot(p1.x - p0.x, p1.y - p0.y) || 1;
     const dx = (p1.x - p0.x) / dl, dy = (p1.y - p0.y) / dl;
@@ -114,9 +115,17 @@ for (const entry of TABLES) {
     let pin = 0;
     for (let n = 0; n < 500; n++) {
       resetField();
-      const x = k.cx - 2 * k.half + rnd() * 4 * k.half, y = k.cy - 7.5 + rnd() * 12;
-      if (clearance(x, y) < 0.05) continue;
-      const ball = mkBall(x, y, (rnd() - 0.5) * 60, -20 - rnd() * 40);
+      const layer = k.layer ?? FIELD;
+      let x: number, y: number;
+      if (k.kind === 'orbiter') {
+        const span = (k.orbit ?? 0) + 3;
+        x = k.cx - span + rnd() * 2 * span; y = k.cy - span + rnd() * 2 * span;
+      } else {
+        const half = k.half ?? 0;
+        x = k.cx - 2 * half + rnd() * 4 * half; y = k.cy - 7.5 + rnd() * 12;
+      }
+      if (clearance(x, y, layer) < 0.05 || (layer !== FIELD && !onDeck(x, y, layer))) continue;
+      const ball = mkBall(x, y, (rnd() - 0.5) * 60, -20 - rnd() * 40, 3, layer);
       gameRef.balls.push(ball);
       const hist: [number, number][] = [];
       let slow = 0;
@@ -127,6 +136,7 @@ for (const entry of TABLES) {
         if (Math.hypot(ball.vx, ball.vy) < 11) slow += STEP; else slow = 0;
         hist.push([ball.x, ball.y]);
         if (hist.length > 260) hist.shift();
+        if ((ball.layer ?? FIELD) !== layer) break; // fell off its deck — free
         if (slow > 2.2) {
           if (legitRest(ball.x, ball.y, ball.layer ?? FIELD)) break;
           let minx = Infinity, maxx = -Infinity, miny = Infinity, maxy = -Infinity;

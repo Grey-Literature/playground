@@ -8,6 +8,8 @@ import { gameRef } from '../src/engine/runtime';
 import type { PhysEvent } from '../src/engine/types';
 import { table, diffOverrides } from '../src/themes/deadStarDisco/table';
 import { rules, useDisco } from '../src/themes/deadStarDisco/rules';
+import { table as salTable, diffOverrides as salOverrides } from '../src/themes/salamander/table';
+import { rules as salRules, useSalamander, BELL_RELIGHT } from '../src/themes/salamander/rules';
 
 // in-memory localStorage so per-theme × per-tier bests are really exercised
 const mem = new Map<string, string>();
@@ -21,6 +23,12 @@ const none = () => null;
 registerTheme({
   id: 'deadStarDisco', table, diffOverrides, rules,
   copy: { name: 'Dead Star Disco', tagline: '', dmdTitle: '', attractHint: '', attractFooter: '', obstacleSets: [] },
+  palette: {} as ThemeDef['palette'], Playfield: none, Surroundings: none, Title: none, help: null,
+});
+
+registerTheme({
+  id: 'salamander', table: salTable, diffOverrides: salOverrides, rules: salRules,
+  copy: { name: 'Salamander', tagline: '', dmdTitle: '', attractHint: '', attractFooter: '', obstacleSets: [] },
   palette: {} as ThemeDef['palette'], Playfield: none, Surroundings: none, Title: none, help: null,
 });
 
@@ -96,5 +104,76 @@ for (let i = 0; i < 4; i++) g().nudge('up');
 const s2 = g().score;
 fire({ type: 'bumper', id: '0' });
 expect('tilt → flippers dead, no score', g().tilted && g().score === s2);
+
+// ---------------- Salamander ----------------
+console.log('\n[salamander] rules contract (medium):');
+g().toAttract();
+g().setTheme('salamander');
+g().setDifficulty('medium');
+g().startGame();
+const sal = () => useSalamander.getState();
+const sfire = (e: Record<string, unknown>) => salRules.onEvent({ ...at, ...e } as PhysEvent);
+expect('salamander is the active table', g().phase === 'playing' && !g().tilted);
+
+let t0 = g().score;
+sfire({ type: 'bumper', id: 'bell0' });
+expect('first bell → 400, lit', g().score - t0 === 400 && sal().bells[0], `+${g().score - t0}`);
+gameRef.time += 0.5; sfire({ type: 'bumper', id: 'bell1' });
+gameRef.time += 0.5; t0 = g().score; sfire({ type: 'bumper', id: 'bell2' });
+expect('third bell (combo x3) → 1,200 + INFERNO 5,000', g().score - t0 === 1200 + 5000, `+${g().score - t0}`);
+expect('INFERNO → bells relighting, heat 1, Maw not yet lit', sal().relighting && sal().heat === 1 && !sal().mawLit && sal().infernos === 1);
+sfire({ type: 'bumper', id: 'bell0' });
+expect('bells stay dark while relighting (no double INFERNO)', sal().infernos === 1 && sal().relighting);
+await sleep(BELL_RELIGHT * 1000 + 150);
+expect(`bells relight after ${BELL_RELIGHT}s`, !sal().relighting && !sal().bells.some(Boolean));
+gameRef.time += 5;
+for (const id of ['bell0', 'bell1', 'bell2']) sfire({ type: 'bumper', id });
+expect('second INFERNO → THE MAW is lit', sal().mawLit && sal().heat === 2 && sal().infernos === 2);
+
+const realRandom = Math.random;
+t0 = g().score;
+sfire({ type: 'capture', id: 'maw' });
+expect('lit Maw → INFERNO MULTIBALL, Maw spent', g().multiball && !sal().mawLit && sal().heat === 0 && gameRef.balls.some((b) => b.autoLaunch !== undefined));
+expect('lit Maw never spits (normal kick keeps the multiball in play)', gameRef.ejectRide.maw === undefined);
+useGame.setState({ multiball: false });
+
+Math.random = () => 0.2;
+sfire({ type: 'capture', id: 'maw' });
+expect('unlit Maw, roll < 45% → spit redirect requested', gameRef.ejectRide.maw === 'mawSpit');
+delete gameRef.ejectRide.maw;
+Math.random = () => 0.9;
+sfire({ type: 'capture', id: 'maw' });
+expect('unlit Maw, roll ≥ 45% → normal kick', gameRef.ejectRide.maw === undefined);
+Math.random = () => 0.05;
+sfire({ type: 'capture', id: 'holdL' }); sfire({ type: 'capture', id: 'holdR' });
+expect('saucer, roll < 15% → VOLCANO redirect on the matching side', gameRef.ejectRide.holdL === 'volcanoL' && gameRef.ejectRide.holdR === 'volcanoR');
+gameRef.ejectRide = {};
+Math.random = () => 0.5;
+sfire({ type: 'capture', id: 'holdL' });
+expect('saucer, roll ≥ 15% → normal kick', gameRef.ejectRide.holdL === undefined);
+Math.random = realRandom;
+
+t0 = g().score;
+sfire({ type: 'layer', id: 'rampL', from: 'field', to: 'nest', via: 'ride' });
+expect('ride onto the nest → NEST LANDING 500', g().score - t0 === 500 && sal().landings === 1, `+${g().score - t0}`);
+t0 = g().score;
+sfire({ type: 'layer', id: 'dropR', from: 'nest', to: 'field', via: 'hole' });
+expect('drop hole → 750, counted', g().score - t0 === 750 && sal().drops === 1, `+${g().score - t0}`);
+t0 = g().score;
+sfire({ type: 'layer', id: 'nest', from: 'nest', to: 'field', via: 'edge' });
+expect('waterfall → 400', g().score - t0 === 400, `+${g().score - t0}`);
+t0 = g().score;
+sfire({ type: 'rideEnter', id: 'serpent', speed: 50 }); sfire({ type: 'rideExit', id: 'serpent' });
+expect('serpent 1,500 + release 500', g().score - t0 === 2000, `+${g().score - t0}`);
+t0 = g().score;
+sfire({ type: 'rideEnter', id: 'skyshot', speed: 200 });
+expect('skyshot 2,500', g().score - t0 === 2500, `+${g().score - t0}`);
+
+// per-ball reset keeps the heat, clears lanes/bells
+sfire({ type: 'sensor', kind: 'lane', id: 'lane0' });
+for (const id of ['bell0']) sfire({ type: 'bumper', id });
+useSalamander.setState({ heat: 1 });
+salRules.resetBall();
+expect('resetBall clears lanes + bells, keeps heat', !sal().lanes.some(Boolean) && !sal().bells.some(Boolean) && sal().heat === 1);
 
 process.exit(bad ? 1 : 0);

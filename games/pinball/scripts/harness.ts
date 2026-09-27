@@ -43,6 +43,10 @@ export function resetField() {
   gameRef.paused = false;
   gameRef.dropDown = {};
   gameRef.kin = {};
+  gameRef.padCool = {};
+  gameRef.ejectRide = {};
+  gameRef.skillWindow = 0;
+  gameRef.lastLaunchPower = 0;
   gameRef.unwedgeCount = 0;
 }
 

@@ -51,8 +51,9 @@ function checkTable(entry: TableEntry) {
     const row: string[] = [];
 
     // 1. ride → deck
-    for (const ride of TABLE.rides.filter((r) => r.exitLayer)) {
+    for (const ride of TABLE.rides.filter((r) => r.exitLayer && !r.internal)) {
       resetField();
+      if (ride.gate.minLaunchPower !== undefined) { gameRef.skillWindow = 5; gameRef.lastLaunchPower = 1; }
       const p0 = ride.path[0], p1 = ride.path[1];
       const dl = Math.hypot(p1.x - p0.x, p1.y - p0.y) || 1;
       const dx = (p1.x - p0.x) / dl, dy = (p1.y - p0.y) / dl;

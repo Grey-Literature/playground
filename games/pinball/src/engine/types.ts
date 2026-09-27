@@ -66,6 +66,12 @@ export interface Sensor extends Gated {
   id: string;
   /** Ignore balls slower than this (e.g. orbit shots). */
   minSpeed?: number;
+  /**
+   * Blast pad: on entry (if recharged) the ball's velocity is REPLACED by a
+   * blast of `speed` along `angle` ± spread/2 (radians, 0 = +x, π/2 = up-table),
+   * then the pad needs `cooldown` seconds to recharge. Emits a `blast` event.
+   */
+  blast?: { speed: number; angle: number; spread: number; cooldown: number };
 }
 
 /**
@@ -79,7 +85,13 @@ export interface RideDef extends Gated {
   path: PathPt[];
   dur: number;
   exit: { vx: number; vy: number };
-  gate: { minSpeed?: number; maxSpeed?: number; minVy?: number };
+  gate: {
+    minSpeed?: number; maxSpeed?: number; minVy?: number;
+    /** Only the ball just plunged (skill window open) at ≥ this plunger power (0..1). */
+    minLaunchPower?: number;
+  };
+  /** Never auto-entered — only started by `ejectIntoRide` from a capture. */
+  internal?: boolean;
   /** Hide the ball while riding (opaque pipes) — the scene draws a trail instead. */
   hideBall?: boolean;
   /** Layer the ball lands on when the ride ends (default: the entry layer). */
@@ -96,13 +108,23 @@ export interface CaptureDef extends Gated {
   eject: { angle: number; spread: number; speed: number; speedJitter: number };
 }
 
-/** Moving obstacle driven by the simulation clock. */
+/**
+ * Moving obstacle driven by the simulation clock.
+ *   bar + spin   — rotates about (cx, cy) at `speed` rad/s
+ *   bar + swing  — angle = base + amp·sin(speed·t): a pendulum / flapper
+ *   orbiter      — a post of radius r circling (cx, cy) at `orbit`, from `phase`
+ */
 export interface KinematicDef extends Gated {
   id: string;
-  kind: 'bar';
+  kind: 'bar' | 'orbiter';
+  motion?: 'spin' | 'swing';
   cx: number; cy: number;
-  half: number;   // half-length of the bar
-  r: number;      // bar thickness radius
+  half?: number;  // bar half-length
+  r: number;      // bar thickness radius / orbiter radius
+  amp?: number;   // swing amplitude (rad)
+  base?: number;  // swing centre angle (rad)
+  orbit?: number; // orbiter path radius
+  phase?: number; // orbiter start angle (rad)
   /** Angular speed (rad/s) per tier; `default` covers unlisted tiers. */
   speed: Partial<Record<DiffId, number>> & { default: number };
   rest: number;
@@ -207,5 +229,6 @@ export type PhysEvent =
   | { type: 'rideEnter'; id: string; x: number; y: number; speed: number }
   | { type: 'rideExit'; id: string; x: number; y: number }
   | { type: 'drain'; id: number; x: number; y: number }
+  | { type: 'blast'; id: string; x: number; y: number }
   | { type: 'layer'; id: string; from: string; to: string; via: 'hole' | 'edge' | 'ride'; x: number; y: number }
   | { type: 'autoLaunch'; x: number; y: number };

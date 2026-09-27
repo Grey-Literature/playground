@@ -137,6 +137,29 @@ export function kinematicSpeed(k: KinematicDef) {
   return k.speed[DIFF.id] ?? k.speed.default;
 }
 
+export interface BarPose { kind: 'bar'; ax: number; ay: number; bx: number; by: number; angle: number; angVel: number }
+export interface OrbiterPose { kind: 'orbiter'; x: number; y: number; vx: number; vy: number }
+
+/**
+ * Where a kinematic obstacle is right now. `phi` is its accumulated phase
+ * (gameRef.kin[id] = ∫ speed dt), so pose is a pure function of it.
+ */
+export function kinematicPose(k: KinematicDef, phi: number): BarPose | OrbiterPose {
+  const w = kinematicSpeed(k);
+  if (k.kind === 'orbiter') {
+    const R = k.orbit ?? 0, a = (k.phase ?? 0) + phi;
+    return { kind: 'orbiter', x: k.cx + Math.cos(a) * R, y: k.cy + Math.sin(a) * R, vx: -Math.sin(a) * R * w, vy: Math.cos(a) * R * w };
+  }
+  let angle = phi, angVel = w;
+  if (k.motion === 'swing') {
+    const amp = k.amp ?? 0.5;
+    angle = (k.base ?? 0) + amp * Math.sin(phi);
+    angVel = amp * w * Math.cos(phi);
+  }
+  const half = k.half ?? 0, dx = Math.cos(angle) * half, dy = Math.sin(angle) * half;
+  return { kind: 'bar', ax: k.cx - dx, ay: k.cy - dy, bx: k.cx + dx, by: k.cy + dy, angle, angVel };
+}
+
 // ---------- geometry helpers for theme authors ----------
 
 /** Catmull-Rom through the path points; t in [0, 1]. */
