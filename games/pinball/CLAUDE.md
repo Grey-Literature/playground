@@ -19,6 +19,7 @@ copy.
 | `deadStarDisco` | Dead Star Disco      | Phase 1: the reference chassis      |
 | `salamander`    | Salamander           | Phase 2b, recreated (not ported)    |
 | _tbd_           | a MISFIRE ARCADE callback | Phase 4                        |
+| _tbd_           | a Snoopy Axolotl     | Phase 5                             |
 
 The origin prototypes are kept for reference in `examples/`:
 `realistic-3d-pinball-game.zip` (Neon Nova, now Dead Star Disco) and
