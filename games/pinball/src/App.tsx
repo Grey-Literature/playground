@@ -23,6 +23,8 @@ function useKeyboard() {
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
       const st = useGame.getState();
+      // initials entry (or any text field) owns the keyboard — nothing leaks into play
+      if (st.initialsEntry || (e.target instanceof HTMLElement && ['INPUT', 'TEXTAREA'].includes(e.target.tagName))) return;
       // prevent scrolling for game keys
       if (['Space', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.code)) {
         e.preventDefault();

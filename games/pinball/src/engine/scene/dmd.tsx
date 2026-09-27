@@ -32,7 +32,28 @@ export function DMD({ position = [0, 16.5, -36.1] as [number, number, number], s
     g.fillStyle = bg;
     g.fillRect(0, 0, 512, 160);
     g.textAlign = 'left';
-    if (st.phase === 'attract') {
+    // attract alternates: title card (6 s) ↔ Spirit Board top 5 (4 s), when there is one
+    const boardPage = st.phase === 'attract' && st.board.length > 0 && t % 10 > 6;
+    if (boardPage) {
+      g.fillStyle = on;
+      g.shadowColor = on; g.shadowBlur = 10;
+      g.font = '900 26px "Courier New", monospace';
+      g.fillText('SPIRIT BOARD', 30, 34);
+      g.fillStyle = DIFF.accent;
+      g.textAlign = 'right';
+      g.font = '700 18px "Courier New", monospace';
+      g.fillText(DIFF.label, 486, 34);
+      g.textAlign = 'left';
+      st.board.slice(0, 5).forEach((e, i) => {
+        const y = 60 + i * 21;
+        g.fillStyle = i === 0 ? hot : on;
+        g.font = '700 19px "Courier New", monospace';
+        g.fillText(`${i + 1}. ${e.initials}`, 40, y);
+        g.textAlign = 'right';
+        g.fillText(e.score.toLocaleString(), 470, y);
+        g.textAlign = 'left';
+      });
+    } else if (st.phase === 'attract') {
       g.fillStyle = on;
       g.shadowColor = on; g.shadowBlur = 12;
       const title = theme.copy.dmdTitle;

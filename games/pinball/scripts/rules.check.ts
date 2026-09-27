@@ -68,17 +68,26 @@ expect('last ball drained → bonus phase', g().ballPhase === 'bonus' && g().bon
 for (let i = 0; i < 80 && g().ball === 1; i++) await sleep(100);
 expect('bonus finishes → ball 2, multiplier + table state reset', g().ball === 2 && g().multiplier === 1 && !useDisco.getState().rampLit, `ball ${g().ball}`);
 
-// bests are per theme × tier, persisted under flipper-seance:<theme>:best:<tier>
-const best = g().highScore;
+// game over → the Spirit Board (per theme × tier, flipper-seance:<theme>:board:<tier>)
 g().setDifficulty('hard');
 expect('tier is locked during live play', g().difficulty === 'medium');
-useGame.setState({ phase: 'gameover' });
-const stored = Number(mem.get('flipper-seance:deadStarDisco:best:medium'));
-expect('medium best persisted per theme × tier', best > 0 && stored === best, `${stored}`);
+useGame.setState({ totalBalls: g().ball }); // this is the last ball
+for (const b of gameRef.balls) b.active = false;
+g().onDrain();
+for (let i = 0; i < 80 && g().phase !== 'gameover'; i++) await sleep(100);
+const final = g().score;
+expect('last ball → game over with the initials prompt open', g().phase === 'gameover' && g().initialsEntry?.rank === 1, `score ${final}`);
+g().startGame();
+expect('Enter-to-start is blocked while initials are open', g().phase === 'gameover');
+g().submitInitials('ab!');
+const saved = JSON.parse(mem.get('flipper-seance:deadStarDisco:board:medium') ?? '[]');
+expect("initials 'ab!' filed as 'AB ' at rank 1", saved[0]?.initials === 'AB ' && saved[0]?.score === final && g().lastEntryRank === 1);
+expect('highScore = top of the board', g().highScore === final && g().initialsEntry === null);
+expect('last initials remembered', mem.get('flipper-seance:initials') === 'AB');
 g().setDifficulty('hard');
-expect('hard tier shows its own (empty) best', g().highScore === 0);
+expect('hard tier shows its own (empty) board', g().highScore === 0 && g().board.length === 0);
 g().setDifficulty('medium');
-expect('back to medium restores its best', g().highScore === best);
+expect('back to medium restores its board', g().highScore === final && g().board[0]?.initials === 'AB ');
 expect('tier choice persisted per theme', mem.get('flipper-seance:deadStarDisco:diff') === 'medium');
 
 // tilt kills scoring

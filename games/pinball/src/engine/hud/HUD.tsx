@@ -1,4 +1,6 @@
+import { useState } from 'react';
 import { useGame } from '../store';
+import { scores, cleanInitials } from '../scores';
 import { DIFF_ORDER, DIFF, diffFor } from '../difficulty';
 import { obstacleCount } from '../table';
 import { activeTheme, hallThemes, themeById } from '../theme';
@@ -385,7 +387,6 @@ function TouchControls() {
 
 function AttractScreen() {
   const phase = useGame((s) => s.phase);
-  const highScore = useGame((s) => s.highScore);
   const selected = useGame((s) => s.difficulty);
   const themeId = useGame((s) => s.themeId);
   const theme = themeById(themeId);
@@ -401,10 +402,8 @@ function AttractScreen() {
         <div className="mb-1 mt-5 text-[11px] font-black tracking-[0.5em] text-pa-400">INSERT COIN • 3 BALLS</div>
         <Title />
 
-        <div className="mx-auto mt-5 flex max-w-md items-center justify-center gap-3 rounded-xl border border-amber-300/30 bg-amber-950/30 px-4 py-2">
-          <Trophy className="h-4 w-4 text-amber-300" />
-          <span className="text-xs font-bold tracking-widest text-amber-200/80">HIGH SCORE</span>
-          <span className="font-display text-xl font-black text-amber-300 tabular-nums">{fmt(highScore)}</span>
+        <div className="mx-auto mt-5 max-w-md">
+          <SpiritBoard limit={5} />
         </div>
 
         <div className="mx-auto mt-5 max-w-xl text-left">
@@ -455,14 +454,13 @@ function AttractScreen() {
 function GameOverScreen() {
   const phase = useGame((s) => s.phase);
   const score = useGame((s) => s.score);
-  const highScore = useGame((s) => s.highScore);
   const difficulty = useGame((s) => s.difficulty);
+  const entry = useGame((s) => s.initialsEntry);
   if (phase !== 'gameover') return null;
-  const isBest = score >= highScore && score > 0;
   const cfg = diffFor(difficulty);
   return (
     <div className="absolute inset-0 z-40 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-[2px]">
-      <div className="attract-in w-full max-w-md rounded-3xl border border-pb-400/30 bg-slate-950/90 p-8 text-center shadow-[0_0_60px_color-mix(in_srgb,var(--color-pb-400)_30%,transparent)] backdrop-blur-xl">
+      <div className="attract-in max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-3xl border border-pb-400/30 bg-slate-950/90 p-8 text-center shadow-[0_0_60px_color-mix(in_srgb,var(--color-pb-400)_30%,transparent)] backdrop-blur-xl">
         <div className="flex items-center justify-center gap-2 text-[11px] font-black tracking-[0.4em] text-pb-400">
           GAME OVER
           <span className="rounded-full px-2 py-0.5 text-[10px] tracking-[0.2em]" style={{ color: cfg.accent, background: `${cfg.accent}1a`, border: `1px solid ${cfg.accent}55` }}>
@@ -470,15 +468,10 @@ function GameOverScreen() {
           </span>
         </div>
         <div className="font-display mt-2 text-5xl font-black text-white tabular-nums drop-shadow-[0_0_20px_color-mix(in_srgb,var(--color-pb-400)_60%,transparent)]">{fmt(score)}</div>
-        {isBest ? (
-          <div className="mx-auto mt-3 inline-flex animate-pulse items-center gap-2 rounded-full border border-yellow-300/50 bg-yellow-400/10 px-4 py-1.5 text-sm font-black text-yellow-300">
-            <Trophy className="h-4 w-4" /> NEW HIGH SCORE!
-          </div>
-        ) : (
-          <div className="mt-3 flex items-center justify-center gap-2 text-sm font-bold text-slate-400">
-            <Trophy className="h-4 w-4 text-amber-400/70" /> Best: <span className="tabular-nums text-slate-200">{fmt(highScore)}</span>
-          </div>
+        {entry ? <InitialsEntry rank={entry.rank} /> : (
+          <div className="mt-4 text-left"><SpiritBoard limit={10} /></div>
         )}
+        {!entry && <>
         <div className="mt-5 text-left">
           <div className="mb-1.5 text-[10px] font-black tracking-[0.3em] text-slate-500">RETRY ON A DIFFERENT TIER?</div>
           <DifficultyPicker compact />
@@ -489,6 +482,7 @@ function GameOverScreen() {
         >
           <RotateCcw className="h-4 w-4" /> PLAY AGAIN (ENTER)
         </button>
+        </>}
       </div>
     </div>
   );
@@ -570,6 +564,7 @@ function HelpModal() {
           {theme.help}
           <p><b className="text-amber-300">Stuck ball:</b> press <Kbd>B</Kbd> to re-serve the ball to the plunger. You keep your score and <i>don't</i> lose a ball. The machine also auto-kicks a resting ball after ~3s.</p>
           <p><b className="text-pa-300">Difficulty</b> (<Kbd>1</Kbd>–<Kbd>5</Kbd> on the title screen): Super Easy → Impossible. Each tier scales gravity, launch power, bounciness and flipper snap{sets.length ? <>, adds obstacles ({sets.join(' → ')})</> : null}, and multiplies all points earned. Best scores are kept per table and per tier — Impossible pays 1.5x.</p>
+          <p><b className="text-amber-300">Spirit Board:</b> the top 10 for each table and difficulty, with initials. It lives in <i>this browser only</i> — another device keeps its own board. <ClearBoardButton /></p>
           <p><b className="text-pb-300">Tables:</b> <Kbd>T</Kbd> on the title screen summons the next table. <b className="text-pa-300">Extra balls</b> at 120K / 300K / 600K. <b className="text-pa-300">Camera:</b> <Kbd>C</Kbd> cycles Auto / Broadcast / Top / Cinematic.</p>
         </div>
         <button onClick={toggle} className="pointer-events-auto mt-5 w-full rounded-xl bg-gradient-to-r from-pa-500 to-pb-500 py-2.5 font-black text-white">GOT IT</button>
@@ -613,6 +608,98 @@ function ThemePicker() {
         })}
       </div>
     </div>
+  );
+}
+
+// ---------------- Spirit Board (local arcade leaderboard) ----------------
+export function SpiritBoard({ limit = 10 }: { limit?: number }) {
+  const board = useGame((s) => s.board);
+  const lastRank = useGame((s) => s.lastEntryRank);
+  const difficulty = useGame((s) => s.difficulty);
+  const cfg = diffFor(difficulty);
+  const rows = board.slice(0, limit);
+  return (
+    <div className="rounded-xl border border-amber-300/30 bg-amber-950/25 px-4 py-2.5 text-left">
+      <div className="mb-1.5 flex items-center justify-between">
+        <span className="flex items-center gap-1.5 text-[10px] font-black tracking-[0.35em] text-amber-300">
+          <Trophy className="h-3 w-3" /> SPIRIT BOARD
+        </span>
+        <span className="text-[10px] font-black tracking-[0.2em]" style={{ color: cfg.accent }}>{cfg.label}</span>
+      </div>
+      {rows.length === 0 ? (
+        <div className="py-1 text-center text-[11px] font-semibold italic text-slate-400">The board is silent. Be the first spirit.</div>
+      ) : (
+        <ol className="space-y-0.5">
+          {rows.map((e, i) => {
+            const mine = lastRank === i + 1;
+            return (
+              <li key={i} className={`flex items-center gap-3 rounded px-1.5 font-display text-sm tabular-nums ${mine ? 'animate-pulse bg-amber-300/20 text-amber-200' : i === 0 ? 'text-amber-300' : 'text-slate-200'}`}>
+                <span className="w-5 text-right text-[11px] font-bold text-slate-500">{i + 1}</span>
+                <span className="w-10 font-black tracking-[0.2em] whitespace-pre">{e.initials}</span>
+                <span className="flex-1 text-right font-black">{fmt(e.score)}</span>
+                <span className="hidden w-20 text-right text-[10px] font-semibold text-slate-500 sm:inline">{e.day}</span>
+              </li>
+            );
+          })}
+        </ol>
+      )}
+    </div>
+  );
+}
+
+/** Arcade-style initials: three big slots over a real <input> so phone keyboards work. */
+function InitialsEntry({ rank }: { rank: number }) {
+  const submit = useGame((s) => s.submitInitials);
+  const skip = useGame((s) => s.skipInitials);
+  const [text, setText] = useState(() => scores.lastInitials());
+  const slots = text.padEnd(3, ' ').slice(0, 3).split('');
+  return (
+    <div className="mt-4">
+      <div className="text-[11px] font-black tracking-[0.35em] text-amber-300">A NEW SPIRIT — RANK #{rank}</div>
+      <label className="relative mx-auto mt-3 flex w-fit cursor-text gap-2">
+        {slots.map((c, i) => (
+          <span key={i} className={`flex h-14 w-12 items-center justify-center rounded-lg border-2 font-display text-3xl font-black ${i === Math.min(text.length, 2) ? 'border-amber-300 text-amber-200 shadow-[0_0_14px_rgba(252,211,77,0.5)]' : 'border-slate-600 text-white'}`}>
+            {c.trim() || '_'}
+          </span>
+        ))}
+        <input
+          autoFocus
+          aria-label="Your initials"
+          value={text}
+          maxLength={3}
+          autoCapitalize="characters"
+          autoComplete="off"
+          spellCheck={false}
+          className="absolute inset-0 opacity-0"
+          onChange={(e) => setText(cleanInitials(e.target.value))}
+          onKeyDown={(e) => {
+            e.stopPropagation();
+            if (e.key === 'Enter') { e.preventDefault(); submit(text); }
+            if (e.key === 'Escape') { e.preventDefault(); skip(); }
+          }}
+        />
+      </label>
+      <div className="mt-3 flex justify-center gap-2">
+        <button onClick={() => submit(text)} className="pointer-events-auto rounded-xl bg-amber-400 px-5 py-2 text-sm font-black text-slate-950 hover:bg-amber-300">CARVE IT (ENTER)</button>
+        <button onClick={skip} className="pointer-events-auto rounded-xl border border-slate-600 px-4 py-2 text-xs font-bold text-slate-300 hover:border-slate-400">SKIP (ESC)</button>
+      </div>
+    </div>
+  );
+}
+
+/** Two-tap "clear this board" for grown-ups. */
+function ClearBoardButton() {
+  const [armed, setArmed] = useState(false);
+  const phase = useGame((s) => s.phase);
+  if (phase === 'playing') return null;
+  return (
+    <button
+      onClick={() => { if (armed) { useGame.getState().clearBoard(); setArmed(false); } else setArmed(true); }}
+      onBlur={() => setArmed(false)}
+      className={`pointer-events-auto ml-1 rounded border px-1.5 text-[11px] font-bold ${armed ? 'border-red-400 text-red-300' : 'border-slate-600 text-slate-400 hover:text-slate-200'}`}
+    >
+      {armed ? 'Tap again to clear this board' : 'Clear this board'}
+    </button>
   );
 }
 

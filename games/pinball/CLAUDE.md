@@ -118,6 +118,16 @@ Grey-Literature/playground#2). The two branches work like this:
     so gravity never parks a ball in a corner; and keep every drop hole and
     waterfall landing clear of field toys. `layers.check` gates both.
   - Layer Lab (`?theme=layerLab`, hidden) is the reference layered table.
+- **Spirit Board (scores).** `src/engine/scores.ts` keeps a top 10 per
+  theme × tier, with 3-letter arcade initials entered at game over.
+  - It's stored in this browser's localStorage under
+    `flipper-seance:<theme>:board:<tier>`. Everything read back is sanitized,
+    and storage that fails falls back to memory. The old single `best:<tier>`
+    score migrates as a `---` entry.
+  - The storage sits behind the `ScoreStore` adapter. An online board would
+    be a second adapter, and nothing else in the game would change.
+  - `scores.check` covers the storage; `rules.check` covers the
+    game-over → initials → board flow.
 - **Clearance rule.** A ball passes a gap only if the centre-to-centre width
   is more than the sum of the two inflated radii:
   - wall to wall: 3.8
@@ -242,6 +252,9 @@ it fresh under `AGENTS.md`, and do not write any egg code before she approves.
 
 - Carrying over Salamander's Magnus, jitter or table-wobble physics. Dead
   Star Disco's feel is the physics truth.
-- Accounts, online leaderboards, or network calls of any kind.
+- Accounts, online leaderboards, or network calls of any kind. The Spirit
+  Board is local on purpose, because this is a family board on a public,
+  keyless site. If that ever changes, the `ScoreStore` adapter in
+  `src/engine/scores.ts` is where an online board would plug in.
 - Scaling the ball per theme, or letting a theme fork `physics.ts`. New
   mechanics go into the engine, with tests.

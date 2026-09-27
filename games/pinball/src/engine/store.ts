@@ -10,6 +10,7 @@ import { TABLE, setTable, refreshActive } from './table';
 import {
   gameRef, resetMutable, spawnBallInLane, spawnBallAt, isTilted, flash, addShake,
 } from './runtime';
+import { scores, cleanInitials, padInitials, today, type ScoreEntry } from './scores';
 import { activeTheme, setActiveTheme, themeById, hallThemes, type ThemeDef } from './theme';
 
 // ---------- persistence (per theme × per tier) ----------
@@ -22,9 +23,13 @@ const ls = {
     try { localStorage.setItem(`${NS}:${k}`, v); } catch { /* private mode etc. */ }
   },
 };
-const bestKey = (theme: string, tier: DiffId) => `${theme}:best:${tier}`;
-const loadBest = (theme: string, tier: DiffId) => Number(ls.get(bestKey(theme, tier)) || 0);
-const saveBest = (theme: string, tier: DiffId, v: number) => ls.set(bestKey(theme, tier), String(v));
+// Bests live on the Spirit Board (scores.ts): top 10 per theme × tier.
+const topScore = (board: ScoreEntry[]) => board[0]?.score ?? 0;
+/** Where `score` would land on `board` (1-based); equal older scores stay ahead. */
+const rankFor = (board: ScoreEntry[], score: number) => {
+  const i = board.findIndex((e) => score > e.score);
+  return (i < 0 ? board.length : i) + 1;
+};
 const loadTier = (theme: string): DiffId => {
   const t = ls.get(`${theme}:diff`) as DiffId | null;
   return t && DIFFS[t] ? t : 'medium';
@@ -80,6 +85,12 @@ export interface GameStore {
   ballsInPlay: number;
   stuckHint: boolean;
   difficulty: DiffId;
+  /** Spirit Board for the current theme × tier. */
+  board: ScoreEntry[];
+  /** Open while a qualifying game-over score waits for initials. */
+  initialsEntry: { rank: number; score: number } | null;
+  /** Rank of the entry just filed (highlighted on the board), until the next game. */
+  lastEntryRank: number | null;
 
   setTheme: (id: string) => void;
   cycleTheme: (dir: 1 | -1) => void;
@@ -111,6 +122,9 @@ export interface GameStore {
   toggleShake: () => void;
   toggleHelp: () => void;
   setPaused: (p: boolean) => void;
+  submitInitials: (text: string) => void;
+  skipInitials: () => void;
+  clearBoard: () => void;
 }
 
 let bonusInterval: ReturnType<typeof setInterval> | null = null;
@@ -152,6 +166,9 @@ export const useGame = create<GameStore>()((set, get) => ({
   ballsInPlay: 0,
   stuckHint: false,
   difficulty: 'medium',
+  board: [],
+  initialsEntry: null,
+  lastEntryRank: null,
 
   // Summon a table. Only between games — a live game keeps its table.
   setTheme: (id) => {
@@ -166,7 +183,9 @@ export const useGame = create<GameStore>()((set, get) => ({
     set({
       themeId: def.id,
       difficulty: tier,
-      highScore: loadBest(def.id, tier),
+      ...(() => { const board = scores.list(def.id, tier); return { board, highScore: topScore(board) }; })(),
+      initialsEntry: null,
+      lastEntryRank: null,
       phase: 'attract',
       bigMessage: '',
       score: 0,
@@ -193,7 +212,8 @@ export const useGame = create<GameStore>()((set, get) => ({
     const cfg = diffFor(id);
     set({
       difficulty: id,
-      highScore: loadBest(theme, id),
+      ...(() => { const board = scores.list(theme, id); return { board, highScore: topScore(board) }; })(),
+      lastEntryRank: null,
       message: `MODE ${cfg.label} — ${cfg.blurb}`,
       messageT: Date.now(),
     });
@@ -250,6 +270,8 @@ export const useGame = create<GameStore>()((set, get) => ({
   },
 
   startGame: () => {
+    // initials first — the Enter that confirms them must not also start a game
+    if (get().initialsEntry) return;
     sound.ensure();
     sound.start();
     // a restart mid-bonus must not let the old count-up finish into the new game
@@ -263,7 +285,7 @@ export const useGame = create<GameStore>()((set, get) => ({
       multiball: false, multiballT: 0, tiltWarnings: 0, tilted: false,
       plungerPower: 0, plungerCharging: false, popups: [], bonusCounting: false,
       bonusDisplay: 0, extraBallsAwarded: [], ballsInPlay: 1, stuckHint: false,
-      paused: false,
+      paused: false, lastEntryRank: null,
       message: `${DIFF.label} MODE — BALL 1 — HOLD SPACE TO PLUNGE`, messageT: Date.now(),
       bigMessage: 'BALL 1', bigMessageT: Date.now(),
     });
@@ -355,10 +377,7 @@ export const useGame = create<GameStore>()((set, get) => ({
     const gain = Math.round(pts * mult * DIFF.score);
     const score = s.score + gain;
     const patch: Partial<GameStore> = { score, bonus: s.bonus + Math.round(pts * 0.1 * DIFF.score) };
-    if (score > s.highScore) {
-      patch.highScore = score;
-      saveBest(s.themeId, s.difficulty, score);
-    }
+    if (score > s.highScore) patch.highScore = score; // live "NEW BEST!"; filed on the board at game over
     EXTRA_BALL_AT.map((t) => Math.round(t * DIFF.score)).forEach((th, i) => {
       if (score >= th && !s.extraBallsAwarded.includes(i)) {
         patch.extraBallsAwarded = [...(patch.extraBallsAwarded ?? s.extraBallsAwarded), i];
@@ -446,17 +465,16 @@ export const useGame = create<GameStore>()((set, get) => ({
     if (s.phase !== 'playing' || !s.bonusCounting) return;
     const bonus = Math.round(s.bonus * s.multiplier);
     const score = s.score + bonus;
-    let highScore = s.highScore;
-    if (score > highScore) {
-      highScore = score;
-      saveBest(s.themeId, s.difficulty, score);
-    }
+    const highScore = Math.max(s.highScore, score);
     if (s.ball >= s.totalBalls) {
       sound.gameOver();
+      const board = scores.list(s.themeId, s.difficulty);
+      const qualifies = scores.qualifies(s.themeId, s.difficulty, score);
       set({
-        phase: 'gameover', score, highScore, bonusCounting: false,
+        phase: 'gameover', score, highScore, bonusCounting: false, board,
+        initialsEntry: qualifies ? { rank: rankFor(board, score), score } : null,
         bigMessage: 'GAME OVER', bigMessageT: Date.now(),
-        message: score >= highScore && score > 0 ? 'NEW HIGH SCORE!' : 'PRESS ENTER TO PLAY AGAIN',
+        message: qualifies ? 'A NEW SPIRIT — ENTER YOUR INITIALS' : 'PRESS ENTER TO PLAY AGAIN',
       });
       resetMutable();
       spawnBallAt(0, 12, 40, 10);
@@ -532,6 +550,24 @@ export const useGame = create<GameStore>()((set, get) => ({
   setPaused: (p) => {
     gameRef.paused = p;
     set({ paused: p });
+  },
+
+  submitInitials: (text) => {
+    const s = get();
+    if (!s.initialsEntry) return;
+    const initials = padInitials(cleanInitials(text) || scores.lastInitials() || '???');
+    const rank = scores.submit(s.themeId, s.difficulty, { initials, score: s.initialsEntry.score, day: today() });
+    const board = scores.list(s.themeId, s.difficulty);
+    set({ initialsEntry: null, lastEntryRank: rank, board, highScore: topScore(board), message: 'PRESS ENTER TO PLAY AGAIN' });
+  },
+
+  skipInitials: () => get().submitInitials(''),
+
+  clearBoard: () => {
+    const s = get();
+    if (s.phase === 'playing') return;
+    scores.clear(s.themeId, s.difficulty);
+    set({ board: [], highScore: 0, lastEntryRank: null });
   },
 }));
 
