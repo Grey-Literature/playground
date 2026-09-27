@@ -178,6 +178,14 @@ export function samplePath(pts: PathPt[], t: number): PathPt {
   return { x: cr(p0.x, p1.x, p2.x, p3.x), y: cr(p0.y, p1.y, p2.y, p3.y), h: cr(p0.h, p1.h, p2.h, p3.h) };
 }
 
+/** Half-spacing of a wire ramp's two rails (u). */
+export const WIRE_RAIL_OFFSET = 1.6;
+
+/** Rides drawn as railed wire ramps (see RideDef.art). */
+export function isWireRide(r: RideDef): boolean {
+  return r.art ? r.art === 'wire' : !r.hideBall;
+}
+
 const lengths = new WeakMap<PathPt[], number>();
 /** Arc length of a ride path (sampled, cached per path array). */
 export function pathLength(pts: PathPt[]): number {

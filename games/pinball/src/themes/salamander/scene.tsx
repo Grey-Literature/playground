@@ -21,7 +21,7 @@ import { Cabinet, type CabinetLook } from '../../engine/scene/cabinet';
 import { SLING_LEFT, SLING_RIGHT } from '../deadStarDisco/table';
 import {
   table, sensors as SENSORS, NEST, NEST_H, NEST_OUTLINE, nest as NEST_DEF,
-  SERPENT, VOLCANO_L, VOLCANO_R, MAW_SPIT, RAMP_L, RAMP_R,
+  SERPENT, VOLCANO_L, VOLCANO_R, MAW_SPIT, RAMP_L, RAMP_R, SKYSHOT,
 } from './table';
 import { useSalamander } from './rules';
 import mascotUrl from './salamander2.svg';
@@ -570,10 +570,11 @@ function Serpent() {
   );
 }
 
-/** Flame arcs for the rules-started rides (VOLCANO, MAW SPIT): no rails, just fire. */
+/** Flame arcs for the fire rides (SKYSHOT, VOLCANO, MAW SPIT): no rails, just fire. */
 function FireArcs() {
   return (
     <group>
+      <RideTrail rideId="skyshot" path={SKYSHOT} color={FLAME} r={1.2} />
       <RideTrail rideId="volcanoL" path={VOLCANO_L} color={FLAME} r={1.2} />
       <RideTrail rideId="volcanoR" path={VOLCANO_R} color={FLAME} r={1.2} />
       <RideTrail rideId="mawSpit" path={MAW_SPIT} color={TOXIC} r={1.2} />
@@ -831,7 +832,6 @@ const wallLook = (w: WallSeg) => {
 
 const postRing = (id: string) => (id === 'spire' ? TOXIC : FLAME);
 const isEmber = (id: string) => !id.startsWith('bell');
-const isWired = (id: string) => id === 'rampL' || id === 'rampR' || id === 'skyshot';
 
 /** Everything on the tilted playfield. */
 export function Playfield() {
@@ -856,7 +856,7 @@ export function Playfield() {
       <NestCracks />
       <FireBells />
       <Pendulum />
-      <RideWires only={isWired} color="#a8a29e" glow={EMBER} />
+      <RideWires color="#a8a29e" glow={EMBER} />
       <FireArcs />
       <Flippers
         left={{ body: EMBER, glow: '#9a3412', inlay: '#fed7aa' }}

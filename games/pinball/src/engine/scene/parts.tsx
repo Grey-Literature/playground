@@ -6,7 +6,7 @@ import { useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import { BALL_RADIUS } from '../constants';
-import { TABLE, ACTIVE, samplePath, rideById, layerHeight, deckAbove, insidePolygon } from '../table';
+import { TABLE, ACTIVE, samplePath, rideById, layerHeight, deckAbove, insidePolygon, isWireRide, WIRE_RAIL_OFFSET } from '../table';
 import type { WallSeg, PathPt } from '../types';
 import { gameRef, flashOf } from '../runtime';
 import { useGame } from '../store';
@@ -408,9 +408,9 @@ export function RideWires({ color = '#cbd5e1', glow = '#22d3ee', only }: {
   only?: (id: string) => boolean;
 }) {
   useTier();
-  const wires = useMemo(() => ACTIVE.rides.filter((r) => !r.hideBall && (!only || only(r.id))).map((r) => {
+  const wires = useMemo(() => ACTIVE.rides.filter((r) => isWireRide(r) && (!only || only(r.id))).map((r) => {
     const pts = r.path.map((p) => ({ ...p, h: p.h + 0.45 }));
-    return { id: r.id, a: makeTrackTube(pts, 0.14, -1.6), b: makeTrackTube(pts, 0.14, 1.6), path: r.path };
+    return { id: r.id, a: makeTrackTube(pts, 0.14, -WIRE_RAIL_OFFSET), b: makeTrackTube(pts, 0.14, WIRE_RAIL_OFFSET), path: r.path };
   }), []);
   return (
     <group>

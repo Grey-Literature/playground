@@ -94,6 +94,13 @@ export interface RideDef extends Gated {
   internal?: boolean;
   /** Hide the ball while riding (opaque pipes) — the scene draws a trail instead. */
   hideBall?: boolean;
+  /**
+   * Render hint: 'wire' (railed ramp — `RideWires` draws it, and `wires.check`
+   * keeps its rails out of the shooter lane and off other wires), 'pipe'
+   * (opaque tube) or 'fire' (a flaming arc, no rails). Unset = wire unless
+   * `hideBall`.
+   */
+  art?: 'wire' | 'pipe' | 'fire';
   /** Layer the ball lands on when the ride ends (default: the entry layer). */
   exitLayer?: string;
   /**

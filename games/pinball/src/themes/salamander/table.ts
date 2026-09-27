@@ -88,9 +88,9 @@ const circles: CircleBody[] = [
   // and the back rail (unreachable, but a ball in one would never get out).
   { x: -3.5, y: 25.8, r: 0.8, kind: 'post', id: 'nestStand0', rest: 0.6, layer: NEST },
   { x: 3.5, y: 25.8, r: 0.8, kind: 'post', id: 'nestStand1', rest: 0.6, layer: NEST },
-  // ember pop bumpers on the field, out wide
-  { x: -13.5, y: 8, r: 2.2, kind: 'bumper', id: 'ember0' },
-  { x: 13.5, y: 8, r: 2.2, kind: 'bumper', id: 'ember1' },
+  // ember pop bumpers on the field, flanking the Maw between the saucers
+  { x: -6.2, y: 7.8, r: 2.0, kind: 'bumper', id: 'ember0' },
+  { x: 6.2, y: 7.8, r: 2.0, kind: 'bumper', id: 'ember1' },
   // lane separators — above the nest's back rail, in plain view
   { x: -3.4, y: 31, r: 0.55, kind: 'post', id: 'lanePost0', rest: 0.7 },
   { x: 3.4, y: 31, r: 0.55, kind: 'post', id: 'lanePost1', rest: 0.7 },
@@ -119,6 +119,8 @@ export const captures: CaptureDef[] = [
 // ---------------- rides ----------------
 // Ramps, Skyshot, Volcano and Maw Spit all keep the ball's momentum (`carry`)
 // and land at the nest's back corners heading inward, into the bell row.
+// Only the two ramps are wire (their rails stay out of the shooter lane —
+// wires.check); the Skyshot, Volcanos and Maw Spit fly as fire arcs.
 const CARRY = { keep: 0.5, min: 38, max: 80 };
 
 export const RAMP_L: PathPt[] = [
@@ -126,8 +128,8 @@ export const RAMP_L: PathPt[] = [
   { x: -18.5, y: 22, h: 7.2 }, { x: -15.5, y: 25.3, h: 7.4 }, { x: -11.5, y: 24.6, h: 5.8 },
 ];
 export const RAMP_R: PathPt[] = [
-  { x: 14.5, y: -2, h: 0.3 }, { x: 15.8, y: 5, h: 2.6 }, { x: 16.2, y: 12, h: 5.6 },
-  { x: 16.2, y: 18, h: 7.4 }, { x: 15, y: 26, h: 7.5 }, { x: 11.5, y: 24.8, h: 5.8 },
+  { x: 14, y: -2, h: 0.3 }, { x: 14.6, y: 5, h: 2.6 }, { x: 14.8, y: 12, h: 6.2 },
+  { x: 14.8, y: 18, h: 7.4 }, { x: 14.2, y: 24.2, h: 7.6 }, { x: 11.5, y: 24.8, h: 5.8 },
 ];
 // The serpent snakes over the front field and lets go on the left inlane.
 export const SERPENT: PathPt[] = [
@@ -144,8 +146,8 @@ export const VOLCANO_L: PathPt[] = [
   { x: -16.5, y: 23.5, h: 7.6 }, { x: -11.5, y: 24.6, h: 5.8 },
 ];
 export const VOLCANO_R: PathPt[] = [
-  { x: 10, y: 1, h: 0.3 }, { x: 14.5, y: 8, h: 3.8 }, { x: 17, y: 16, h: 7 },
-  { x: 15, y: 26, h: 7.6 }, { x: 11.5, y: 24.8, h: 5.8 },
+  { x: 10, y: 1, h: 0.3 }, { x: 12.5, y: 9, h: 6 }, { x: 14, y: 17, h: 9 },
+  { x: 14.5, y: 26, h: 8.2 }, { x: 11.5, y: 24.8, h: 5.8 },
 ];
 export const MAW_SPIT: PathPt[] = [
   { x: MAW_AT.x, y: MAW_AT.y, h: 0.3 }, { x: -3, y: 10, h: 5.5 }, { x: -8, y: 18, h: 9 },
@@ -153,13 +155,13 @@ export const MAW_SPIT: PathPt[] = [
 ];
 
 const rides: RideDef[] = [
-  { id: 'rampL', entry: { x: -18.5, y: 0, r: 2.0 }, path: RAMP_L, dur: 1.2, exit: { vx: 0, vy: 0 }, gate: { minSpeed: 70, minVy: 40 }, exitLayer: NEST, carry: CARRY },
-  { id: 'rampR', entry: { x: 14.5, y: -2, r: 2.0 }, path: RAMP_R, dur: 1.2, exit: { vx: 0, vy: 0 }, gate: { minSpeed: 70, minVy: 40 }, exitLayer: NEST, carry: CARRY },
-  { id: 'serpent', entry: { x: 6, y: -7, r: 1.9 }, path: SERPENT, dur: 2.0, exit: { vx: 8, vy: -30 }, gate: { maxSpeed: 95 }, hideBall: true },
-  { id: 'skyshot', entry: { x: 19.5, y: 20, r: 2.0 }, path: SKYSHOT, dur: 1.1, exit: { vx: 0, vy: 0 }, gate: { minLaunchPower: 0.85 }, exitLayer: NEST, carry: CARRY },
-  { id: 'volcanoL', internal: true, entry: { x: -10.5, y: 1.5, r: 0 }, path: VOLCANO_L, dur: 1.1, exit: { vx: 0, vy: 0 }, gate: {}, exitLayer: NEST, carry: CARRY },
-  { id: 'volcanoR', internal: true, entry: { x: 10, y: 1, r: 0 }, path: VOLCANO_R, dur: 1.1, exit: { vx: 0, vy: 0 }, gate: {}, exitLayer: NEST, carry: CARRY },
-  { id: 'mawSpit', internal: true, entry: { x: MAW_AT.x, y: MAW_AT.y, r: 0 }, path: MAW_SPIT, dur: 1.3, exit: { vx: 0, vy: 0 }, gate: {}, exitLayer: NEST, carry: CARRY },
+  { id: 'rampL', art: 'wire', entry: { x: -18.5, y: 0, r: 2.0 }, path: RAMP_L, dur: 1.2, exit: { vx: 0, vy: 0 }, gate: { minSpeed: 70, minVy: 40 }, exitLayer: NEST, carry: CARRY },
+  { id: 'rampR', art: 'wire', entry: { x: 14, y: -2, r: 2.0 }, path: RAMP_R, dur: 1.2, exit: { vx: 0, vy: 0 }, gate: { minSpeed: 70, minVy: 40 }, exitLayer: NEST, carry: CARRY },
+  { id: 'serpent', art: 'pipe', entry: { x: 6, y: -7, r: 1.9 }, path: SERPENT, dur: 2.0, exit: { vx: 8, vy: -30 }, gate: { maxSpeed: 95 }, hideBall: true },
+  { id: 'skyshot', art: 'fire', entry: { x: 19.5, y: 20, r: 2.0 }, path: SKYSHOT, dur: 1.1, exit: { vx: 0, vy: 0 }, gate: { minLaunchPower: 0.85 }, exitLayer: NEST, carry: CARRY },
+  { id: 'volcanoL', art: 'fire', internal: true, entry: { x: -10.5, y: 1.5, r: 0 }, path: VOLCANO_L, dur: 1.1, exit: { vx: 0, vy: 0 }, gate: {}, exitLayer: NEST, carry: CARRY },
+  { id: 'volcanoR', art: 'fire', internal: true, entry: { x: 10, y: 1, r: 0 }, path: VOLCANO_R, dur: 1.1, exit: { vx: 0, vy: 0 }, gate: {}, exitLayer: NEST, carry: CARRY },
+  { id: 'mawSpit', art: 'fire', internal: true, entry: { x: MAW_AT.x, y: MAW_AT.y, r: 0 }, path: MAW_SPIT, dur: 1.3, exit: { vx: 0, vy: 0 }, gate: {}, exitLayer: NEST, carry: CARRY },
 ];
 
 const kinematics: KinematicDef[] = [
