@@ -63,8 +63,6 @@ export function isLockstepHeld(): boolean {
 export const HOLD_GRACE_MS = 75;
 /** The wait zone's top edge sits this far above the flipper pivots (≈ the sling tops). */
 export const AGENT_ZONE_RISE = 20;
-/** A falling ball this many seconds from the zone already counts (time to react). */
-const ZONE_LOOKAHEAD_S = 0.35;
 let zoneSince: number | null = null;
 let zoneOverride: (() => boolean) | null = null;
 /** Headless check only: force the zone occupied / empty (null = real detection). */
@@ -75,13 +73,15 @@ export function zoneTopY(): number {
   return Math.min(F.left.pivot.y, F.right.pivot.y) + AGENT_ZONE_RISE;
 }
 
-/** A live field ball near the flippers, or falling toward them fast enough to need a decision. */
+/** A live field ball near the flippers (position only — a velocity look-ahead at these
+ *  ball speeds reached the whole table and froze the game up-table; runLockstepFrame
+ *  catches a ball on the very step it enters instead). */
 export function ballNearFlippers(): boolean {
   const top = zoneTopY();
   const P = TABLE.plunger;
   return gameRef.balls.some((b) => b.active && (b.layer === undefined || b.layer === FIELD) && !b.ride
     && b.captured <= 0 && !b.inLane && b.x <= P.dividerX
-    && (b.y < top || (b.vy < 0 && b.y + b.vy * ZONE_LOOKAHEAD_S < top)));
+    && b.y < top);
 }
 
 /** Is a lockstep game waiting on the agent's zone right now? Tracks when that started. */
@@ -175,6 +175,22 @@ export function holdBudget(): {
 
 setRunLatencyProvider(() => runLatencyMs());
 
+let lockAcc = 0;
+/**
+ * The render loop's tick during a lockstep game that isn't waiting: advance in
+ * single fixed steps and stop on the very step a ball enters the flipper zone,
+ * so even a slow frame (up to 8 catch-up steps) can't carry a fast ball past the
+ * slings before the game freezes for the agent.
+ */
+export function runLockstepFrame(dt: number) {
+  lockAcc = Math.min(lockAcc + Math.max(0, dt), 8 * STEP);
+  while (lockAcc >= STEP && isLockstepHeld() && !isLockstepFrozen()) {
+    simulateStep();
+    lockAcc -= STEP;
+  }
+  if (isLockstepFrozen()) lockAcc = 0;
+}
+
 /** True while a lockstep game waits for its agent: a ball is near the flippers and the
  *  agent is inside its hold budget. Otherwise the render loop runs the game in real time. */
 export function isLockstepFrozen(): boolean {
@@ -239,7 +255,7 @@ function state() {
       const hb = holdBudget();
       return {
         stepCapMs: Math.min(MAX_STEP_MS, DIFF.agentStepCapMs),
-        /** Lockstep only waits while a ball is below this y (or falling into it). */
+        /** Lockstep only waits while a ball is below this y. */
         zoneTopY: zoneTopY(),
         holdMs: hb.holdMs || null,
         graceMs: hb.holdMs ? HOLD_GRACE_MS : 0,
@@ -283,7 +299,7 @@ const HELP = `FLIPPER SÉANCE — agent API (window.flipperSeance)
 2. flipperSeance.setMode('realtime' | 'lockstep')   (between games; default realtime)
      realtime: the game runs on its own clock, like for a human.
      lockstep: the game PAUSES FOR YOU ONLY WHILE A BALL IS NEAR THE FLIPPERS (below
-       getState().limits.zoneTopY, or falling into it; getState().waitingForYou says so).
+       getState().limits.zoneTopY; getState().waitingForYou says so).
        Up-table it runs by itself in real time — just watch, or step/flip/nudge if you like.
        While it waits, you advance it with step(ms) — within limits that grow
        with the difficulty (getState().limits):

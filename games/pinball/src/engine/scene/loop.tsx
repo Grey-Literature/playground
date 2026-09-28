@@ -8,7 +8,7 @@ import { gameRef } from '../runtime';
 import { useGame } from '../store';
 import { sound } from '../audio';
 import { simulate, resetStepper } from '../sim';
-import { isLockstepFrozen } from '../agent';
+import { isLockstepFrozen, isLockstepHeld, runLockstepFrame } from '../agent';
 
 // Drives the simulation: frame-rate independent fixed steps, then hands every
 // physics event to the active theme's rules. Mounted first so it runs before
@@ -26,7 +26,8 @@ export function PhysicsLoop() {
     const dt = Math.min(rawDt, 0.25);
     const st = useGame.getState();
     if (st.paused || isLockstepFrozen()) { resetStepper(); sound.setRoll(0); return; }
-    simulate(dt);
+    if (isLockstepHeld()) runLockstepFrame(dt); // stops on the step a ball reaches the flippers
+    else simulate(dt);
 
     // rolling sound
     let maxSp = 0;

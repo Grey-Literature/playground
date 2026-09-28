@@ -201,8 +201,12 @@ Grey-Literature/playground#2). The two branches work like this:
   - **Wait zone.** Pressure only matters where the agent can act, so
     lockstep waits only while a ball is near the flippers. The top of that
     zone is `zoneTopY` = the flipper pivot y + 20 (about the sling tops). A
-    ball counts if it's below that line, or falling into it within 0.35 s;
-    balls in the shooter lane, riding or captured don't count.
+    ball counts if it's below that line (position only: a velocity
+    look-ahead at these ball speeds covered the whole table and froze the
+    game up-table); balls in the shooter lane, riding or captured don't
+    count. While the game runs by itself, `runLockstepFrame` advances one
+    physics step at a time and freezes on the very step a ball enters, even
+    on a slow frame.
     - Up-table, the game runs by itself in real time, and the agent may
       still step, flip or nudge.
     - The hold clock runs from the later of the agent's last act and the

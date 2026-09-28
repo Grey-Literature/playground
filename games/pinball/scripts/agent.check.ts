@@ -8,7 +8,7 @@ import { registerTheme, type ThemeDef } from '../src/engine/theme';
 import { gameRef } from '../src/engine/runtime';
 import { TABLE } from '../src/engine/table';
 import { STEP } from '../src/engine/constants';
-import { createAgentApi, isLockstepHeld, isLockstepFrozen, agentKey, stateText, setAgentClockForTests, HOLD_GRACE_MS, setZoneOverrideForTests, ballNearFlippers, zoneTopY } from '../src/engine/agent';
+import { createAgentApi, isLockstepHeld, isLockstepFrozen, agentKey, stateText, setAgentClockForTests, HOLD_GRACE_MS, setZoneOverrideForTests, ballNearFlippers, zoneTopY, runLockstepFrame } from '../src/engine/agent';
 import { installWebMcp, resetWebMcpForTests, type WebMcpTool } from '../src/engine/webmcp';
 import { agentBoard, scores, sanitizeAgentBoard } from '../src/engine/scores';
 import { table as discoTable, diffOverrides as discoOverrides } from '../src/themes/deadStarDisco/table';
@@ -282,16 +282,27 @@ expect('… and the lockstep game waits (frozen, waitingForYou)', isLockstepFroz
 expect('… the state text says WAITING FOR YOU', stateText().startsWith('WAITING FOR YOU'));
 place(0, 10, 0, 5);
 expect('ball up-table, rising → not near: the game runs on its own', !ballNearFlippers() && !isLockstepFrozen() && stateText().startsWith('ball up-table'));
-place(0, 10, 0, -80);
-expect(`ball up-table but falling fast (reaches y ${zoneTopY().toFixed(1)} within 0.35 s) → near`, ballNearFlippers());
-place(0, 10, 0, -10);
-expect('ball up-table falling slowly → not yet', !ballNearFlippers());
+place(0, 30, 0, -250);
+expect('ball at the top falling fast → NOT near (the playtest bug: it froze up-table)', !ballNearFlippers() && !isLockstepFrozen());
+place(0, zoneTopY() - 0.5, 0, -40);
+expect('ball just below the sling tops → near', ballNearFlippers());
 place(TABLE.plunger.x, TABLE.plunger.restY, 0, 0, { inLane: true });
 expect('ball in the shooter lane → not near', !ballNearFlippers());
 place(F.left.pivot.x + 3, F.left.pivot.y + 3, 0, 0, { captured: 1 });
 expect('captured ball → not near', !ballNearFlippers());
 place(F.left.pivot.x + 3, F.left.pivot.y + 3, 0, 0, { ride: { id: 'x', t: 0.5 } });
 expect('riding ball → not near', !ballNearFlippers());
+
+// slow render frames while the game runs by itself: it must freeze on the step
+// the ball enters the zone — at the sling tops, not down at the flippers
+place(-4, 28, 0, -250);
+wall += 5000;
+let frames = 0;
+while (!isLockstepFrozen() && frames++ < 200) runLockstepFrame(0.25);
+const caught = gameRef.balls.find((b) => b.active)!;
+const cz = api.getState();
+expect(`a fast ball from the top is caught on entry: y ${caught.y.toFixed(2)} just inside ${zoneTopY().toFixed(1)}`, isLockstepFrozen() && caught.y < zoneTopY() && caught.y > zoneTopY() - 3.5);
+expect('… waiting for you, with the full budget (the clock started on arrival)', cz.ok && cz.waitingForYou && cz.limits.holdRemainingMs === cz.limits.effectiveHoldMs, JSON.stringify(cz.ok && cz.limits.holdRemainingMs));
 
 let occ = false;
 setZoneOverrideForTests(() => occ);
