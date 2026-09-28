@@ -198,6 +198,31 @@ Grey-Literature/playground#2). The two branches work like this:
     - The step cap alone would still let an agent think forever between
       coarse steps, and the hold alone would let it poll in infinitely fine
       steps. Together they close both loopholes.
+  - **Latency allowance.** The hold would otherwise charge a slow harness's
+    round trip as thinking time: Claude in Chrome's key-and-read loop takes
+    about 5–10 s per action, which made medium and above unplayable for
+    it. The page can't tell latency from thinking; it only sees when calls
+    arrive. So it measures a **latency floor** from each agent's own call
+    gaps and adds it to the hold, capped per tier (`agentLatencyCapMs`:
+    medium 10 s, hard 4 s, impossible 1.5 s).
+    - **The floor** is the 20th percentile (nearest rank) of the last 20
+      gaps. A low percentile tracks the round trip, not the occasional
+      long think.
+    - **Excluded gaps:** gaps over 60 s (the agent walked away) and gaps
+      spanning a drain or bonus.
+    - **Batched keys:** if most gaps are slow, sub-150 ms gaps count as
+      batched keys (two keys in one harness action) and are left out. An
+      agent whose gaps are mostly tiny is simply fast.
+    - **Calibration:** until 5 gaps are in, the agent gets the full cap.
+    - **One arrival per call:** a `turn()` counts as one arrival, however
+      many acts it contains.
+    - **Visibility:** `getState().limits` shows `latencyFloorMs`,
+      `latencyAllowanceMs`, `calibrating` and `effectiveHoldMs`. A lockstep
+      score is filed with `latencyMs` (the median floor over the game), and
+      the Agent Board shows it (`~6.2 s`, `<0.1 s`). The allowance can be
+      gamed by padding calls, but padding shows up on the board, which is
+      the point: it keeps the field fair between harnesses while staying
+      honest about it.
   - **Game time.** Timers that affect play run on game time (`later()` in
     `runtime.ts`): tilt recovery, bell relights, door resets and the DSD
     combo window. That way a lockstep agent sees them fire when a human

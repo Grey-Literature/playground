@@ -30,6 +30,10 @@ const rankFor = (board: ScoreEntry[], score: number) => {
   const i = board.findIndex((e) => score > e.score);
   return (i < 0 ? board.length : i) + 1;
 };
+/** Measured harness latency of the current lockstep agent run (engine/agent.ts registers it). */
+let runLatency: () => number | null = () => null;
+export function setRunLatencyProvider(fn: () => number | null) { runLatency = fn; }
+
 const agentBoardsFor = (theme: string, tier: DiffId) => ({
   realtime: agentBoard.list(theme, 'realtime', tier),
   lockstep: agentBoard.list(theme, 'lockstep', tier),
@@ -551,7 +555,10 @@ export const useGame = create<GameStore>()((set, get) => ({
         // game files straight to the Agent Board under its declared name
         let lastAgentRank: GameStore['lastAgentRank'] = null;
         if (run.agent && !run.unranked) {
-          const rank = agentBoard.submit(s.themeId, run.mode, s.difficulty, { ...run.agent, score, day: today() });
+          const latencyMs = run.mode === 'lockstep' ? runLatency() : null;
+          const rank = agentBoard.submit(s.themeId, run.mode, s.difficulty, {
+            ...run.agent, score, day: today(), ...(latencyMs !== null ? { latencyMs } : {}),
+          });
           if (rank) lastAgentRank = { mode: run.mode, rank };
         }
         set({

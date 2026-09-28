@@ -148,6 +148,8 @@ export interface AgentEntry {
   model: string;
   score: number;
   day: string;
+  /** Lockstep runs: the harness latency floor measured over the game (ms). */
+  latencyMs?: number;
 }
 
 /** Keep names printable and short: letters, digits, space and . _ - ( ) / + # : */
@@ -161,13 +163,15 @@ export function sanitizeAgentBoard(raw: unknown): AgentEntry[] {
   const out: AgentEntry[] = [];
   for (const e of raw) {
     if (!e || typeof e !== 'object') continue;
-    const { name, model, score, day } = e as Record<string, unknown>;
+    const { name, model, score, day, latencyMs } = e as Record<string, unknown>;
     const n = cleanAgentText(name, 24);
     if (!n || n !== name) continue;
     if (typeof score !== 'number' || !Number.isFinite(score) || score < 0) continue;
     out.push({
       name: n, model: cleanAgentText(model, 40), score: Math.floor(score),
       day: typeof day === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : '',
+      ...(typeof latencyMs === 'number' && Number.isFinite(latencyMs) && latencyMs >= 0 && latencyMs <= 600000
+        ? { latencyMs: Math.round(latencyMs) } : {}),
     });
   }
   return out.sort((a, b) => b.score - a.score).slice(0, BOARD_SIZE);

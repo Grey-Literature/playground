@@ -15,7 +15,7 @@ import { STEP } from './constants';
 import type { PhysEvent } from './types';
 import { TABLE, ACTIVE } from './table';
 import { gameRef, isTilted, later } from './runtime';
-import { useGame } from './store';
+import { useGame, setRunLatencyProvider } from './store';
 import { hallThemes, themeById } from './theme';
 import { DIFF_ORDER, DIFF } from './difficulty';
 import { simulateStep, resetStepper, simListeners } from './sim';
@@ -42,23 +42,97 @@ export function isLockstepHeld(): boolean {
 // same price a human pays for hesitating. Reading state doesn't reset the
 // clock (polling mustn't buy thinking time); every step or input does.
 // HOLD_GRACE_MS is added to every budget to absorb a tool call's round trip.
+//
+// LATENCY ALLOWANCE. The page can't tell an agent's harness latency (a
+// screenshot + key loop can take 5–10 s per action) from its thinking time —
+// it only sees when calls arrive. So it measures a latency FLOOR from the
+// agent's own call gaps (the 20th percentile of its last 20 gaps: a low
+// percentile tracks the harness round trip, not the occasional long think)
+// and adds it to the hold, capped per tier (agentLatencyCapMs). Until 5 gaps
+// are in, the agent gets the full cap (calibrating). The floor is shown in
+// getState().limits and filed with the score, so a harness that pads its calls
+// to buy thinking time is visible on the Agent Board.
 
 export const HOLD_GRACE_MS = 75;
+const CALIBRATION_GAPS = 5;
+const GAP_WINDOW = 20;
+const MAX_GAP_MS = 60_000; // longer = the agent walked away, not latency
 let clock: () => number = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
 let lastAct = 0;
-/** The agent stepped or pressed something: its hold clock restarts. */
-function acted() { lastAct = clock(); }
+let lastActBall = 0;
+let gaps: number[] = [];
+let floorReadings: number[] = [];
+/** Inside one API call (e.g. turn(): flip + step) only the first act is an arrival. */
+let batching = false;
+
+/** The agent stepped or pressed something: its hold clock restarts, and (once per
+ *  incoming call) the gap since its last act feeds the latency floor. */
+function acted() {
+  const now = clock();
+  const ball = useGame.getState().ball;
+  if (!batching && isLockstepHeld()) {
+    const gap = now - lastAct;
+    // a gap spanning a drain / bonus count-up wasn't the agent's latency
+    if (lastAct > 0 && ball === lastActBall && gap >= 0 && gap <= MAX_GAP_MS) {
+      gaps.push(gap);
+      if (gaps.length > GAP_WINDOW) gaps.shift();
+      const f = latencyFloor();
+      if (f !== null) floorReadings.push(f);
+    }
+  }
+  lastAct = now;
+  lastActBall = ball;
+}
+/** Restart the hold clock without counting an arrival (after a step finishes). */
+function rearm() { lastAct = clock(); }
 
 /** Headless check only: drive the hold clock by hand. */
 export function setAgentClockForTests(fn: () => number) { clock = fn; lastAct = fn(); }
 
-/** The agent's hold budget right now (null remaining = unlimited, or not a lockstep game). */
-export function holdBudget(): { holdMs: number; remainingMs: number | null; overdue: boolean } {
-  const holdMs = DIFF.agentHoldMs;
-  if (!holdMs || !isLockstepHeld()) return { holdMs, remainingMs: null, overdue: false };
-  const left = holdMs + HOLD_GRACE_MS - (clock() - lastAct);
-  return { holdMs, remainingMs: Math.max(0, Math.round(left)), overdue: left <= 0 };
+/** Gaps shorter than this are batched keys/calls (two keys in one harness action,
+ *  a flip straight after a step) — not the harness's round trip. */
+const BATCH_MS = 150;
+
+/** The measured latency floor (ms), or null while calibrating. */
+export function latencyFloor(): number | null {
+  if (gaps.length < CALIBRATION_GAPS) return null;
+  // A mostly-slow harness that sometimes fires calls back to back: judge its
+  // latency by its real round trips. A mostly-fast one: by all of its gaps.
+  const slow = gaps.filter((g) => g >= BATCH_MS);
+  const pool = slow.length * 2 >= gaps.length ? slow : gaps;
+  const sorted = [...pool].sort((x, y) => x - y);
+  return Math.round(sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.2))]); // 20th pct, nearest rank
 }
+
+/** Median measured floor over the current run (filed with a lockstep score), or null. */
+export function runLatencyMs(): number | null {
+  if (!floorReadings.length) return null;
+  const s = [...floorReadings].sort((x, y) => x - y);
+  return s[Math.floor(s.length / 2)];
+}
+
+/** The agent's hold budget right now (null remaining = unlimited, or not a lockstep game). */
+export function holdBudget(): {
+  holdMs: number; remainingMs: number | null; overdue: boolean;
+  latencyFloorMs: number | null; latencyAllowanceMs: number; calibrating: boolean; effectiveHoldMs: number | null;
+} {
+  const holdMs = DIFF.agentHoldMs;
+  const floor = latencyFloor();
+  const cap = DIFF.agentLatencyCapMs;
+  const calibrating = floor === null;
+  const latencyAllowanceMs = holdMs ? (calibrating ? cap : Math.min(floor, cap)) : 0;
+  if (!holdMs || !isLockstepHeld()) {
+    return { holdMs, remainingMs: null, overdue: false, latencyFloorMs: floor, latencyAllowanceMs, calibrating, effectiveHoldMs: null };
+  }
+  const effectiveHoldMs = holdMs + HOLD_GRACE_MS + latencyAllowanceMs;
+  const left = effectiveHoldMs - (clock() - lastAct);
+  return {
+    holdMs, remainingMs: Math.max(0, Math.round(left)), overdue: left <= 0,
+    latencyFloorMs: floor, latencyAllowanceMs, calibrating, effectiveHoldMs,
+  };
+}
+
+setRunLatencyProvider(() => runLatencyMs());
 
 /** True while a lockstep game waits for its agent. False when the agent is past its
  *  hold budget — then the render loop runs the game in real time. */
@@ -124,6 +198,13 @@ function state() {
         stepCapMs: Math.min(MAX_STEP_MS, DIFF.agentStepCapMs),
         holdMs: hb.holdMs || null,
         graceMs: hb.holdMs ? HOLD_GRACE_MS : 0,
+        /** Your measured latency floor (ms) — null while calibrating (first 5 calls). */
+        latencyFloorMs: hb.latencyFloorMs,
+        /** Added to the hold for your harness latency: min(floor, tier cap); the full cap while calibrating. */
+        latencyAllowanceMs: hb.latencyAllowanceMs,
+        calibrating: hb.calibrating,
+        /** hold + grace + latency allowance — the real time you have between calls. */
+        effectiveHoldMs: hb.effectiveHoldMs,
         holdRemainingMs: hb.remainingMs,
         overdue: hb.overdue,
       };
@@ -164,10 +245,13 @@ const HELP = `FLIPPER SÉANCE — agent API (window.flipperSeance)
          medium         250 ms    1500 ms
          hard           100 ms     700 ms
          impossible      50 ms     350 ms
-       (+${HOLD_GRACE_MS} ms grace on every hold, for tool-call round trips.) Past the hold
-       budget the game stops waiting and RUNS IN REAL TIME with your flippers as last set,
-       until your next step/input. Reading state doesn't reset the clock; acting does.
-       getState().limits.holdRemainingMs shows what's left.
+       (+${HOLD_GRACE_MS} ms grace on every hold.) Your HARNESS LATENCY is added too: the page
+       measures a floor from the gaps between your calls (after 5 calls; until then you get the
+       full allowance) and adds it, capped at 10 s on medium, 4 s on hard, 1.5 s on impossible.
+       The measured floor is shown on the Agent Board next to your score.
+       Past the hold budget the game stops waiting and RUNS IN REAL TIME with your flippers as
+       last set, until your next step/input. Reading state doesn't reset the clock; acting does.
+       getState().limits shows latencyFloorMs, effectiveHoldMs and holdRemainingMs.
      Scores are ranked separately per mode (and per tier) on the AGENT BOARD.
 3. flipperSeance.start({ theme?: 'deadStarDisco' | 'salamander', tier?: 'supereasy'|'easy'|'medium'|'hard'|'impossible' })
 4. Play:
@@ -243,7 +327,10 @@ function api() {
       events = [];
       resetStepper();
       useGame.getState().startGame();
-      acted();
+      gaps = [];
+      floorReadings = [];
+      lastActBall = useGame.getState().ball;
+      rearm();
       changed();
       return { ok: true, state: state() };
     },
@@ -259,7 +346,7 @@ function api() {
         simulateStep();
         if (!isLockstepHeld()) break; // game over
       }
-      acted(); // the budget for the NEXT decision starts once this step is done
+      rearm(); // the budget for the NEXT decision starts once this step is done
       changed();
       return { ok: true, state: state() };
     },
@@ -344,6 +431,9 @@ function api() {
     const err = declared(); if (err) return no(err);
     const notes: string[] = [];
     const note = (r: { ok: boolean; error?: string }) => { if (!r.ok && r.error) notes.push(r.error); };
+    acted(); // one arrival for the whole turn
+    batching = true;
+    try {
     if (t.hold) {
       if (t.hold.left !== undefined) note(a.hold('left', t.hold.left));
       if (t.hold.right !== undefined) note(a.hold('right', t.hold.right));
@@ -353,6 +443,7 @@ function api() {
     if (t.plunge !== undefined) note(a.plunge(t.plunge));
     if (t.nudge !== undefined) note(a.nudge(t.nudge));
     if (isLockstepHeld()) note(a.step(t.stepMs ?? 100));
+    } finally { batching = false; }
     const ev = events;
     events = [];
     return { ok: true, state: state(), events: ev, notes };
@@ -399,7 +490,7 @@ export function formatStateText(s: ReturnType<typeof state> = state()): string {
     `plungerReady=${s.plungerReady ? 'yes' : 'no'} tilted=${s.tilted ? 'yes' : 'no'} tiltWarnings=${s.tiltWarnings}`,
     ...(s.balls.length ? s.balls.map((b) => `ball#${b.id} x=${f2(b.x)} y=${f2(b.y)} vx=${f1(b.vx)} vy=${f1(b.vy)} ${b.layer}${b.riding ? ` riding=${b.riding}` : ''}${b.captured ? ' captured' : ''}${b.inLane ? ' inLane' : ''}`) : ['(no live ball)']),
     s.mode === 'lockstep'
-      ? `lockstep: stepCap=${s.limits.stepCapMs}ms hold=${s.limits.holdMs === null ? 'unlimited' : `${s.limits.holdMs}ms(+${s.limits.graceMs} grace)`}${s.limits.holdRemainingMs === null ? '' : s.limits.overdue ? ' OVERDUE — the game is running in real time until you act' : ` holdRemaining=${s.limits.holdRemainingMs}ms`}`
+      ? `lockstep: stepCap=${s.limits.stepCapMs}ms hold=${s.limits.holdMs === null ? 'unlimited' : `${s.limits.holdMs}ms +${s.limits.graceMs} grace +${s.limits.latencyAllowanceMs}ms latency (${s.limits.calibrating ? 'calibrating' : `measured ${s.limits.latencyFloorMs}ms`}) = ${s.limits.effectiveHoldMs ?? '—'}ms`}${s.limits.holdRemainingMs === null ? '' : s.limits.overdue ? ' OVERDUE — the game is running in real time until you act' : ` holdRemaining=${s.limits.holdRemainingMs}ms`}`
       : 'realtime: the game runs on its own clock',
     `flipper L angle=${f2(s.flippers.left.angle)} ${s.flippers.left.pressed ? 'UP' : 'down'}  pivot=(${F.left.pivot.x},${F.left.pivot.y})`,
     `flipper R angle=${f2(s.flippers.right.angle)} ${s.flippers.right.pressed ? 'UP' : 'down'}  pivot=(${F.right.pivot.x},${F.right.pivot.y})  length=${F.len}`,

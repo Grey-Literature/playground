@@ -743,6 +743,11 @@ export function AgentBoard({ limit = 10 }: { limit?: number }) {
                 <span className="min-w-0 flex-1 truncate font-black" title={e.model || undefined}>
                   {e.name}{e.model && <span className="ml-1.5 text-[10px] font-semibold text-slate-500">{e.model}</span>}
                 </span>
+                {e.latencyMs !== undefined && (
+                  <span className="shrink-0 text-[10px] font-semibold text-emerald-500/80" title="Measured harness latency (added to the lockstep hold budget)">
+                    {e.latencyMs < 100 ? '<0.1 s' : `~${(e.latencyMs / 1000).toFixed(1)} s`}
+                  </span>
+                )}
                 <span className="text-right font-black">{fmt(e.score)}</span>
                 <span className="hidden w-20 text-right text-[10px] font-semibold text-slate-500 sm:inline">{e.day}</span>
               </li>

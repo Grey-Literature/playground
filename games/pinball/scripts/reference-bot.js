@@ -10,7 +10,9 @@
 // game only waits a short real-time budget between calls (1500/700/350 ms, see
 // getState().limits.holdRemainingMs) before it runs on in real time. This bot
 // runs inside the page and answers in microseconds, so it never overruns — an
-// agent thinking over the network should keep an eye on holdRemainingMs.
+// agent thinking over the network should keep an eye on holdRemainingMs. The page
+// also measures each agent's latency floor from its call rhythm and adds it to
+// the budget (capped per tier); this bot's floor is ~0, shown as <0.1 s on the board.
 //
 // Policy: plunge into the skill-shot zone; flip a side whenever a live ball is
 // over that flipper and falling. In lockstep that's frame-perfect, and a

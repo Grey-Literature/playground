@@ -10,7 +10,7 @@ import { TABLE } from '../src/engine/table';
 import { STEP } from '../src/engine/constants';
 import { createAgentApi, isLockstepHeld, isLockstepFrozen, agentKey, stateText, setAgentClockForTests, HOLD_GRACE_MS } from '../src/engine/agent';
 import { installWebMcp, resetWebMcpForTests, type WebMcpTool } from '../src/engine/webmcp';
-import { agentBoard, scores } from '../src/engine/scores';
+import { agentBoard, scores, sanitizeAgentBoard } from '../src/engine/scores';
 import { table as discoTable, diffOverrides as discoOverrides } from '../src/themes/deadStarDisco/table';
 import { rules as discoRules } from '../src/themes/deadStarDisco/rules';
 
@@ -195,6 +195,8 @@ for (const [tier, cap, hold] of [['easy', 1000, 0], ['medium', 250, 1500], ['har
   const lim = api.getState();
   const limits = lim.ok ? lim.limits : null;
   expect(`${tier}: step cap ${cap} ms (advanced ${got} ms)`, Math.abs(got - cap) <= 5 && limits?.stepCapMs === cap);
+  // calibrate with instant calls: latency floor 0, so only the tier's hold is left
+  for (let i = 0; i < 6; i++) api.step(10);
   if (!hold) {
     wall += 60000;
     expect(`${tier}: no hold budget — the game waits forever`, isLockstepFrozen() && limits?.holdMs === null);
@@ -215,5 +217,52 @@ for (const [tier, cap, hold] of [['easy', 1000, 0], ['medium', 250, 1500], ['har
   }
   await endGame(1);
 }
+
+// ---------------- latency allowance ----------------
+console.log('[latency] measured harness latency added to the hold');
+const lim = () => { const r = api.getState(); if (!r.ok) throw new Error(r.error); return r.limits; };
+const paced = (gapMs: number, n: number) => { for (let i = 0; i < n; i++) { wall += gapMs; api.step(10); } };
+api.start({ tier: 'medium', mode: 'lockstep' });
+expect('calibrating: the full tier allowance (medium 10 s) until 5 gaps are in', lim().calibrating && lim().latencyAllowanceMs === 10000 && lim().effectiveHoldMs === 1500 + HOLD_GRACE_MS + 10000);
+paced(5000, 6);
+expect('acts 5 s apart → floor 5000, allowance 5000', lim().latencyFloorMs === 5000 && lim().latencyAllowanceMs === 5000 && !lim().calibrating, JSON.stringify(lim()));
+wall += 1500 + HOLD_GRACE_MS + 5000 - 50;
+expect('… frozen until hold + grace + 5000', isLockstepFrozen());
+wall += 100;
+expect('… then overdue', !isLockstepFrozen());
+api.step(10);
+paced(1000, 20); // a fast rhythm fills the window
+paced(20000, 1);  // one long think
+expect('one long think barely moves the floor (20th percentile)', lim().latencyFloorMs === 1000, `${lim().latencyFloorMs}`);
+paced(70000, 1);
+expect('a gap over 60 s is ignored (walked away)', lim().latencyFloorMs === 1000);
+await endGame(1);
+api.start({ tier: 'medium', mode: 'lockstep' });
+paced(40, 1); paced(1200, 5);
+expect('an early back-to-back call does not drag the floor down', lim().latencyFloorMs === 1200, `${lim().latencyFloorMs}`);
+for (let i = 0; i < 10; i++) { paced(6000, 1); paced(20, 1); } // key pairs: think, then two keys at once
+expect('a harness sending keys in pairs is judged by its round trip', lim().latencyFloorMs === 6000, `${lim().latencyFloorMs}`);
+await endGame(1);
+api.start({ tier: 'medium', mode: 'lockstep' });
+paced(30, 10);
+expect('a genuinely fast agent measures as fast', lim().latencyFloorMs === 30, `${lim().latencyFloorMs}`);
+await endGame(1);
+api.start({ tier: 'medium', mode: 'lockstep' });
+paced(1000, 8);
+await endGame(777777);
+const filed = agentBoard.list('deadStarDisco', 'lockstep', 'medium').find((e) => e.score >= 777777);
+expect('a lockstep entry is filed with its measured latency', filed?.latencyMs !== undefined && filed.latencyMs >= 1000 && filed.latencyMs <= 5000, JSON.stringify(filed));
+for (const [tier, cap] of [['medium', 10000], ['hard', 4000], ['impossible', 1500]] as const) {
+  api.start({ tier, mode: 'lockstep' });
+  paced(30000, 6);
+  expect(`${tier}: a 30 s harness gets the capped allowance (${cap} ms)`, lim().latencyFloorMs === 30000 && lim().latencyAllowanceMs === cap);
+  await endGame(1);
+}
+const clean = sanitizeAgentBoard([
+  { name: 'A', model: '', score: 5, day: '', latencyMs: 1234.6 },
+  { name: 'B', model: '', score: 4, day: '', latencyMs: -3 },
+  { name: 'C', model: '', score: 3, day: '', latencyMs: 'soon' },
+]);
+expect('sanitize keeps a real latency (rounded) and drops junk', clean[0].latencyMs === 1235 && clean[1].latencyMs === undefined && clean[2].latencyMs === undefined && clean.length === 3);
 
 process.exit(bad ? 1 : 0);
