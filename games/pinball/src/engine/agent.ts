@@ -13,6 +13,7 @@
 
 import { STEP } from './constants';
 import type { PhysEvent } from './types';
+import { FIELD } from './types';
 import { TABLE, ACTIVE } from './table';
 import { gameRef, isTilted, later } from './runtime';
 import { useGame, setRunLatencyProvider } from './store';
@@ -53,12 +54,50 @@ export function isLockstepHeld(): boolean {
 // getState().limits and filed with the score, so a harness that pads its calls
 // to buy thinking time is visible on the Agent Board.
 
+//
+// WAIT ZONE. Pressure only means something where the agent can act: near the
+// flippers. So lockstep waits only while a ball is in (or about to reach) the
+// flipper zone — the slings, inlanes and flippers. Up-table the game runs by
+// itself in real time, and neither the hold clock nor the latency gaps tick.
+
 export const HOLD_GRACE_MS = 75;
+/** The wait zone's top edge sits this far above the flipper pivots (≈ the sling tops). */
+export const AGENT_ZONE_RISE = 20;
+/** A falling ball this many seconds from the zone already counts (time to react). */
+const ZONE_LOOKAHEAD_S = 0.35;
+let zoneSince: number | null = null;
+let zoneOverride: (() => boolean) | null = null;
+/** Headless check only: force the zone occupied / empty (null = real detection). */
+export function setZoneOverrideForTests(fn: (() => boolean) | null) { zoneOverride = fn; }
+
+export function zoneTopY(): number {
+  const F = TABLE.flippers;
+  return Math.min(F.left.pivot.y, F.right.pivot.y) + AGENT_ZONE_RISE;
+}
+
+/** A live field ball near the flippers, or falling toward them fast enough to need a decision. */
+export function ballNearFlippers(): boolean {
+  const top = zoneTopY();
+  const P = TABLE.plunger;
+  return gameRef.balls.some((b) => b.active && (b.layer === undefined || b.layer === FIELD) && !b.ride
+    && b.captured <= 0 && !b.inLane && b.x <= P.dividerX
+    && (b.y < top || (b.vy < 0 && b.y + b.vy * ZONE_LOOKAHEAD_S < top)));
+}
+
+/** Is a lockstep game waiting on the agent's zone right now? Tracks when that started. */
+export function inWaitZone(): boolean {
+  const occupied = isLockstepHeld() && (zoneOverride ? zoneOverride() : ballNearFlippers());
+  if (occupied && zoneSince === null) zoneSince = clock();
+  if (!occupied) zoneSince = null;
+  return occupied;
+}
 const CALIBRATION_GAPS = 5;
 const GAP_WINDOW = 20;
 const MAX_GAP_MS = 60_000; // longer = the agent walked away, not latency
 let clock: () => number = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
 let lastAct = 0;
+/** Set by start(): there is a previous act to measure a gap from. */
+let armed = false;
 let lastActBall = 0;
 let gaps: number[] = [];
 let floorReadings: number[] = [];
@@ -70,10 +109,11 @@ let batching = false;
 function acted() {
   const now = clock();
   const ball = useGame.getState().ball;
-  if (!batching && isLockstepHeld()) {
-    const gap = now - lastAct;
+  // only a response to a WAIT is latency: acting while the ball is up-table isn't
+  if (!batching && inWaitZone()) {
+    const gap = now - Math.max(lastAct, zoneSince ?? lastAct);
     // a gap spanning a drain / bonus count-up wasn't the agent's latency
-    if (lastAct > 0 && ball === lastActBall && gap >= 0 && gap <= MAX_GAP_MS) {
+    if (armed && ball === lastActBall && gap >= 0 && gap <= MAX_GAP_MS) {
       gaps.push(gap);
       if (gaps.length > GAP_WINDOW) gaps.shift();
       const f = latencyFloor();
@@ -87,7 +127,7 @@ function acted() {
 function rearm() { lastAct = clock(); }
 
 /** Headless check only: drive the hold clock by hand. */
-export function setAgentClockForTests(fn: () => number) { clock = fn; lastAct = fn(); }
+export function setAgentClockForTests(fn: () => number) { clock = fn; lastAct = fn(); zoneSince = null; }
 
 /** Gaps shorter than this are batched keys/calls (two keys in one harness action,
  *  a flip straight after a step) — not the harness's round trip. */
@@ -121,11 +161,12 @@ export function holdBudget(): {
   const cap = DIFF.agentLatencyCapMs;
   const calibrating = floor === null;
   const latencyAllowanceMs = holdMs ? (calibrating ? cap : Math.min(floor, cap)) : 0;
-  if (!holdMs || !isLockstepHeld()) {
-    return { holdMs, remainingMs: null, overdue: false, latencyFloorMs: floor, latencyAllowanceMs, calibrating, effectiveHoldMs: null };
+  const effectiveHoldMs = holdMs ? holdMs + HOLD_GRACE_MS + latencyAllowanceMs : null;
+  if (!holdMs || !inWaitZone()) {
+    return { holdMs, remainingMs: null, overdue: false, latencyFloorMs: floor, latencyAllowanceMs, calibrating, effectiveHoldMs };
   }
-  const effectiveHoldMs = holdMs + HOLD_GRACE_MS + latencyAllowanceMs;
-  const left = effectiveHoldMs - (clock() - lastAct);
+  // the clock runs from the later of the agent's last act and the ball's arrival
+  const left = effectiveHoldMs! - (clock() - Math.max(lastAct, zoneSince ?? lastAct));
   return {
     holdMs, remainingMs: Math.max(0, Math.round(left)), overdue: left <= 0,
     latencyFloorMs: floor, latencyAllowanceMs, calibrating, effectiveHoldMs,
@@ -134,10 +175,10 @@ export function holdBudget(): {
 
 setRunLatencyProvider(() => runLatencyMs());
 
-/** True while a lockstep game waits for its agent. False when the agent is past its
- *  hold budget — then the render loop runs the game in real time. */
+/** True while a lockstep game waits for its agent: a ball is near the flippers and the
+ *  agent is inside its hold budget. Otherwise the render loop runs the game in real time. */
 export function isLockstepFrozen(): boolean {
-  return isLockstepHeld() && !holdBudget().overdue;
+  return inWaitZone() && !holdBudget().overdue;
 }
 
 type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string };
@@ -175,6 +216,8 @@ function state() {
     phase: s.phase,
     ballPhase: s.ballPhase,
     plungerReady: s.phase === 'playing' && s.ballPhase === 'plunger',
+    /** Lockstep: a ball is near the flippers and the game is paused for your move. */
+    waitingForYou: isLockstepFrozen(),
     score: s.score,
     ball: s.ball,
     totalBalls: s.totalBalls,
@@ -196,6 +239,8 @@ function state() {
       const hb = holdBudget();
       return {
         stepCapMs: Math.min(MAX_STEP_MS, DIFF.agentStepCapMs),
+        /** Lockstep only waits while a ball is below this y (or falling into it). */
+        zoneTopY: zoneTopY(),
         holdMs: hb.holdMs || null,
         graceMs: hb.holdMs ? HOLD_GRACE_MS : 0,
         /** Your measured latency floor (ms) — null while calibrating (first 5 calls). */
@@ -237,7 +282,10 @@ const HELP = `FLIPPER SÉANCE — agent API (window.flipperSeance)
 1. flipperSeance.declare({ name: 'Your Model Name', model?: 'model-id' })   ← required first
 2. flipperSeance.setMode('realtime' | 'lockstep')   (between games; default realtime)
      realtime: the game runs on its own clock, like for a human.
-     lockstep: the game waits for you between step(ms) calls — within limits that grow
+     lockstep: the game PAUSES FOR YOU ONLY WHILE A BALL IS NEAR THE FLIPPERS (below
+       getState().limits.zoneTopY, or falling into it; getState().waitingForYou says so).
+       Up-table it runs by itself in real time — just watch, or step/flip/nudge if you like.
+       While it waits, you advance it with step(ms) — within limits that grow
        with the difficulty (getState().limits):
          tier          step cap   hold budget (real time between step/input calls)
          supereasy     1000 ms    unlimited
@@ -329,6 +377,8 @@ function api() {
       useGame.getState().startGame();
       gaps = [];
       floorReadings = [];
+      armed = true;
+      zoneSince = null;
       lastActBall = useGame.getState().ball;
       rearm();
       changed();
@@ -486,6 +536,11 @@ const f2 = (v: number) => (v >= 0 ? ' ' : '') + v.toFixed(2);
 export function formatStateText(s: ReturnType<typeof state> = state()): string {
   const F = TABLE.flippers;
   const lines = [
+    s.mode === 'lockstep' && s.phase === 'playing'
+      ? (s.waitingForYou ? 'WAITING FOR YOU — a ball is near the flippers'
+        : s.limits.overdue ? 'OVERDUE — the game is running in real time until you act'
+        : 'ball up-table — the game runs on its own until one comes down near the flippers')
+      : null,
     `t=${s.t.toFixed(3)} mode=${s.mode} phase=${s.phase}/${s.ballPhase} ball=${s.ball}/${s.totalBalls} score=${s.score} x${s.multiplier}${s.multiball ? ' MULTIBALL' : ''}`,
     `plungerReady=${s.plungerReady ? 'yes' : 'no'} tilted=${s.tilted ? 'yes' : 'no'} tiltWarnings=${s.tiltWarnings}`,
     ...(s.balls.length ? s.balls.map((b) => `ball#${b.id} x=${f2(b.x)} y=${f2(b.y)} vx=${f1(b.vx)} vy=${f1(b.vy)} ${b.layer}${b.riding ? ` riding=${b.riding}` : ''}${b.captured ? ' captured' : ''}${b.inLane ? ' inLane' : ''}`) : ['(no live ball)']),
@@ -495,7 +550,7 @@ export function formatStateText(s: ReturnType<typeof state> = state()): string {
     `flipper L angle=${f2(s.flippers.left.angle)} ${s.flippers.left.pressed ? 'UP' : 'down'}  pivot=(${F.left.pivot.x},${F.left.pivot.y})`,
     `flipper R angle=${f2(s.flippers.right.angle)} ${s.flippers.right.pressed ? 'UP' : 'down'}  pivot=(${F.right.pivot.x},${F.right.pivot.y})  length=${F.len}`,
     `message: ${s.message}`,
-  ];
+  ].filter((l): l is string => l !== null);
   return lines.join('\n');
 }
 

@@ -198,6 +198,19 @@ Grey-Literature/playground#2). The two branches work like this:
     - The step cap alone would still let an agent think forever between
       coarse steps, and the hold alone would let it poll in infinitely fine
       steps. Together they close both loopholes.
+  - **Wait zone.** Pressure only matters where the agent can act, so
+    lockstep waits only while a ball is near the flippers. The top of that
+    zone is `zoneTopY` = the flipper pivot y + 20 (about the sling tops). A
+    ball counts if it's below that line, or falling into it within 0.35 s;
+    balls in the shooter lane, riding or captured don't count.
+    - Up-table, the game runs by itself in real time, and the agent may
+      still step, flip or nudge.
+    - The hold clock runs from the later of the agent's last act and the
+      ball's arrival in the zone.
+    - Latency gaps are measured only from waits, so idle time up-table
+      never counts.
+    - `getState().waitingForYou` and the console's first line (`WAITING FOR
+      YOU` / `ball up-table …`) show it.
   - **Latency allowance.** The hold would otherwise charge a slow harness's
     round trip as thinking time: Claude in Chrome's key-and-read loop takes
     about 5–10 s per action, which made medium and above unplayable for

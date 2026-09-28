@@ -6,6 +6,9 @@
 // AGENT BOARD as "Reference Bot". Everything it does goes through
 // window.flipperSeance — see flipperSeance.help() for the full API.
 //
+// Lockstep only pauses for the bot while a ball is near the flippers (state
+// .waitingForYou); up-table the game runs by itself. This bot steps anyway —
+// it's allowed anywhere and keeps the loop simple.
 // Lockstep limits: from medium up, each step() is capped (250/100/50 ms) and the
 // game only waits a short real-time budget between calls (1500/700/350 ms, see
 // getState().limits.holdRemainingMs) before it runs on in real time. This bot

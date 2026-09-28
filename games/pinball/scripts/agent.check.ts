@@ -8,7 +8,7 @@ import { registerTheme, type ThemeDef } from '../src/engine/theme';
 import { gameRef } from '../src/engine/runtime';
 import { TABLE } from '../src/engine/table';
 import { STEP } from '../src/engine/constants';
-import { createAgentApi, isLockstepHeld, isLockstepFrozen, agentKey, stateText, setAgentClockForTests, HOLD_GRACE_MS } from '../src/engine/agent';
+import { createAgentApi, isLockstepHeld, isLockstepFrozen, agentKey, stateText, setAgentClockForTests, HOLD_GRACE_MS, setZoneOverrideForTests, ballNearFlippers, zoneTopY } from '../src/engine/agent';
 import { installWebMcp, resetWebMcpForTests, type WebMcpTool } from '../src/engine/webmcp';
 import { agentBoard, scores, sanitizeAgentBoard } from '../src/engine/scores';
 import { table as discoTable, diffOverrides as discoOverrides } from '../src/themes/deadStarDisco/table';
@@ -184,7 +184,8 @@ let provided: WebMcpTool[] = [];
 expect('provideContext style', installWebMcp({ modelContext: { provideContext: (c: { tools: WebMcpTool[] }) => { provided = c.tools; } } }) === 'provideContext' && provided.length === 6);
 
 // ---------------- lockstep limits per tier ----------------
-console.log('[lockstep limits] step cap + hold budget per tier');
+console.log('[lockstep limits] step cap + hold budget per tier (a ball held near the flippers)');
+setZoneOverrideForTests(() => true);
 const endNow = async () => { if (g().phase === 'playing') await endGame(1); };
 await endNow();
 for (const [tier, cap, hold] of [['easy', 1000, 0], ['medium', 250, 1500], ['hard', 100, 700], ['impossible', 50, 350]] as const) {
@@ -263,6 +264,57 @@ const clean = sanitizeAgentBoard([
   { name: 'B', model: '', score: 4, day: '', latencyMs: -3 },
   { name: 'C', model: '', score: 3, day: '', latencyMs: 'soon' },
 ]);
+// ---------------- the wait zone: lockstep only waits near the flippers ----------------
+console.log('[wait zone] lockstep waits only while a ball is near the flippers');
+setZoneOverrideForTests(null);
+api.start({ tier: 'medium', mode: 'lockstep' });
+const W = api.getState();
+expect('ball waiting in the shooter lane → the game is not waiting for you', !isLockstepFrozen() && W.ok && !W.waitingForYou);
+const F = TABLE.flippers;
+const place = (x: number, y: number, vx: number, vy: number, extra: Record<string, unknown> = {}) => {
+  for (const b of gameRef.balls) b.active = false;
+  gameRef.balls.push({ id: 5000 + Math.floor(Math.random() * 1000), x, y, vx, vy, px: x, py: y, active: true, inLane: false, captured: 0, captureCooldown: 0, inside: new Set(), spin: 0, ...extra });
+};
+useGame.setState({ ballPhase: 'active' });
+place(F.left.pivot.x + 3, F.left.pivot.y + 3, 0, -5);
+expect('ball at the flipper → near', ballNearFlippers());
+expect('… and the lockstep game waits (frozen, waitingForYou)', isLockstepFrozen() && (api.getState() as { waitingForYou?: boolean }).waitingForYou === true);
+expect('… the state text says WAITING FOR YOU', stateText().startsWith('WAITING FOR YOU'));
+place(0, 10, 0, 5);
+expect('ball up-table, rising → not near: the game runs on its own', !ballNearFlippers() && !isLockstepFrozen() && stateText().startsWith('ball up-table'));
+place(0, 10, 0, -80);
+expect(`ball up-table but falling fast (reaches y ${zoneTopY().toFixed(1)} within 0.35 s) → near`, ballNearFlippers());
+place(0, 10, 0, -10);
+expect('ball up-table falling slowly → not yet', !ballNearFlippers());
+place(TABLE.plunger.x, TABLE.plunger.restY, 0, 0, { inLane: true });
+expect('ball in the shooter lane → not near', !ballNearFlippers());
+place(F.left.pivot.x + 3, F.left.pivot.y + 3, 0, 0, { captured: 1 });
+expect('captured ball → not near', !ballNearFlippers());
+place(F.left.pivot.x + 3, F.left.pivot.y + 3, 0, 0, { ride: { id: 'x', t: 0.5 } });
+expect('riding ball → not near', !ballNearFlippers());
+
+let occ = false;
+setZoneOverrideForTests(() => occ);
+api.step(10);
+wall += 10000; // 10 s up-table
+occ = true;
+const entry = api.getState();
+expect('the hold clock starts when the ball arrives, not at the last act', entry.ok && entry.limits.holdRemainingMs === entry.limits.effectiveHoldMs && isLockstepFrozen(), JSON.stringify(entry.ok && entry.limits));
+await endGame(1);
+api.start({ tier: 'medium', mode: 'lockstep' });
+occ = false;
+for (let i = 0; i < 6; i++) { wall += 1000; api.step(10); }
+expect('acts while the ball is up-table add no latency gaps', (api.getState() as { limits: { calibrating: boolean } }).limits.calibrating);
+for (let i = 0; i < 6; i++) {
+  occ = false; wall += 8000; api.getState(); // 8 s up-table
+  occ = true; api.getState();                // the ball comes down
+  wall += 1200; api.step(10);                // the agent answers 1.2 s later
+}
+const lat = api.getState();
+expect('latency is measured from the ball\'s arrival (1200), not the last act (9200)', lat.ok && lat.limits.latencyFloorMs === 1200, JSON.stringify(lat.ok && lat.limits.latencyFloorMs));
+setZoneOverrideForTests(null);
+await endGame(1);
+
 expect('sanitize keeps a real latency (rounded) and drops junk', clean[0].latencyMs === 1235 && clean[1].latencyMs === undefined && clean[2].latencyMs === undefined && clean.length === 3);
 
 process.exit(bad ? 1 : 0);

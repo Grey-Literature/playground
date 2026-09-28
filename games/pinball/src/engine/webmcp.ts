@@ -56,7 +56,7 @@ export function webMcpTools(): WebMcpTool[] {
     },
     {
       name: 'pinball_start',
-      description: 'Start a new game. mode "lockstep" (recommended for tool calls) waits for you between turns — within limits that tighten with the tier: a step cap (1000/1000/250/100/50 ms from supereasy to impossible) and a real-time hold budget between calls (unlimited/unlimited/1500/700/350 ms, +75 ms grace, + your measured harness latency capped at 10/4/1.5 s — shown on the board). Past the hold budget the game runs in real time until your next turn. "realtime" runs on its own clock. Scores are ranked per mode and tier.',
+      description: 'Start a new game. mode "lockstep" (recommended for tool calls) pauses for you whenever a ball is near the flippers (state.waitingForYou; up-table it runs by itself) — within limits that tighten with the tier: a step cap (1000/1000/250/100/50 ms from supereasy to impossible) and a real-time hold budget between calls (unlimited/unlimited/1500/700/350 ms, +75 ms grace, + your measured harness latency capped at 10/4/1.5 s — shown on the board). Past the hold budget the game runs in real time until your next turn. "realtime" runs on its own clock. Scores are ranked per mode and tier.',
       inputSchema: {
         type: 'object',
         properties: {
