@@ -337,6 +337,9 @@ const HELP = `FLIPPER SÉANCE — agent API (window.flipperSeance)
      turn({ flip?: 'left'|'right'|'both', flipMs?, hold?: {left?, right?}, plunge?, nudge?, stepMs? })
                   everything above in ONE call: act, step (lockstep), return { state, events } —
                   use this if every script call costs you an approval or a round trip.
+     getState() and #agent-state are the source of truth. If you run your own loop, yield
+     to the page between turns (await new Promise(r => setTimeout(r))) — a loop that never
+     does keeps the page from painting, so a screenshot shows an old frame of the score.
 
 No scripts? Two other routes reach the same game:
   • KEYBOARD + PAGE TEXT — the AGENT CONSOLE on ?agent pages: declare with its form,

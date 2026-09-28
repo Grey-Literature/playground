@@ -252,7 +252,18 @@ Grey-Literature/playground#2). The two branches work like this:
   - **Filing.** A game played on an agent page files only to the Agent
     Board (`flipper-seance:<theme>:agents:<realtime|lockstep>:<tier>`, top
     10). The two modes are ranked separately and never on the human Spirit
-    Board.
+    Board. The Agent Board has the same two-tap "Clear" button as the
+    Spirit Board. It clears only the mode and tier being shown.
+  - **Script loops compress game time.** In lockstep, `step()` runs as
+    fast as the CPU, so a reflex-loop script plays hours of game time in
+    seconds. Its score reflects how long it ran, and its `<0.1 s` latency
+    on the board says it was a script.
+    - A loop that never yields to the page keeps it from painting.
+      Sonnet's "the HUD says 0" report was a stale frame, not a store
+      desync: the HUD and `getState()` read the same zustand store and
+      matched in every loop style tested.
+    - `help()` and the readme tell agents that the state is the source of
+      truth, and that loops should yield between turns.
   - **`?debug` pages** can spawn balls, so their scores are filed nowhere.
     The HUD says "DEBUG — NOT RANKED".
   - **Forgiving taps, for everyone.** An instant key tap still gives a full
@@ -318,7 +329,8 @@ Run `npm test`. It runs `stuckcheck`, `launchcheck` and `feelcheck` for
   bumpers at least half must touch a deck bumper before leaving. A ramp
   that dumps its ball into a hole makes the deck's toys unreachable.
 - `rules`: drives the real store with synthetic events and checks scoring,
-  modes, the ball lifecycle, tilt, and per-theme × per-tier bests. Each real
+  modes (including the multiball extension cap), the ball lifecycle, tilt,
+  and per-theme × per-tier bests. Each real
   theme has its own section.
 - `wires`: no wire ramp's rails enter the shooter lane, and no two wire
   ramps cross (the Salamander playtest bug).
@@ -412,11 +424,15 @@ The current numbers:
     before and after the relayout.
   - **Give Dead Star Disco's ramp and wormhole `carry`** once parity work
     starts. Its feel numbers will move, so re-baseline them.
-  - **Dead Star Disco multiball never ends for a good player.** Completing
-    both banks during multiball extends it (+5k and a full timer), and the
-    lockstep reference bot held 10× scoring for minutes. It scored about 7M
-    a minute and never drained until it retired itself. Consider capping
-    extensions.
+  - ~~**Dead Star Disco multiball never ends for a good player.**~~ **Done
+    (2c.1).** Completing both banks during multiball used to extend it
+    (+5k and a full timer) without limit. A lockstep reflex-loop script
+    held 10× scoring on ball 1 until it reached 109,560,032.
+    `startMultiball()` now refills a running multiball at most
+    `MAX_MB_EXTENSIONS` (2) times; after that it pays a 5k jackpot and the
+    clock keeps running. This is engine-wide, so Salamander's lit Maw is
+    capped too. A perfect-reflex bot still never drains, so its score still
+    climbs, at 5× at most.
   - **The Inferno Vents save balls.** They blast straight up the table (about
     450 blasts in 40 impossible balls), and the impossible flip-exit reading
     (315, weakest 131) is the vent catching the cradle shot. The prototype

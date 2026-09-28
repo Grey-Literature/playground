@@ -25,6 +25,8 @@
          pinball_help, pinball_declare, pinball_start, pinball_turn, pinball_state, pinball_table.
       3) Page scripts: on ?agent pages call window.flipperSeance.help(); use turn() to act,
          step and read the state in one call.
+      The state (getState() / #agent-state) is the source of truth. A script loop should yield
+      to the page between turns, or screenshots show an old frame.
     </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

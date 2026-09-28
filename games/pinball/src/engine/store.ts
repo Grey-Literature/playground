@@ -74,6 +74,8 @@ export interface GameStore {
   bigMessageT: number;
   multiball: boolean;
   multiballT: number;
+  /** Times the running multiball has been extended (capped at MAX_MB_EXTENSIONS). */
+  mbExtensions: number;
   tiltWarnings: number;
   tilted: boolean;
   plungerPower: number;
@@ -164,6 +166,10 @@ export const TAP_PLUNGE_POWER = 0.6;
 let bonusInterval: ReturnType<typeof setInterval> | null = null;
 
 const EXTRA_BALL_AT = [120000, 300000, 600000];
+/** A running multiball refills its timer at most this many times; after that
+ *  a multiball start only pays a jackpot. Without it, a player who kept
+ *  completing Dead Star Disco's banks held 2X scoring forever (Sonnet's 109M). */
+export const MAX_MB_EXTENSIONS = 2;
 
 export const useGame = create<GameStore>()((set, get) => ({
   themeId: '',
@@ -181,6 +187,7 @@ export const useGame = create<GameStore>()((set, get) => ({
   bigMessageT: 0,
   multiball: false,
   multiballT: 0,
+  mbExtensions: 0,
   tiltWarnings: 0,
   tilted: false,
   plungerPower: 0,
@@ -317,6 +324,7 @@ export const useGame = create<GameStore>()((set, get) => ({
       ballsInPlay: 1,
       multiball: false,
       multiballT: 0,
+      mbExtensions: 0,
       stuckHint: false,
       message: 'BALL RE-SERVED — NO BALL LOST',
       messageT: Date.now(),
@@ -341,7 +349,7 @@ export const useGame = create<GameStore>()((set, get) => ({
     set({
       phase: 'playing', ballPhase: 'plunger', score: 0, ball: 1, totalBalls: 3,
       multiplier: 1, bonus: 0,
-      multiball: false, multiballT: 0, tiltWarnings: 0, tilted: false,
+      multiball: false, multiballT: 0, mbExtensions: 0, tiltWarnings: 0, tilted: false,
       plungerPower: 0, plungerCharging: false, popups: [], bonusCounting: false,
       bonusDisplay: 0, extraBallsAwarded: [], ballsInPlay: 1, stuckHint: false,
       paused: false, lastEntryRank: null, lastAgentRank: null,
@@ -506,7 +514,7 @@ export const useGame = create<GameStore>()((set, get) => ({
     }
     addShake(0.4);
     if (get().ballPhase === 'bonus') return;
-    set({ ballPhase: 'bonus', bonusCounting: true, multiball: false, multiballT: 0 });
+    set({ ballPhase: 'bonus', bonusCounting: true, multiball: false, multiballT: 0, mbExtensions: 0 });
     get().endBall();
   },
 
@@ -588,7 +596,7 @@ export const useGame = create<GameStore>()((set, get) => ({
       spawnBallInLane();
       sound.start();
       set({
-        ball: nb, score, highScore, bonus: 0, multiplier: 1, multiball: false,
+        ball: nb, score, highScore, bonus: 0, multiplier: 1, multiball: false, mbExtensions: 0,
         ballPhase: 'plunger', bonusCounting: false, bonusDisplay: 0, tiltWarnings: 0, tilted: false,
         ballsInPlay: 1,
         bigMessage: `BALL ${nb}`, bigMessageT: Date.now(),
@@ -616,11 +624,17 @@ export const useGame = create<GameStore>()((set, get) => ({
   startMultiball: () => {
     const s = get();
     if (s.multiball) {
-      get().addScore(5000, 'MULTIBALL EXTENDED');
-      set({ multiballT: DIFF.mbTime });
+      if (s.mbExtensions < MAX_MB_EXTENSIONS) {
+        get().addScore(5000, 'MULTIBALL EXTENDED');
+        set({ multiballT: DIFF.mbTime, mbExtensions: s.mbExtensions + 1 });
+      } else {
+        // maxed out: still worth shooting for, but the clock keeps running
+        get().addScore(5000, 'MULTIBALL JACKPOT');
+        get().setMessage('MULTIBALL MAXED — RIDE IT OUT');
+      }
       return;
     }
-    set({ multiball: true, multiballT: DIFF.mbTime });
+    set({ multiball: true, multiballT: DIFF.mbTime, mbExtensions: 0 });
     get().setBigMessage('MULTIBALL!');
     get().setMessage('MULTIBALL — ALL SCORES 2X!');
     sound.multiball();
@@ -634,7 +648,7 @@ export const useGame = create<GameStore>()((set, get) => ({
     const s = get();
     if (!s.multiball) return;
     const t = s.multiballT - dt;
-    if (t <= 0) set({ multiball: false, multiballT: 0, message: 'MULTIBALL OVER' });
+    if (t <= 0) set({ multiball: false, multiballT: 0, mbExtensions: 0, message: 'MULTIBALL OVER' });
     else set({ multiballT: t });
   },
 

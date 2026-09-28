@@ -755,6 +755,11 @@ export function AgentBoard({ limit = 10 }: { limit?: number }) {
           })}
         </ol>
       )}
+      {rows.length > 0 && (
+        <div className="mt-1.5 text-right">
+          <ClearBoardButton label={`${MODE_TAG[mode]} · ${cfg.label}`} onClear={() => useGame.getState().clearAgentBoard(mode)} />
+        </div>
+      )}
     </div>
   );
 }
@@ -799,18 +804,18 @@ function InitialsEntry({ rank }: { rank: number }) {
   );
 }
 
-/** Two-tap "clear this board" for grown-ups. */
-function ClearBoardButton() {
+/** Two-tap "clear this board" for grown-ups. Spirit Board by default. */
+function ClearBoardButton({ onClear = () => useGame.getState().clearBoard(), label = 'this board' }: { onClear?: () => void; label?: string }) {
   const [armed, setArmed] = useState(false);
   const phase = useGame((s) => s.phase);
   if (phase === 'playing') return null;
   return (
     <button
-      onClick={() => { if (armed) { useGame.getState().clearBoard(); setArmed(false); } else setArmed(true); }}
+      onClick={() => { if (armed) { onClear(); setArmed(false); } else setArmed(true); }}
       onBlur={() => setArmed(false)}
       className={`pointer-events-auto ml-1 rounded border px-1.5 text-[11px] font-bold ${armed ? 'border-red-400 text-red-300' : 'border-slate-600 text-slate-400 hover:text-slate-200'}`}
     >
-      {armed ? 'Tap again to clear this board' : 'Clear this board'}
+      {armed ? `Tap again to clear ${label}` : `Clear ${label}`}
     </button>
   );
 }

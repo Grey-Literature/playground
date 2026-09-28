@@ -122,6 +122,11 @@ await endGame(99999);
 expect('a ?debug game files nowhere', agentBoard.list('deadStarDisco', 'realtime', 'medium').every((e) => e.score < 99999)
   && scores.list('deadStarDisco', 'medium').length === 0 && g().initialsEntry === null);
 
+g().clearAgentBoard('realtime');
+expect('clearAgentBoard(realtime) empties only that board',
+  agentBoard.list('deadStarDisco', 'realtime', 'medium').length === 0 && g().agentBoards.realtime.length === 0
+  && agentBoard.list('deadStarDisco', 'lockstep', 'medium').length > 0 && g().agentBoards.lockstep.length > 0);
+
 // ---------------- 2c.1: one-call turns, the keyboard route, WebMCP ----------------
 console.log('[agent API] turn() and start({ mode })');
 useGame.setState({ unranked: false });

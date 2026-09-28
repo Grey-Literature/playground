@@ -2,7 +2,7 @@
 // synthetic physics events and check scoring, modes and the ball lifecycle.
 // Needs no DOM — audio stays silent because sound.ensure() is never called.
 
-import { useGame } from '../src/engine/store';
+import { useGame, MAX_MB_EXTENSIONS } from '../src/engine/store';
 import { registerTheme, type ThemeDef } from '../src/engine/theme';
 import { gameRef, runDue } from '../src/engine/runtime';
 import type { PhysEvent } from '../src/engine/types';
@@ -60,6 +60,12 @@ expect('skill-zone launch + lane → 15K skill shot (x2)', g().score - s0 === 30
 for (const id of ['L0', 'L1', 'L2', 'R0', 'R1', 'R2']) fire({ type: 'target', id });
 expect('both banks → multiball + auto-launch ball queued', g().multiball && gameRef.balls.some((b) => b.autoLaunch !== undefined));
 
+// a running multiball extends at most MAX_MB_EXTENSIONS times (the 109M runaway)
+const extend = () => { g().tickMultiball(1); const t = g().multiballT, s = g().score; g().startMultiball(); return { refilled: g().multiballT > t, paid: g().score - s }; };
+const e1 = extend(), e2 = extend(), e3 = extend();
+expect(`multiball extends ${MAX_MB_EXTENSIONS}× (timer refilled, +5K x2 x2)`, e1.refilled && e2.refilled && e1.paid === 20000 && e2.paid === 20000 && g().mbExtensions === 2, JSON.stringify([e1, e2]));
+expect('… then a start only pays a jackpot; the clock keeps running', !e3.refilled && e3.paid === 20000 && g().multiball, JSON.stringify(e3));
+
 for (const id of ['d0', 'd1', 'd2']) fire({ type: 'drop', id });
 expect('three doors → kickback + super ramp lit', useDisco.getState().kickbackLit && useDisco.getState().rampLit);
 
@@ -75,6 +81,12 @@ g().onDrain();
 expect('last ball drained → bonus phase', g().ballPhase === 'bonus' && g().bonusCounting);
 for (let i = 0; i < 80 && g().ball === 1; i++) await sleep(100);
 expect('bonus finishes → ball 2, multiplier + table state reset', g().ball === 2 && g().multiplier === 1 && !useDisco.getState().rampLit, `ball ${g().ball}`);
+expect('… and the multiball extension count', g().mbExtensions === 0);
+g().startMultiball();
+const again = extend();
+expect('a new multiball can extend again', again.refilled && g().mbExtensions === 1);
+g().tickMultiball(1e6);
+expect('multiball timing out resets the count', !g().multiball && g().mbExtensions === 0);
 
 // game over → the Spirit Board (per theme × tier, flipper-seance:<theme>:board:<tier>)
 g().setDifficulty('hard');
