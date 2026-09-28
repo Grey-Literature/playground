@@ -224,7 +224,7 @@ console.log('[latency] measured harness latency added to the hold');
 const lim = () => { const r = api.getState(); if (!r.ok) throw new Error(r.error); return r.limits; };
 const paced = (gapMs: number, n: number) => { for (let i = 0; i < n; i++) { wall += gapMs; api.step(10); } };
 api.start({ tier: 'medium', mode: 'lockstep' });
-expect('calibrating: the full tier allowance (medium 10 s) until 5 gaps are in', lim().calibrating && lim().latencyAllowanceMs === 10000 && lim().effectiveHoldMs === 1500 + HOLD_GRACE_MS + 10000);
+expect('calibrating: the 20 s ceiling until 5 gaps are in', lim().calibrating && lim().latencyAllowanceMs === 20000 && lim().effectiveHoldMs === 1500 + HOLD_GRACE_MS + 20000);
 paced(5000, 6);
 expect('acts 5 s apart → floor 5000, allowance 5000', lim().latencyFloorMs === 5000 && lim().latencyAllowanceMs === 5000 && !lim().calibrating, JSON.stringify(lim()));
 wall += 1500 + HOLD_GRACE_MS + 5000 - 50;
@@ -253,10 +253,16 @@ paced(1000, 8);
 await endGame(777777);
 const filed = agentBoard.list('deadStarDisco', 'lockstep', 'medium').find((e) => e.score >= 777777);
 expect('a lockstep entry is filed with its measured latency', filed?.latencyMs !== undefined && filed.latencyMs >= 1000 && filed.latencyMs <= 5000, JSON.stringify(filed));
-for (const [tier, cap] of [['medium', 10000], ['hard', 4000], ['impossible', 1500]] as const) {
+// no per-tier caps: every harness gets its own latency back in full, so a tier's
+// hold is extra THINKING time (a ~3.7 s browser harness can play Impossible)
+for (const [tier, hold] of [['medium', 1500], ['hard', 700], ['impossible', 350]] as const) {
+  api.start({ tier, mode: 'lockstep' });
+  paced(3700, 6);
+  expect(`${tier}: a 3.7 s harness gets its full 3700 ms back (hold ${3700 + hold + HOLD_GRACE_MS} ms)`, lim().latencyFloorMs === 3700 && lim().latencyAllowanceMs === 3700 && lim().effectiveHoldMs === 3700 + hold + HOLD_GRACE_MS);
+  await endGame(1);
   api.start({ tier, mode: 'lockstep' });
   paced(30000, 6);
-  expect(`${tier}: a 30 s harness gets the capped allowance (${cap} ms)`, lim().latencyFloorMs === 30000 && lim().latencyAllowanceMs === cap);
+  expect(`${tier}: a 30 s harness is held to the 20 s sanity ceiling`, lim().latencyFloorMs === 30000 && lim().latencyAllowanceMs === 20000);
   await endGame(1);
 }
 const clean = sanitizeAgentBoard([

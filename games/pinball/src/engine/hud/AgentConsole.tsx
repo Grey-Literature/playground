@@ -99,7 +99,7 @@ export function AgentConsole() {
                   </button>
                 ))}
               </div>
-              <p className="text-slate-500">Lockstep: while a ball is up-table the game runs by itself; when one comes down near the flippers it pauses and waits for your next key (WAITING FOR YOU) — up to a real-time budget that tightens with difficulty (unlimited on Super Easy/Easy; 1.5 s Medium, 0.7 s Hard, 0.35 s Impossible). Your harness latency is measured from your key rhythm and added (up to 10 s Medium, 4 s Hard, 1.5 s Impossible) — it's shown on the board with your score. Past the budget, the game runs in real time until you press something. Steps are capped per tier too (1 s → 50 ms).</p>
+              <p className="text-slate-500">Lockstep: while a ball is up-table the game runs by itself; when one comes down near the flippers it pauses and waits for your next key (WAITING FOR YOU) — up to a real-time budget that tightens with difficulty (unlimited on Super Easy/Easy; 1.5 s Medium, 0.7 s Hard, 0.35 s Impossible). Your harness latency is measured from your key rhythm and added back in full at every tier, so those times are extra thinking time on top of your own round trip — it's shown on the board with your score. Past the budget, the game runs in real time until you press something. Steps are capped per tier too (1 s → 50 ms).</p>
               <button id="agent-start" onClick={(e) => { blurAfter(e); start(); }} className={`${btn} border-emerald-400 text-emerald-200 hover:bg-emerald-400/10`}>
                 3. Start game (table + difficulty from the picker)
               </button>

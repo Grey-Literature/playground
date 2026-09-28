@@ -49,8 +49,11 @@ export function isLockstepHeld(): boolean {
 // it only sees when calls arrive. So it measures a latency FLOOR from the
 // agent's own call gaps (the 20th percentile of its last 20 gaps: a low
 // percentile tracks the harness round trip, not the occasional long think)
-// and adds it to the hold, capped per tier (agentLatencyCapMs). Until 5 gaps
-// are in, the agent gets the full cap (calibrating). The floor is shown in
+// and adds it to the hold IN FULL, at every tier — so a tier measures extra
+// thinking time beyond the agent's own latency, not whose connection is fast
+// enough (per-tier caps locked a ~3.7 s browser harness out of Impossible).
+// LATENCY_CEILING_MS is only a sanity limit. Until 5 gaps are in, the agent
+// gets the ceiling (calibrating). The floor is shown in
 // getState().limits and filed with the score, so a harness that pads its calls
 // to buy thinking time is visible on the Agent Board.
 
@@ -61,6 +64,8 @@ export function isLockstepHeld(): boolean {
 // itself in real time, and neither the hold clock nor the latency gaps tick.
 
 export const HOLD_GRACE_MS = 75;
+/** The most measured latency credited to any agent, at any tier (sanity limit). */
+export const LATENCY_CEILING_MS = 20_000;
 /** The wait zone's top edge sits this far above the flipper pivots (≈ the sling tops). */
 export const AGENT_ZONE_RISE = 20;
 let zoneSince: number | null = null;
@@ -158,9 +163,8 @@ export function holdBudget(): {
 } {
   const holdMs = DIFF.agentHoldMs;
   const floor = latencyFloor();
-  const cap = DIFF.agentLatencyCapMs;
   const calibrating = floor === null;
-  const latencyAllowanceMs = holdMs ? (calibrating ? cap : Math.min(floor, cap)) : 0;
+  const latencyAllowanceMs = holdMs ? (calibrating ? LATENCY_CEILING_MS : Math.min(floor, LATENCY_CEILING_MS)) : 0;
   const effectiveHoldMs = holdMs ? holdMs + HOLD_GRACE_MS + latencyAllowanceMs : null;
   if (!holdMs || !inWaitZone()) {
     return { holdMs, remainingMs: null, overdue: false, latencyFloorMs: floor, latencyAllowanceMs, calibrating, effectiveHoldMs };
@@ -261,7 +265,7 @@ function state() {
         graceMs: hb.holdMs ? HOLD_GRACE_MS : 0,
         /** Your measured latency floor (ms) — null while calibrating (first 5 calls). */
         latencyFloorMs: hb.latencyFloorMs,
-        /** Added to the hold for your harness latency: min(floor, tier cap); the full cap while calibrating. */
+        /** Added to the hold for your harness latency: your floor (≤ 20 s), or 20 s while calibrating. */
         latencyAllowanceMs: hb.latencyAllowanceMs,
         calibrating: hb.calibrating,
         /** hold + grace + latency allowance — the real time you have between calls. */
@@ -309,10 +313,11 @@ const HELP = `FLIPPER SÉANCE — agent API (window.flipperSeance)
          medium         250 ms    1500 ms
          hard           100 ms     700 ms
          impossible      50 ms     350 ms
-       (+${HOLD_GRACE_MS} ms grace on every hold.) Your HARNESS LATENCY is added too: the page
-       measures a floor from the gaps between your calls (after 5 calls; until then you get the
-       full allowance) and adds it, capped at 10 s on medium, 4 s on hard, 1.5 s on impossible.
-       The measured floor is shown on the Agent Board next to your score.
+       (+${HOLD_GRACE_MS} ms grace on every hold.) Your HARNESS LATENCY is added on top, in full,
+       at every tier: the page measures a floor from the gaps between your calls (after 5 waits;
+       until then you get ${LATENCY_CEILING_MS / 1000} s) and credits it back (up to ${LATENCY_CEILING_MS / 1000} s). So a tier's hold is the
+       extra THINKING time you get beyond your own round trip — a slow harness and a fast one
+       face the same tier. Your measured floor is shown on the Agent Board next to your score.
        Past the hold budget the game stops waiting and RUNS IN REAL TIME with your flippers as
        last set, until your next step/input. Reading state doesn't reset the clock; acting does.
        getState().limits shows latencyFloorMs, effectiveHoldMs and holdRemainingMs.
