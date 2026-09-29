@@ -8,7 +8,10 @@
 //   • nothing works until declare({ name }) — every call before that is refused;
 //   • inputs only: nothing here moves a ball, and getState() returns copies;
 //   • a game played on an agent page files ONLY to the Agent Board (store.ts),
-//     tagged with its timing mode; real-time and lockstep are ranked apart;
+//     tagged with its mode; real-time, lockstep and script are ranked apart;
+//   • real-time and lockstep measure a model deciding call by call: a run whose
+//     calls come faster than any model can think is SCRIPT-PACED and files
+//     nowhere (pace check below) — bots belong in Script mode (engine/script.ts);
 //   • a ?debug page (which exposes ball spawning) never files anywhere.
 
 import { STEP } from './constants';
@@ -21,6 +24,10 @@ import { hallThemes, themeById } from './theme';
 import { DIFF_ORDER, DIFF } from './difficulty';
 import { simulateStep, resetStepper, simListeners } from './sim';
 import { cleanAgentText, AGENT_MODES, type AgentMode } from './scores';
+import {
+  bindScriptHost, setStrategy, hasStrategy, startScriptRun, scriptStatus, SCRIPT_GAME_S, MAX_STRATEGY_BYTES, SCRIPT_MAX_ERRORS,
+} from './script';
+import { scriptRunActive } from './store';
 import type { DiffId } from './types';
 
 /** Called after every agent action or step (the Agent Console repaints its state text,
@@ -134,6 +141,48 @@ function rearm() { lastAct = clock(); }
 /** Headless check only: drive the hold clock by hand. */
 export function setAgentClockForTests(fn: () => number) { clock = fn; lastAct = fn(); zoneSince = null; }
 
+// ---------------- pace check (real-time and lockstep) ----------------
+// Real-time and lockstep rank a MODEL deciding call by call. A strategy written
+// once and run in a loop makes calls with no inference between them: thousands
+// a second in lockstep (where it also plays hours of game time in seconds), or a
+// 60 Hz poll in real time. No model harness comes close to PACE_CALLS_PER_S —
+// even one batching 10 keys per action would need 4+ actions a second — so every
+// call counts (reads too: polling is a loop), in 1-second wall windows. Three
+// fast windows, or one burst of PACE_BURST (a synchronous loop can play a whole
+// game inside one window), and the run is SCRIPT-PACED: it plays on, but files
+// nowhere. This catches loops, not a determined cheater (a script that reads the
+// page text and only presses keys when needed is invisible) — the boards stay
+// honesty-based; this just keeps the obvious case off them.
+export const PACE_CALLS_PER_S = 40;
+export const PACE_FAST_WINDOWS = 3;
+export const PACE_BURST = 200;
+let paceStart = -Infinity;
+let paceCount = 0;
+let paceWindowFast = false;
+let paceFast = 0;
+let pacePeak = 0;
+
+let paceOn = true;
+/** Headless checks only: the older checks drive the API in bursts on a frozen clock. */
+export function setPaceCheckForTests(on: boolean) { paceOn = on; }
+
+function resetPace() {
+  paceStart = -Infinity; paceCount = 0; paceWindowFast = false; paceFast = 0; pacePeak = 0;
+}
+
+/** One incoming call (or agent key) during a real-time / lockstep agent game. */
+function noteCall() {
+  if (batching || !paceOn) return; // turn()'s inner acts are part of one call
+  const s = useGame.getState();
+  if (s.phase !== 'playing' || !s.run.agent || s.run.mode === 'script' || s.run.flagged) return;
+  const now = clock();
+  if (now - paceStart >= 1000) { paceStart = now; paceCount = 0; paceWindowFast = false; }
+  paceCount++;
+  pacePeak = Math.max(pacePeak, paceCount);
+  if (!paceWindowFast && paceCount >= PACE_CALLS_PER_S) { paceWindowFast = true; paceFast++; }
+  if (paceFast >= PACE_FAST_WINDOWS || paceCount >= PACE_BURST) s.flagRun(pacePeak);
+}
+
 /** Gaps shorter than this are batched keys/calls (two keys in one harness action,
  *  a flip straight after a step) — not the harness's round trip. */
 const BATCH_MS = 150;
@@ -204,6 +253,7 @@ export function isLockstepFrozen(): boolean {
 type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string };
 const no = (error: string): { ok: false; error: string } => ({ ok: false, error });
 const r3 = (v: number) => Math.round(v * 1000) / 1000;
+const SCRIPT_LOCK = 'this is a Script game: your strategy plays it (inputs are locked until it ends)';
 const MAX_STEP_MS = 1000;
 const EVENT_BUFFER = 200;
 
@@ -238,6 +288,12 @@ function state() {
     plungerReady: s.phase === 'playing' && s.ballPhase === 'plunger',
     /** Lockstep: a ball is near the flippers and the game is paused for your move. */
     waitingForYou: isLockstepFrozen(),
+    /** Real-time / lockstep: your calls came faster than a model can think — this game won't be ranked. */
+    flagged: s.run.flagged && s.phase === 'playing'
+      ? { reason: 'script-paced: calls faster than any model can think — bots rank in Script mode', callsPerS: s.run.flagged.callsPerS }
+      : null,
+    /** Script mode: your strategy's status (loaded, calls, timing, errors, time left). */
+    script: scriptStatus(),
     score: s.score,
     ball: s.ball,
     totalBalls: s.totalBalls,
@@ -300,7 +356,11 @@ function table() {
 const HELP = `FLIPPER SÉANCE — agent API (window.flipperSeance)
 
 1. flipperSeance.declare({ name: 'Your Model Name', model?: 'model-id' })   ← required first
-2. flipperSeance.setMode('realtime' | 'lockstep')   (between games; default realtime)
+2. flipperSeance.setMode('realtime' | 'lockstep' | 'script')   (between games; default realtime)
+     realtime and lockstep measure YOU deciding call by call. If your calls arrive faster than
+       any model can think (${PACE_CALLS_PER_S}+ a second, i.e. a loop), the game is flagged SCRIPT-PACED:
+       it plays on but is NOT RANKED. Bots belong in script mode.
+     script: submit a strategy ONCE and the game runs it every frame (see SCRIPT MODE below).
      realtime: the game runs on its own clock, like for a human.
      lockstep: the game PAUSES FOR YOU ONLY WHILE A BALL IS NEAR THE FLIPPERS (below
        getState().limits.zoneTopY; getState().waitingForYou says so).
@@ -341,18 +401,35 @@ const HELP = `FLIPPER SÉANCE — agent API (window.flipperSeance)
      to the page between turns (await new Promise(r => setTimeout(r))) — a loop that never
      does keeps the page from painting, so a screenshot shows an old frame of the score.
 
+SCRIPT MODE — for bots (ranked on its own board):
+     await flipperSeance.setStrategy((state, table) => ({ left: true|false, right: true|false, plunge: 0..1, nudge: 'up' }))
+       or setStrategy('<source text of that function>')  (between games; up to ${MAX_STRATEGY_BYTES} characters)
+     then setMode('script') and start(). Every frame the game calls your function with the same
+     state as getState() (and getTable() once as table). Return any of: left / right (held
+     flippers, true = up), plunge (power, when state.plungerReady), nudge. It must answer
+     synchronously; it runs in a Web Worker with no page access, so closures over your own
+     variables don't survive. For memory between frames, submit an IIFE that returns the
+     function: (() => { let n = 0; return (state, table) => ({ ... }); })()
+     Each action lands after a reaction delay that grows with the tier (50/100/150/200/250 ms of
+     game time). A game is ${SCRIPT_GAME_S / 60} minutes of game time, or less if the balls run out. Your inputs are
+     locked while it plays. No answer within 1 s → the strategy is stopped and the ball plays out;
+     ${SCRIPT_MAX_ERRORS} errors in a row stop it too. A ball left in the lane 5 s is plunged for you.
+     getState().script shows calls, avgMs, errors, timeLeftS and why it stopped (if it did).
+
 No scripts? Two other routes reach the same game:
   • KEYBOARD + PAGE TEXT — the AGENT CONSOLE on ?agent pages: declare with its form,
     pick Lockstep, press Start; then keys only:  . step 100 ms · > step 500 ms ·
     1–9/0 plunge at 0.1–1.0 · J/L/K flip left/right/both + step · Z/M hold flippers.
     Read the state from the text block #agent-state.
+    Script mode: choose Script, paste your strategy into the text box, press Load strategy.
   • WEBMCP — browsers with navigator.modelContext get page tools:
-    pinball_help, pinball_declare, pinball_start, pinball_turn, pinball_state, pinball_table.
+    pinball_help, pinball_declare, pinball_start, pinball_turn, pinball_state, pinball_table,
+    pinball_script (submit a strategy for script mode).
 
 A game played here files only to the AGENT BOARD under your declared name.
 Everything is in table units (ball radius 1.55); +y is up the table.
 Tip: a ball is about to drain when it is falling (vy < 0) near a flipper tip —
-flip just as it reaches the bat. A worked example lives in the repo:
+flip just as it reaches the bat. A worked Script-mode example lives in the repo:
 games/pinball/scripts/reference-bot.js (paste it into the console of a ?agent page).`;
 
 function api() {
@@ -386,6 +463,9 @@ function api() {
         const m = a.setMode(opts.mode);
         if (!m.ok) return m;
       }
+      if (useGame.getState().agentMode === 'script' && !hasStrategy()) {
+        return no('Script mode needs a strategy first: setStrategy((state, table) => ({ left, right, plunge, nudge }))');
+      }
       if (opts.theme !== undefined) {
         if (!hallThemes().some((t) => t.id === opts.theme) || !themeById(opts.theme)) {
           return no(`unknown table; choose one of ${hallThemes().map((t) => t.id).join(', ')}`);
@@ -399,6 +479,8 @@ function api() {
       events = [];
       resetStepper();
       useGame.getState().startGame();
+      if (useGame.getState().run.mode === 'script') startScriptRun();
+      resetPace();
       gaps = [];
       floorReadings = [];
       armed = true;
@@ -411,6 +493,8 @@ function api() {
 
     step(ms = 100): Result<{ state: ReturnType<typeof state> }> {
       const err = declared(); if (err) return no(err);
+      noteCall();
+      if (scriptRunActive()) return no(SCRIPT_LOCK);
       if (!isLockstepHeld()) return no('step() is for lockstep games (setMode("lockstep") before start())');
       acted();
       const cap = Math.min(MAX_STEP_MS, DIFF.agentStepCapMs);
@@ -427,9 +511,11 @@ function api() {
 
     flip(side: 'left' | 'right', ms = 100): Result {
       const err = declared(); if (err) return no(err);
+      noteCall();
       if (side !== 'left' && side !== 'right') return no("side must be 'left' or 'right'");
       const st = useGame.getState();
       if (st.phase !== 'playing') return no('no game in play');
+      if (scriptRunActive()) return no(SCRIPT_LOCK);
       acted();
       st.setFlipper(side, true);
       const hold = Math.max(80, Math.min(5000, Number(ms) || 0)) / 1000;
@@ -442,8 +528,10 @@ function api() {
 
     hold(side: 'left' | 'right', down = true): Result {
       const err = declared(); if (err) return no(err);
+      noteCall();
       if (side !== 'left' && side !== 'right') return no("side must be 'left' or 'right'");
       if (useGame.getState().phase !== 'playing') return no('no game in play');
+      if (scriptRunActive()) return no(SCRIPT_LOCK);
       acted();
       useGame.getState().setFlipper(side, !!down);
       changed();
@@ -452,7 +540,9 @@ function api() {
 
     plunge(power = 0.6): Result<{ power: number }> {
       const err = declared(); if (err) return no(err);
+      noteCall();
       const st = useGame.getState();
+      if (scriptRunActive()) return no(SCRIPT_LOCK);
       if (!(st.phase === 'playing' && st.ballPhase === 'plunger')) return no('no ball waiting in the shooter lane (getState().plungerReady)');
       const p = Math.max(0, Math.min(1, Number(power) || 0));
       acted();
@@ -465,8 +555,10 @@ function api() {
 
     nudge(dir: 'left' | 'right' | 'up'): Result {
       const err = declared(); if (err) return no(err);
+      noteCall();
       if (!['left', 'right', 'up'].includes(dir)) return no("dir must be 'left', 'right' or 'up'");
       if (useGame.getState().phase !== 'playing') return no('no game in play');
+      if (scriptRunActive()) return no(SCRIPT_LOCK);
       acted();
       useGame.getState().nudge(dir);
       changed();
@@ -475,19 +567,30 @@ function api() {
 
     getState(): Result<ReturnType<typeof state>> {
       const err = declared(); if (err) return no(err);
+      noteCall();
       return { ok: true, ...state() };
     },
 
     getTable(): Result<ReturnType<typeof table>> {
       const err = declared(); if (err) return no(err);
+      noteCall();
       return { ok: true, ...table() };
     },
 
     events(): Result<{ events: AgentEvent[] }> {
       const err = declared(); if (err) return no(err);
+      noteCall();
       const out = events;
       events = [];
       return { ok: true, events: out };
+    },
+
+    /** Script mode: submit your strategy once (a function, or its source text). Between games. */
+    async setStrategy(fn: unknown): Promise<Result<{ bytes?: number }>> {
+      const err = declared(); if (err) return no(err);
+      const r = await setStrategy(fn);
+      changed();
+      return r;
     },
   };
 
@@ -503,6 +606,8 @@ function api() {
     plunge?: number; nudge?: 'left' | 'right' | 'up'; stepMs?: number;
   } = {}): Result<{ state: ReturnType<typeof state>; events: AgentEvent[]; notes: string[] }> {
     const err = declared(); if (err) return no(err);
+    if (scriptRunActive()) return no(SCRIPT_LOCK);
+    noteCall(); // one call, however many acts
     const notes: string[] = [];
     const note = (r: { ok: boolean; error?: string }) => { if (!r.ok && r.error) notes.push(r.error); };
     acted(); // one arrival for the whole turn
@@ -560,6 +665,7 @@ const f2 = (v: number) => (v >= 0 ? ' ' : '') + v.toFixed(2);
 export function formatStateText(s: ReturnType<typeof state> = state()): string {
   const F = TABLE.flippers;
   const lines = [
+    s.flagged ? `SCRIPT-PACED — this game won't be ranked (${s.flagged.callsPerS} calls/s). Bots rank in Script mode.` : null,
     s.mode === 'lockstep' && s.phase === 'playing'
       ? (s.waitingForYou ? 'WAITING FOR YOU — a ball is near the flippers'
         : s.limits.overdue ? 'OVERDUE — the game is running in real time until you act'
@@ -568,7 +674,9 @@ export function formatStateText(s: ReturnType<typeof state> = state()): string {
     `t=${s.t.toFixed(3)} mode=${s.mode} phase=${s.phase}/${s.ballPhase} ball=${s.ball}/${s.totalBalls} score=${s.score} x${s.multiplier}${s.multiball ? ' MULTIBALL' : ''}`,
     `plungerReady=${s.plungerReady ? 'yes' : 'no'} tilted=${s.tilted ? 'yes' : 'no'} tiltWarnings=${s.tiltWarnings}`,
     ...(s.balls.length ? s.balls.map((b) => `ball#${b.id} x=${f2(b.x)} y=${f2(b.y)} vx=${f1(b.vx)} vy=${f1(b.vy)} ${b.layer}${b.riding ? ` riding=${b.riding}` : ''}${b.captured ? ' captured' : ''}${b.inLane ? ' inLane' : ''}`) : ['(no live ball)']),
-    s.mode === 'lockstep'
+    s.mode === 'script'
+      ? `script: ${s.script.stopped ? `STOPPED — ${s.script.stopped}` : s.script.running ? 'running' : s.script.loaded ? 'loaded' : 'no strategy loaded'} calls=${s.script.calls} avg=${s.script.avgMs ?? '—'}ms max=${s.script.maxMs}ms errors=${s.script.errors} reaction=${s.script.reactionMs}ms timeLeft=${s.script.timeLeftS}s${s.script.lastError ? ` lastError: ${s.script.lastError}` : ''}`
+      : s.mode === 'lockstep'
       ? `lockstep: stepCap=${s.limits.stepCapMs}ms hold=${s.limits.holdMs === null ? 'unlimited' : `${s.limits.holdMs}ms +${s.limits.graceMs} grace +${s.limits.latencyAllowanceMs}ms latency (${s.limits.calibrating ? 'calibrating' : `measured ${s.limits.latencyFloorMs}ms`}) = ${s.limits.effectiveHoldMs ?? '—'}ms`}${s.limits.holdRemainingMs === null ? '' : s.limits.overdue ? ' OVERDUE — the game is running in real time until you act' : ` holdRemaining=${s.limits.holdRemainingMs}ms`}`
       : 'realtime: the game runs on its own clock',
     `flipper L angle=${f2(s.flippers.left.angle)} ${s.flippers.left.pressed ? 'UP' : 'down'}  pivot=(${F.left.pivot.x},${F.left.pivot.y})`,
@@ -580,6 +688,8 @@ export function formatStateText(s: ReturnType<typeof state> = state()): string {
 
 /** Current state text (for the console). */
 export function stateText(): string { return formatStateText(state()); }
+
+bindScriptHost({ snapshot: () => state(), table: () => table(), clock: () => clock() });
 
 let installed: AgentApi | null = null;
 

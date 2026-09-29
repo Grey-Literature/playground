@@ -3,7 +3,7 @@ import { Canvas } from '@react-three/fiber';
 import './themes';
 import { PinballScene } from './engine/scene/PinballScene';
 import { HUD } from './engine/hud/HUD';
-import { useGame, bootTheme } from './engine/store';
+import { useGame, bootTheme, scriptRunActive } from './engine/store';
 import { themeById } from './engine/theme';
 import { gameRef, spawnBallAt } from './engine/runtime';
 import { DIFF_ORDER } from './engine/difficulty';
@@ -71,6 +71,9 @@ function useKeyboard() {
         return;
       }
 
+      // a Script game is played by its strategy alone: camera / pause / restart only
+      if (scriptRunActive() && !['KeyC', 'KeyP', 'KeyR'].includes(e.code)) return;
+
       switch (e.code) {
         case 'KeyZ':
         case 'ArrowLeft':
@@ -122,6 +125,7 @@ function useKeyboard() {
 
     const up = (e: KeyboardEvent) => {
       const st = useGame.getState();
+      if (scriptRunActive()) return;
       switch (e.code) {
         case 'KeyZ':
         case 'ArrowLeft':

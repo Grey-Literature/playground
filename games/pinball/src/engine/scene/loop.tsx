@@ -9,6 +9,7 @@ import { useGame } from '../store';
 import { sound } from '../audio';
 import { simulate, resetStepper } from '../sim';
 import { isLockstepFrozen, isLockstepHeld, runLockstepFrame } from '../agent';
+import { scriptFrame } from '../script';
 
 // Drives the simulation: frame-rate independent fixed steps, then hands every
 // physics event to the active theme's rules. Mounted first so it runs before
@@ -18,7 +19,8 @@ import { isLockstepFrozen, isLockstepHeld, runLockstepFrame } from '../agent';
  * rolling sound. Mounted first so it runs before any visual useFrame reads
  * gameRef. In agent lockstep mode the agent advances the game and this only
  * draws — unless the agent overruns its hold budget (engine/agent.ts), when the
- * game resumes here in real time until the agent acts again.
+ * game resumes here in real time until the agent acts again. In Script mode it
+ * runs in real time and asks the strategy for a decision every frame.
  */
 export function PhysicsLoop() {
   const rollRef = useRef(0);
@@ -26,6 +28,7 @@ export function PhysicsLoop() {
     const dt = Math.min(rawDt, 0.25);
     const st = useGame.getState();
     if (st.paused || isLockstepFrozen()) { resetStepper(); sound.setRoll(0); return; }
+    scriptFrame(); // Script mode: the clock, and the strategy's next decision (engine/script.ts)
     if (isLockstepHeld()) runLockstepFrame(dt); // stops on the step a ball reaches the flippers
     else simulate(dt);
 

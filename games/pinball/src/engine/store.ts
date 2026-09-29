@@ -34,9 +34,17 @@ const rankFor = (board: ScoreEntry[], score: number) => {
 let runLatency: () => number | null = () => null;
 export function setRunLatencyProvider(fn: () => number | null) { runLatency = fn; }
 
-const agentBoardsFor = (theme: string, tier: DiffId) => ({
+/** A Script-mode agent game is in play: its strategy drives, and nobody else may
+ *  press anything (engine/script.ts; App.tsx and TouchControls check this). */
+export function scriptRunActive(): boolean {
+  const s = useGame.getState();
+  return s.phase === 'playing' && !!s.run.agent && s.run.mode === 'script';
+}
+
+const agentBoardsFor =(theme: string, tier: DiffId) => ({
   realtime: agentBoard.list(theme, 'realtime', tier),
   lockstep: agentBoard.list(theme, 'lockstep', tier),
+  script: agentBoard.list(theme, 'script', tier),
 });
 const loadTier = (theme: string): DiffId => {
   const t = ls.get(`${theme}:diff`) as DiffId | null;
@@ -112,7 +120,12 @@ export interface GameStore {
   /** ?agent page: show the Agent Console (hud/AgentConsole.tsx). */
   agentPage: boolean;
   /** Who is playing the current / last game — captured at start, decides the board. */
-  run: { agent: { name: string; model: string } | null; mode: AgentMode; unranked: boolean };
+  run: {
+    agent: { name: string; model: string } | null; mode: AgentMode; unranked: boolean;
+    /** Real-time / lockstep run whose calls came faster than any model can think
+     *  (engine/agent.ts pace check): it plays on, but files nowhere. */
+    flagged?: { callsPerS: number };
+  };
   /** Where the last agent game landed on the Agent Board. */
   lastAgentRank: { mode: AgentMode; rank: number } | null;
 
@@ -122,6 +135,10 @@ export interface GameStore {
   /** Agent API: real-time or lockstep, between games only. Returns false if locked. */
   setAgentMode: (mode: AgentMode) => boolean;
   clearAgentBoard: (mode: AgentMode) => void;
+  /** Agent API: this run is script-paced (see run.flagged). */
+  flagRun: (callsPerS: number) => void;
+  /** Script mode: the game clock ran out — end the game as if the last ball drained. */
+  timeUp: () => void;
   cycleTheme: (dir: 1 | -1) => void;
   setDifficulty: (id: DiffId) => void;
   cycleDifficulty: (dir: 1 | -1) => void;
@@ -210,7 +227,7 @@ export const useGame = create<GameStore>()((set, get) => ({
   board: [],
   initialsEntry: null,
   lastEntryRank: null,
-  agentBoards: { realtime: [], lockstep: [] },
+  agentBoards: { realtime: [], lockstep: [], script: [] },
   agent: null,
   agentMode: 'realtime',
   unranked: false,
@@ -224,6 +241,20 @@ export const useGame = create<GameStore>()((set, get) => ({
     if (get().phase === 'playing') return false;
     set({ agentMode: mode });
     return true;
+  },
+
+  flagRun: (callsPerS) => {
+    const s = get();
+    if (s.phase !== 'playing' || !s.run.agent || s.run.flagged) return;
+    set({ run: { ...s.run, flagged: { callsPerS } }, message: 'SCRIPT-PACED — THIS GAME WON\'T BE RANKED' });
+  },
+
+  timeUp: () => {
+    const s = get();
+    if (s.phase !== 'playing' || s.ballPhase === 'bonus') return;
+    for (const b of gameRef.balls) b.active = false;
+    set({ totalBalls: s.ball, bigMessage: 'TIME!', bigMessageT: Date.now() });
+    get().onDrain();
   },
 
   clearAgentBoard: (mode) => {
@@ -562,7 +593,7 @@ export const useGame = create<GameStore>()((set, get) => ({
         // never the human Spirit Board: a ?debug game files nowhere, an agent's
         // game files straight to the Agent Board under its declared name
         let lastAgentRank: GameStore['lastAgentRank'] = null;
-        if (run.agent && !run.unranked) {
+        if (run.agent && !run.unranked && !run.flagged) {
           const latencyMs = run.mode === 'lockstep' ? runLatency() : null;
           const rank = agentBoard.submit(s.themeId, run.mode, s.difficulty, {
             ...run.agent, score, day: today(), ...(latencyMs !== null ? { latencyMs } : {}),
@@ -574,6 +605,7 @@ export const useGame = create<GameStore>()((set, get) => ({
           agentBoards: agentBoardsFor(s.themeId, s.difficulty), lastAgentRank,
           bigMessage: 'GAME OVER', bigMessageT: Date.now(),
           message: run.unranked ? 'DEBUG GAME — NOT RANKED'
+            : run.flagged ? 'NOT RANKED — SCRIPT-PACED (BOTS RANK IN SCRIPT MODE)'
             : lastAgentRank ? `AGENT BOARD #${lastAgentRank.rank} (${run.mode.toUpperCase()})` : 'AGENT GAME OVER',
         });
         resetMutable();

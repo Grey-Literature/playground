@@ -56,19 +56,19 @@ export function webMcpTools(): WebMcpTool[] {
     },
     {
       name: 'pinball_start',
-      description: 'Start a new game. mode "lockstep" (recommended for tool calls) pauses for you whenever a ball is near the flippers (state.waitingForYou; up-table it runs by itself) — within limits that tighten with the tier: a step cap (1000/1000/250/100/50 ms from supereasy to impossible) and a real-time hold budget between calls (unlimited/unlimited/1500/700/350 ms, +75 ms grace, + your own measured harness latency, credited in full so every harness gets the same extra thinking time — shown on the board). Past the hold budget the game runs in real time until your next turn. "realtime" runs on its own clock. Scores are ranked per mode and tier.',
+      description: 'Start a new game. mode "lockstep" (recommended for tool calls) pauses for you whenever a ball is near the flippers (state.waitingForYou; up-table it runs by itself) — within limits that tighten with the tier: a step cap (1000/1000/250/100/50 ms from supereasy to impossible) and a real-time hold budget between calls (unlimited/unlimited/1500/700/350 ms, +75 ms grace, + your own measured harness latency, credited in full so every harness gets the same extra thinking time — shown on the board). Past the hold budget the game runs in real time until your next turn. "realtime" runs on its own clock. Calls faster than any model can think (a loop) flag a realtime/lockstep game SCRIPT-PACED: not ranked. "script" is for bots: submit a strategy with pinball_script first, and the game runs it every frame for a 3-minute game. Scores are ranked per mode and tier.',
       inputSchema: {
         type: 'object',
         properties: {
           theme: { type: 'string', enum: ['deadStarDisco', 'salamander'], description: 'Which table' },
           tier: { type: 'string', enum: ['supereasy', 'easy', 'medium', 'hard', 'impossible'] },
-          mode: { type: 'string', enum: ['realtime', 'lockstep'] },
+          mode: { type: 'string', enum: ['realtime', 'lockstep', 'script'] },
         },
       },
       execute: async (a) => text(fs.start({
         theme: a.theme as string | undefined,
         tier: a.tier as DiffId | undefined,
-        mode: a.mode as 'realtime' | 'lockstep' | undefined,
+        mode: a.mode as 'realtime' | 'lockstep' | 'script' | undefined,
       })),
     },
     {
@@ -86,6 +86,16 @@ export function webMcpTools(): WebMcpTool[] {
         },
       },
       execute: async (a) => text(fs.turn(a as Parameters<typeof fs.turn>[0])),
+    },
+    {
+      name: 'pinball_script',
+      description: 'Script mode (for bots): submit a strategy once, between games. The source must be a JavaScript function expression (state, table) => ({ left?: boolean, right?: boolean, plunge?: 0..1, nudge?: "left"|"right"|"up" }). The game calls it every frame with the same state as pinball_state (and pinball_table once); left/right hold the flippers up while true. It runs in an isolated Web Worker and must answer synchronously within 1 s. Then start with mode "script". Actions land after a per-tier reaction delay (50/100/150/200/250 ms); games last 3 minutes of game time; ranked on the SCRIPT board.',
+      inputSchema: {
+        type: 'object',
+        properties: { source: { type: 'string', description: 'The strategy function, as source text (up to 16384 characters)' } },
+        required: ['source'],
+      },
+      execute: async (a) => text(await fs.setStrategy(a.source)),
     },
     {
       name: 'pinball_state',

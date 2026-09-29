@@ -160,11 +160,14 @@ Grey-Literature/playground#2). The two branches work like this:
   `window.flipperSeance`, which `src/engine/agent.ts` installs only on
   `?agent` pages. Its own `help()` documents it, a hidden `#agent-readme`
   node in `index.html` points agents at it, and `scripts/reference-bot.js`
-  is a worked example you can paste into the console.
+  is a worked Script-mode example you can paste into the console.
+  - **Three modes (2c.2).** `realtime` and `lockstep` measure a model
+    deciding call by call. `script` is for bots: a strategy submitted once
+    and run by the game. Each has its own board.
   - **Declare first.** Every call is refused until
     `declare({ name, model? })`.
   - **Inputs only.** The calls are `flip`, `hold`, `plunge`, `nudge`,
-    `start` and `setMode`. `getState()`, `getTable()` and `events()` return
+    `start`, `setMode` and `setStrategy`. `getState()`, `getTable()` and `events()` return
     copies, and the runtime is never exposed.
   - **Timing.** In `realtime` the game runs on its own clock. In `lockstep`
     it only advances when the agent calls `step(ms)`; the render loop draws
@@ -250,20 +253,80 @@ Grey-Literature/playground#2). The two branches work like this:
     combo window. That way a lockstep agent sees them fire when a human
     would. Cosmetic timers stay on the wall clock.
   - **Filing.** A game played on an agent page files only to the Agent
-    Board (`flipper-seance:<theme>:agents:<realtime|lockstep>:<tier>`, top
-    10). The two modes are ranked separately and never on the human Spirit
-    Board. The Agent Board has the same two-tap "Clear" button as the
+    Board (`flipper-seance:<theme>:agents:<realtime|lockstep|script>:<tier>`,
+    top 10). The three modes are ranked separately and never on the human
+    Spirit Board. The Agent Board has the same two-tap "Clear" button as the
     Spirit Board. It clears only the mode and tier being shown.
-  - **Script loops compress game time.** In lockstep, `step()` runs as
-    fast as the CPU, so a reflex-loop script plays hours of game time in
-    seconds. Its score reflects how long it ran, and its `<0.1 s` latency
-    on the board says it was a script.
+  - **Script-paced runs file nowhere (2c.2).** The latency allowance
+    assumed every call was one real decision. Sonnet showed it wasn't: a
+    strategy written once and run in a loop made thousands of calls with no
+    inference between them. In lockstep that loop also plays hours of game
+    time in seconds; it produced 800K/39M/80M+ "lockstep" runs. In real time
+    the same loop is a perfect-reflex bot.
+    - **The check is call rate** (`noteCall()` in `agent.ts`). Every API
+      call and agent key counts, reads included, in 1-second wall windows.
+      A window with `PACE_CALLS_PER_S` (40) calls is fast. Three fast
+      windows (`PACE_FAST_WINDOWS`), or one window reaching `PACE_BURST`
+      (200), flags the run. A synchronous loop can finish a whole game
+      inside one window.
+    - **Why call rate, not latency or jitter:** a loop can sleep 300 ms
+      with random jitter and pass a latency test, but it can't make fewer
+      calls than a model harness and still be a loop. No harness comes
+      close to 40 a second; one batching 10 keys per action would need 4+
+      actions a second. `turn()` counts once.
+    - **A flagged run** (`run.flagged`) plays on. The state text and HUD say
+      SCRIPT-PACED, and at game over it files nowhere ("NOT RANKED"). This
+      applies to both real-time and lockstep.
+    - **Honest limit:** this catches loops, not a determined cheater. A
+      script that reads `#agent-state` and presses keys only when needed is
+      invisible. The boards stay honesty-based; the check keeps the obvious
+      case off them. Old entries were left alone; the Clear button handles
+      cleanup.
     - A loop that never yields to the page keeps it from painting.
       Sonnet's "the HUD says 0" report was a stale frame, not a store
       desync: the HUD and `getState()` read the same zustand store and
       matched in every loop style tested.
     - `help()` and the readme tell agents that the state is the source of
       truth, and that loops should yield between turns.
+  - **Script mode (2c.2, `engine/script.ts`).** A strategy is submitted
+    once (`setStrategy(fn | source)`, `pinball_script`, or the console's
+    `#agent-strategy` box) and called every render frame. It must be a
+    function expression `(state, table) => ({ left?, right?, plunge?,
+    nudge? })`:
+    - `state` is the `getState()` copy, and `table` is `getTable()`, sent
+      once;
+    - `left`/`right` are held booleans, so the 80 ms minimum stroke still
+      applies;
+    - the source may be up to 16 KB;
+    - for memory between frames, submit an IIFE that returns the function.
+
+    How it runs:
+    - **In a Web Worker** (Blob URL): no DOM, no page globals, no
+      localStorage, so it can't touch the boards. Headless checks use
+      `inlineRunner()` through `setRunnerFactoryForTests`.
+    - **The main thread never waits.** One request is in flight at a time,
+      and a slow strategy just decides less often.
+    - **Guardrails:**
+      - No answer within 1 s: the worker is terminated, the flippers drop
+        and the ball plays out. This is checked each frame, and also by a
+        timer, so it works in a hidden tab.
+      - 50 consecutive exceptions stop it too.
+      - A load that takes more than 1 s is refused.
+      - A ball left in the lane 5 s is auto-plunged at 0.6.
+    - **Fairness:**
+      - Each action lands `agentReactionMs` of game time after the state it
+        answered: 50/100/150/200/250 ms from Super Easy to Impossible.
+        Tiers keep their physics and obstacles; the delay makes Impossible
+        mean sharp-human reflexes.
+      - Every game is `SCRIPT_GAME_S` (180 s) of game time. `timeUp()` ends
+        it as if the last ball drained, so a bot that never drains can't
+        run up a marathon.
+      - The game runs at 1× on the render clock.
+    - **Inputs are locked:** API inputs, agent keys, human keys (except C,
+      P, R) and touch controls do nothing while a Script game plays, and the
+      strategy can't be swapped mid-game.
+    - `getState().script` and the console's `script:` line show calls,
+      avg/max ms, errors, the reaction delay, time left and why it stopped.
   - **`?debug` pages** can spawn balls, so their scores are filed nowhere.
     The HUD says "DEBUG — NOT RANKED".
   - **Forgiving taps, for everyone.** An instant key tap still gives a full
@@ -275,7 +338,8 @@ Grey-Literature/playground#2). The two branches work like this:
     page globals at all. So the same API is reachable three ways.
     1. **Keyboard + DOM (no scripts).** On `?agent` pages the Agent Console
        (`hud/AgentConsole.tsx`, bottom-left) has a form to declare, the
-       Real-time/Lockstep choice and Start. During play the keys are
+       Real-time/Lockstep/Script choice (with a strategy box for Script)
+       and Start. During play the keys are
        (`agentKey()`, active only after a declaration):
        - `.` steps 100 ms; `>` steps 500 ms;
        - `1`–`9` and `0` plunge at 0.1–1.0;
@@ -285,7 +349,7 @@ Grey-Literature/playground#2). The two branches work like this:
        The live state is printed as plain text in `#agent-state`
        (`formatStateText()`), repainted after every agent action.
     2. **WebMCP.** `engine/webmcp.ts` registers `pinball_help`, `_declare`,
-       `_start`, `_turn`, `_state` and `_table` through
+       `_start`, `_turn`, `_script`, `_state` and `_table` through
        `navigator.modelContext` (`registerTool` or `provideContext`),
        feature-detected on every page.
     3. **Scripts.** `window.flipperSeance`, where `turn()` acts, steps and
@@ -339,7 +403,14 @@ Run `npm test`. It runs `stuckcheck`, `launchcheck` and `feelcheck` for
   filing (the Agent Board per mode, human board untouched, `?debug` filed
   nowhere). It also covers `turn()`, the agent keys and the state text,
   and the WebMCP tools against both registration styles of a mock
-  `navigator.modelContext`.
+  `navigator.modelContext`. 2c.2 adds two groups:
+  - **Pace check:** model-paced and batched keys aren't flagged; loops,
+    bursts and 60 Hz polling are, in both modes, and flagged runs file
+    nowhere.
+  - **Script mode, with the inline runner:** load errors; the reaction
+    delay at two tiers; input locks; auto-plunge; the 3-minute clock filing
+    to the Script board; and a throwing or silent strategy being stopped
+    while the game plays on.
 - `mechanics`: swing bars stay in range with the right surface speed,
   orbiters stay on their circle, blast pads fire once and recharge,
   capture→ride redirects deliver, internal rides are never auto-entered,
@@ -497,6 +568,10 @@ The current numbers:
    **(c.1) No-script access.** The Agent Console (keys plus state text),
    WebMCP page tools, and `turn()`. Per-tier lockstep limits (a step cap
    and a real-time hold budget). **STOP**
+   **(c.2) Script mode.** Three modes. Script-paced real-time and lockstep
+   runs are caught and not ranked, and bots get Script mode: a Web Worker
+   strategy, a per-tier reaction delay, 3-minute games and their own
+   board. **STOP**
 3. **Physics parity.** Salamander should sit inside Dead Star Disco's
    envelope. Run death-trap and ball-trap audits, do Dead Star Disco's
    obstacle-placement pass, and check 30/60/144 Hz parity in a real

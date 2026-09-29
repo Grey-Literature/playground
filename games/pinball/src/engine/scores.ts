@@ -138,8 +138,10 @@ export const scores: ScoreStore = new LocalScoreStore();
 
 // ---------------- Agent Board ----------------
 
-export type AgentMode = 'realtime' | 'lockstep';
-export const AGENT_MODES: AgentMode[] = ['realtime', 'lockstep'];
+/** realtime / lockstep: a model deciding call by call. script: a strategy function
+ *  submitted once and run by the game every frame (engine/script.ts). */
+export type AgentMode = 'realtime' | 'lockstep' | 'script';
+export const AGENT_MODES: AgentMode[] = ['realtime', 'lockstep', 'script'];
 
 export interface AgentEntry {
   /** Declared name, e.g. "Claude Sonnet 5" (1–24 chars). */

@@ -8,7 +8,9 @@ import { registerTheme, type ThemeDef } from '../src/engine/theme';
 import { gameRef } from '../src/engine/runtime';
 import { TABLE } from '../src/engine/table';
 import { STEP } from '../src/engine/constants';
-import { createAgentApi, isLockstepHeld, isLockstepFrozen, agentKey, stateText, setAgentClockForTests, HOLD_GRACE_MS, setZoneOverrideForTests, ballNearFlippers, zoneTopY, runLockstepFrame } from '../src/engine/agent';
+import { createAgentApi, isLockstepHeld, isLockstepFrozen, agentKey, stateText, setAgentClockForTests, HOLD_GRACE_MS, setZoneOverrideForTests, ballNearFlippers, zoneTopY, runLockstepFrame, setPaceCheckForTests, PACE_BURST } from '../src/engine/agent';
+import { setRunnerFactoryForTests, inlineRunner, clearStrategyForTests, scriptFrame, SCRIPT_GAME_S, SCRIPT_MAX_ERRORS, SCRIPT_AUTOPLUNGE_S, type StrategyRunner } from '../src/engine/script';
+import { simulateStep } from '../src/engine/sim';
 import { installWebMcp, resetWebMcpForTests, type WebMcpTool } from '../src/engine/webmcp';
 import { agentBoard, scores, sanitizeAgentBoard } from '../src/engine/scores';
 import { table as discoTable, diffOverrides as discoOverrides } from '../src/themes/deadStarDisco/table';
@@ -37,6 +39,8 @@ const api = createAgentApi();
 // the hold budget runs on the wall clock — drive it by hand so the checks are deterministic
 let wall = 0;
 setAgentClockForTests(() => wall);
+// the older sections drive the API in bursts on a frozen clock — the pace check has its own section
+setPaceCheckForTests(false);
 /** Advance `ms` of game time in as many capped steps as it takes. */
 const advance = (ms: number) => { const end = gameRef.time + ms / 1000 - 1e-9; while (gameRef.time < end && isLockstepHeld()) api.step(Math.min(1000, (end - gameRef.time) * 1000 + 1)); };
 
@@ -173,7 +177,7 @@ console.log('[WebMCP] page tools');
 const got: WebMcpTool[] = [];
 expect('no navigator.modelContext → nothing registered', installWebMcp({}) === 'none');
 expect('registerTool style', installWebMcp({ modelContext: { registerTool: (t: WebMcpTool) => void got.push(t) } }) === 'registerTool');
-expect('six tools: help, declare, start, turn, state, table', got.map((t) => t.name).join(',') === 'pinball_help,pinball_declare,pinball_start,pinball_turn,pinball_state,pinball_table');
+expect('seven tools: help, declare, start, turn, script, state, table', got.map((t) => t.name).join(',') === 'pinball_help,pinball_declare,pinball_start,pinball_turn,pinball_script,pinball_state,pinball_table');
 const tool = (n: string) => got.find((t) => t.name === n)!;
 const parse = async (n: string, args: Record<string, unknown> = {}) => JSON.parse((await tool(n).execute(args)).content[0].text);
 const stJson = await parse('pinball_state');
@@ -186,7 +190,7 @@ expect('a refused call comes back as isError with the reason', bad2.isError === 
 expect('read-only tools are annotated', tool('pinball_state').annotations?.readOnlyHint === true && !tool('pinball_turn').annotations?.readOnlyHint);
 resetWebMcpForTests();
 let provided: WebMcpTool[] = [];
-expect('provideContext style', installWebMcp({ modelContext: { provideContext: (c: { tools: WebMcpTool[] }) => { provided = c.tools; } } }) === 'provideContext' && provided.length === 6);
+expect('provideContext style', installWebMcp({ modelContext: { provideContext: (c: { tools: WebMcpTool[] }) => { provided = c.tools; } } }) === 'provideContext' && provided.length === 7);
 
 // ---------------- lockstep limits per tier ----------------
 console.log('[lockstep limits] step cap + hold budget per tier (a ball held near the flippers)');
@@ -336,6 +340,121 @@ const lat = api.getState();
 expect('latency is measured from the ball\'s arrival (1200), not the last act (9200)', lat.ok && lat.limits.latencyFloorMs === 1200, JSON.stringify(lat.ok && lat.limits.latencyFloorMs));
 setZoneOverrideForTests(null);
 await endGame(1);
+
+// ---------------- 2c.2: script-paced runs file nowhere ----------------
+console.log('[2c.2] script-paced detection (real-time and lockstep)');
+setPaceCheckForTests(true);
+const onBoard = (mode: 'realtime' | 'lockstep' | 'script', score: number) => agentBoard.list('deadStarDisco', mode, 'medium').some((e) => e.score === score);
+api.start({ tier: 'medium', mode: 'lockstep' });
+for (let i = 0; i < 38 * 10; i++) { wall += 1000 / 38; api.getState(); }
+expect('a harness at 38 calls/s for 10 s: not flagged', !g().run.flagged);
+for (let sec = 0; sec < 10; sec++) {
+  wall += 1000 - 9 * 5;
+  for (let k = 0; k < 10; k++) { wall += 5; agentKey('Period', false); }
+}
+expect('10 batched keys every second (one harness action): not flagged', !g().run.flagged);
+await endGame(414141);
+expect('… and it files as usual', onBoard('lockstep', 414141));
+
+api.start({ tier: 'medium', mode: 'lockstep' });
+for (let i = 0; i < 45 * 3; i++) { wall += 1000 / 45; api.getState(); }
+const fl = api.getState();
+expect('45 calls/s over three windows → SCRIPT-PACED', !!g().run.flagged && fl.ok && fl.flagged !== null, JSON.stringify(g().run.flagged));
+expect('… the state text says so first', stateText().startsWith('SCRIPT-PACED'));
+expect('… and the game plays on', g().phase === 'playing' && isLockstepHeld());
+await endGame(424242);
+expect('a flagged lockstep game files nowhere', !onBoard('lockstep', 424242) && !onBoard('script', 424242) && /NOT RANKED/.test(g().message), g().message);
+expect('… and never the human board', !scores.list('deadStarDisco', 'medium').some((e) => e.score === 424242));
+
+api.start({ tier: 'medium', mode: 'lockstep' });
+for (let i = 0; i < 150; i++) api.turn({ stepMs: 10 });
+expect(`turn() counts as one call (150 turns in one instant < ${PACE_BURST})`, !g().run.flagged);
+for (let i = 0; i < 60; i++) api.getState();
+expect('… and reads count: a synchronous loop is flagged at once', !!g().run.flagged);
+await endGame(1);
+
+api.start({ tier: 'medium', mode: 'realtime' });
+wall += 5000;
+for (let i = 0; i < 3 * 60; i++) { wall += 1000 / 60; api.getState(); }
+expect('real time: a 60 Hz polling loop → SCRIPT-PACED', !!g().run.flagged);
+await endGame(434343);
+expect('a flagged real-time game files nowhere', !onBoard('realtime', 434343) && /NOT RANKED/.test(g().message));
+api.start({ tier: 'medium', mode: 'realtime' });
+expect('the flag is per game (the next one starts clean)', !g().run.flagged);
+await endGame(1);
+setPaceCheckForTests(false);
+
+// ---------------- 2c.2: Script mode ----------------
+console.log('[2c.2] Script mode');
+setRunnerFactoryForTests(inlineRunner);
+clearStrategyForTests();
+const flush = async () => { for (let i = 0; i < 6; i++) await Promise.resolve(); };
+/** One render frame of a Script game: the strategy hook, its answer, one physics step. */
+const frame = async () => { scriptFrame(); await flush(); simulateStep(); };
+expect('setMode(script)', api.setMode('script').ok);
+expect('start without a strategy is refused', !api.start({ tier: 'medium' }).ok && g().phase !== 'playing');
+expect('a syntax error is refused', !(await api.setStrategy('(state => {')).ok);
+expect('a non-function is refused', !(await api.setStrategy('42')).ok);
+expect('an oversized strategy is refused', !(await api.setStrategy('(s) => (' + ' '.repeat(20000) + '{})')).ok);
+const hold = await api.setStrategy('(state) => ({ left: true, right: true })');
+expect('a function-expression strategy loads', hold.ok);
+expect('a JS function is accepted too (sent as source)', (await api.setStrategy((s: { plungerReady: boolean }) => ({ left: true, right: true, plunge: s.plungerReady ? undefined : undefined }))).ok);
+
+for (const [tier, react] of [['medium', 150], ['impossible', 250]] as const) {
+  const sg = api.start({ tier });
+  expect(`${tier}: a Script game starts`, sg.ok && g().run.mode === 'script');
+  const t0 = gameRef.time;
+  let pressedAt: number | null = null;
+  for (let i = 0; i < 120 && pressedAt === null; i++) { await frame(); if (gameRef.left.pressed) pressedAt = gameRef.time; }
+  const dt = pressedAt === null ? NaN : Math.round((pressedAt - t0) * 1000);
+  expect(`${tier}: the strategy's flippers land after its ${react} ms reaction delay (game time)`, dt >= react && dt <= react + 4 * STEP * 1000, `${dt} ms`);
+  await endGame(1);
+}
+
+api.start({ tier: 'medium' });
+expect('inputs are locked: flip / hold / plunge / nudge / step / turn refused',
+  !api.flip('left').ok && !api.hold('left', true).ok && !api.plunge(0.5).ok && !api.nudge('up').ok && !api.step(100).ok && !api.turn({}).ok);
+expect('… the agent keys do nothing either', agentKey('KeyJ', false) && !gameRef.left.pressed);
+expect('the strategy can\'t be swapped mid-game', !(await api.setStrategy('(s) => ({})')).ok);
+const lane0 = gameRef.time;
+while (g().ballPhase === 'plunger' && gameRef.time - lane0 < SCRIPT_AUTOPLUNGE_S + 1) await frame();
+const waited = gameRef.time - lane0;
+expect(`a strategy that never plunges gets an auto-plunge after ${SCRIPT_AUTOPLUNGE_S} s`, g().ballPhase === 'active' && waited >= SCRIPT_AUTOPLUNGE_S - STEP && waited < SCRIPT_AUTOPLUNGE_S + 0.1, `${waited.toFixed(2)} s`);
+const sst = api.getState();
+expect('getState().script reports calls, timing and time left', sst.ok && sst.script.running && sst.script.calls > 0 && sst.script.avgMs !== null && sst.script.timeLeftS < SCRIPT_GAME_S && sst.script.reactionMs === 150, JSON.stringify(sst.ok && sst.script));
+expect('the state text has a script line', /^script: running calls=\d+/m.test(stateText()));
+useGame.setState({ score: 515151 });
+gameRef.time += SCRIPT_GAME_S; // skip to the end of the clock
+await frame();
+expect(`after ${SCRIPT_GAME_S / 60} minutes of game time: TIME — the game ends`, g().ballPhase === 'bonus' || g().phase === 'gameover');
+for (let i = 0; i < 100 && g().phase === 'playing'; i++) await sleep(100);
+const scr = agentBoard.list('deadStarDisco', 'script', 'medium').find((e) => e.score >= 515151);
+expect('… filed on the SCRIPT board, with no latency', g().phase === 'gameover' && !!scr && scr.latencyMs === undefined && g().lastAgentRank?.mode === 'script', JSON.stringify(scr));
+expect('… and not on the real-time / lockstep boards', !agentBoard.list('deadStarDisco', 'realtime', 'medium').concat(agentBoard.list('deadStarDisco', 'lockstep', 'medium')).some((e) => e.score === scr?.score));
+
+expect('a throwing strategy loads (it only throws when called)', (await api.setStrategy('(s) => { throw new Error("boom") }')).ok);
+api.start({ tier: 'medium' });
+for (let i = 0; i < SCRIPT_MAX_ERRORS + 10; i++) await frame();
+const thrown = api.getState();
+expect(`… it is stopped after ${SCRIPT_MAX_ERRORS} errors in a row, and the game plays on`, thrown.ok && !!thrown.script.stopped && /threw/.test(thrown.script.stopped) && thrown.script.lastError === 'boom' && g().phase === 'playing', JSON.stringify(thrown.ok && thrown.script.stopped));
+await endGame(1);
+
+// a strategy that never answers (the worker would be stuck in a loop)
+const silent: StrategyRunner = { load: async () => ({ ok: true }), decide: () => new Promise(() => {}), terminate() {} };
+setRunnerFactoryForTests(() => silent);
+await api.setStrategy('(s) => { while (true) {} }');
+api.start({ tier: 'medium' });
+await frame(); // loads
+g().setFlipper('left', true); // (as if the strategy had it up)
+for (let i = 0; i < 20; i++) await frame(); // asks, never hears back
+expect('no answer yet within 1 s: still running', !(api.getState() as { script: { stopped: string | null } }).script.stopped);
+wall += 1001;
+await frame();
+const hung = api.getState();
+expect('no answer for over 1 s → stopped, flippers dropped, the game plays on', hung.ok && /didn't answer/.test(hung.script.stopped ?? '') && !gameRef.left.pressed && g().phase === 'playing', JSON.stringify(hung.ok && hung.script.stopped));
+await endGame(1);
+setRunnerFactoryForTests(inlineRunner);
+api.setMode('lockstep');
 
 expect('sanitize keeps a real latency (rounded) and drops junk', clean[0].latencyMs === 1235 && clean[1].latencyMs === undefined && clean[2].latencyMs === undefined && clean.length === 3);
 

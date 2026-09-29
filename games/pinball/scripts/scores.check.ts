@@ -52,6 +52,13 @@ expect('legacy key kept', mem.get('flipper-seance:legacy:best:medium') === '4321
 s.clear('legacy', 'medium');
 expect('cleared board stays cleared (legacy best does not resurrect)', s.list('legacy', 'medium').length === 0);
 
+const { LocalAgentBoard, AGENT_MODES } = await import('../src/engine/scores');
+const ab = new LocalAgentBoard();
+ab.submit('t', 'script', 'medium', { name: 'Bot', model: 'strategy', score: 4200, day: '2026-09-29' });
+expect('three agent modes: realtime, lockstep, script', AGENT_MODES.join(',') === 'realtime,lockstep,script');
+expect('the Script board round-trips under its own key', ab.list('t', 'script', 'medium')[0]?.score === 4200
+  && mem.has('flipper-seance:t:agents:script:medium') && ab.list('t', 'lockstep', 'medium').length === 0);
+
 storageThrows = true;
 const blocked = new LocalScoreStore();
 let threw = false;

@@ -34,7 +34,11 @@ export function DMD({ position = [0, 16.5, -36.1] as [number, number, number], s
     g.textAlign = 'left';
     // attract rotates: title card (6 s) → Spirit Board top 5 (4 s) → Agent Board
     // top 5 (4 s), skipping any board that's empty
-    const agentRows = [...st.agentBoards.realtime.map((e) => ({ ...e, tag: 'RT' })), ...st.agentBoards.lockstep.map((e) => ({ ...e, tag: 'LS' }))]
+    const agentRows = [
+      ...st.agentBoards.realtime.map((e) => ({ ...e, tag: 'RT' })),
+      ...st.agentBoards.lockstep.map((e) => ({ ...e, tag: 'LS' })),
+      ...st.agentBoards.script.map((e) => ({ ...e, tag: 'SC' })),
+    ]
       .sort((a, b) => b.score - a.score);
     const pages = ['title', ...(st.board.length ? ['spirits'] : []), ...(agentRows.length ? ['agents'] : [])];
     const cycle = 6 + (pages.length - 1) * 4;

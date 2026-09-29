@@ -110,6 +110,17 @@ g().setDifficulty('medium');
 expect('back to medium restores its board', g().highScore === final && g().board[0]?.initials === 'AB ');
 expect('tier choice persisted per theme', mem.get('flipper-seance:deadStarDisco:diff') === 'medium');
 
+// Script mode's clock: timeUp() ends the game on any ball, bonus included
+g().startGame();
+const b1 = g().ball;
+fire({ type: 'bumper', id: '0' });
+const beforeTime = g().score;
+g().timeUp();
+expect('timeUp() → this ball is the last one, straight to the bonus', g().ballPhase === 'bonus' && g().totalBalls === b1 && gameRef.balls.every((b) => !b.active));
+for (let i = 0; i < 80 && g().phase !== 'gameover'; i++) await sleep(100);
+expect('… then game over with the bonus added', g().phase === 'gameover' && g().score >= beforeTime, `${beforeTime} → ${g().score}`);
+g().skipInitials();
+
 // tilt kills scoring
 g().startGame();
 for (let i = 0; i < 4; i++) g().nudge('up');

@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useGame } from '../store';
 import { AgentConsole } from './AgentConsole';
-import { scores, cleanInitials, type AgentMode } from '../scores';
+import { scores, cleanInitials, AGENT_MODES, type AgentMode } from '../scores';
+import { SCRIPT_GAME_S } from '../script';
 import { DIFF_ORDER, DIFF, diffFor } from '../difficulty';
 import { obstacleCount } from '../table';
 import { activeTheme, hallThemes, themeById } from '../theme';
@@ -148,7 +149,7 @@ function TopBar() {
   );
 }
 
-const MODE_TAG: Record<AgentMode, string> = { realtime: 'REAL-TIME', lockstep: 'LOCKSTEP' };
+const MODE_TAG: Record<AgentMode, string> = { realtime: 'REAL-TIME', lockstep: 'LOCKSTEP', script: 'SCRIPT' };
 
 /** Who this game counts for: an agent (Agent Board) or a ?debug page (nowhere). */
 function RunBadge() {
@@ -161,6 +162,9 @@ function RunBadge() {
   const mode = phase === 'playing' ? run.mode : agentMode;
   if ((phase === 'playing' ? run.unranked : unranked)) {
     return <div className="mt-1 text-[10px] font-black tracking-[0.2em] text-red-300">DEBUG — NOT RANKED</div>;
+  }
+  if (phase === 'playing' && run.flagged) {
+    return <div className="mt-1 max-w-[16rem] text-[10px] font-black tracking-[0.15em] text-red-300">SCRIPT-PACED — NOT RANKED</div>;
   }
   if (!who) return null;
   return (
@@ -361,7 +365,8 @@ function KeyHints() {
 function TouchControls() {
   const phase = useGame((s) => s.phase);
   const ballPhase = useGame((s) => s.ballPhase);
-  if (phase !== 'playing') return null;
+  const scripted = useGame((s) => s.phase === 'playing' && !!s.run.agent && s.run.mode === 'script');
+  if (phase !== 'playing' || scripted) return null; // a Script game is played by its strategy alone
   const setFlipper = useGame.getState().setFlipper;
   const press = (side: 'left' | 'right', v: boolean) => (e: React.PointerEvent) => {
     e.preventDefault();
@@ -717,7 +722,7 @@ export function AgentBoard({ limit = 10 }: { limit?: number }) {
           <Bot className="h-3 w-3" /> AGENT BOARD
         </span>
         <span className="flex items-center gap-1">
-          {(['realtime', 'lockstep'] as AgentMode[]).map((m) => (
+          {AGENT_MODES.map((m) => (
             <button
               key={m}
               onClick={() => setMode(m)}
@@ -729,9 +734,14 @@ export function AgentBoard({ limit = 10 }: { limit?: number }) {
           <span className="ml-1 text-[10px] font-black tracking-[0.2em]" style={{ color: cfg.accent }}>{cfg.label}</span>
         </span>
       </div>
+      {mode === 'script' && (
+        <div className="mb-1 text-[10px] font-semibold text-slate-400">
+          Bots: a strategy submitted once, run every frame. {SCRIPT_GAME_S / 60}-minute games · reacts in {cfg.agentReactionMs} ms.
+        </div>
+      )}
       {rows.length === 0 ? (
         <div className="py-1 text-center text-[11px] font-semibold italic text-slate-400">
-          No agent has played {mode === 'lockstep' ? 'lockstep' : 'real-time'} here yet. Agents: add <code>?agent</code> to the URL.
+          No agent has played {mode === 'lockstep' ? 'lockstep' : mode === 'script' ? 'a Script game' : 'real-time'} here yet. Agents: add <code>?agent</code> to the URL.
         </div>
       ) : (
         <ol className="space-y-0.5">
