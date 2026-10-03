@@ -1,0 +1,551 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Catbot</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;600&family=Inter:wght@400;600&display=swap" rel="stylesheet">
+<style>
+html,body{margin:0;height:100%;background:#12151b;overflow:hidden;touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+#wrap{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
+canvas{display:block}
+.pad{position:fixed;bottom:max(18px,env(safe-area-inset-bottom));width:88px;height:88px;border-radius:50%;display:none;align-items:center;justify-content:center;
+  font:600 30px Oswald,sans-serif;color:#d6a54e;background:rgba(42,48,59,.55);border:1px solid rgba(214,165,78,.45);touch-action:none}
+.pad.on{background:rgba(214,165,78,.35);color:#ffe3a0}
+body.touch .pad{display:flex}
+#padL{left:max(18px,env(safe-area-inset-left))}
+#padR{right:max(18px,env(safe-area-inset-right))}
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="stage" aria-label="Catbot: walk left and right"></canvas></div>
+<div class="pad" id="padL" role="button" aria-label="walk left">◀</div>
+<div class="pad" id="padR" role="button" aria-label="walk right">▶</div>
+<script src="catbot.js"></script>
+<script>
+'use strict';
+/* =====================================================================
+   CATBOT · room 1.  Jamference AI Game Jam Hack 1 (theme: cat + robot).
+   Built with Claude Opus 5.5 (claude-opus-5-5) in Claude Code.
+   Jam rule: every input is movement. ← → / A D / the two touch pads.
+   Title, restart and room transitions all happen by walking somewhere.
+   Layers: room data -> world (props, constraints) -> ctrl -> rig (catbot.js)
+   ===================================================================== */
+const W=720, H=405;
+const cv=document.getElementById('stage'), ctx=cv.getContext('2d');
+const catC=document.createElement('canvas'), cctx=catC.getContext('2d');
+const silC=document.createElement('canvas'), sctx=silC.getContext('2d');
+const FILTER=typeof ctx.filter==='string';
+let S=1;
+
+/* =====================================================================
+   ROOMS: plain data. A new room is a new object, not new code.
+   x values are world px (left edges unless noted); GY is the deck line.
+   ===================================================================== */
+const ROOMS=[{
+  id:'aft-hold', name:'Aft hold', w:1460,
+  floorSlip:0,                              // 0 = deck plate, →1 = ice (feet slide, slow to start/stop)
+  start:{x:250, face:1},
+  reset:{x:22, w:112},                      // walk onto it: the room rewinds
+  crate:{x:420, w:96, h:80, mass:1},        // mass 1 = needs full strain to break static friction
+  plate:{x:640, w:100, depth:78},           // recess x..x+w, plate at the bottom; its far wall is the stopper
+  gate:{x:860, w:22},                       // held open while the crate sits on the plate
+  part:{x:1040, id:'hip'},                  // what catbot thinks is a toy
+  exit:{x:1180},                            // hatch in the end bulkhead; opens once the part is in
+  port:{x:190},                             // porthole (light source, matches the shadow direction)
+  captions:[
+    {on:'start', text:'← →  or  A D.   Walking is the only verb.'},
+    {on:'push',  text:'Heavy things move if you lean on them long enough.'}
+  ]
+}];
+
+/* =====================================================================
+   STATE
+   ===================================================================== */
+const rig=new Catbot();
+const CAT={weight:1, nose:88, paw:62};      // nose: root→face of whatever it leans on; paw: root→ledge edge
+const keys={l:false,r:false};
+const dirInput=()=>(keys.r?1:0)-(keys.l?1:0);
+let room, roomI=0, st, camX=0, mode='play', modeT=0, fade=1, fadeDir=-1, fadeCb=null;
+let idle=0, walkT=0, walkDir=0, look=0, lookT=0, latch=false;   // latch: ignore a key still held from before a fade
+const installed=new Set();                    // installed parts survive a rewind
+const seenCaps=new Set(), caps=[];
+const P={on:false,dir:0,pt:0,str:0,F:0,cd:0,nx:0};
+
+function loadRoom(i){room=ROOMS[i];roomI=i;resetRoom();camX=camTarget();}
+function resetRoom(){
+  const R=room;
+  st={
+    crate:{x:R.crate.x,w:R.crate.w,h:R.crate.h,mass:R.crate.mass??1,v:0,cy:0,vy:0,rot:0,st:'floor',x0:0,ft:0},
+    gate:new Spring(0,1.4,.38), door:new Spring(0,1.8,.5),
+    plate:0, cable:0, partT:0, got:installed.has(R.part?.id)
+  };
+  Object.assign(P,{on:false,str:0,F:0});
+  rig.reset(R.start.x);if(R.start.face<0)rig.flip();
+  idle=0;walkT=0;
+}
+function caption(on){
+  if(seenCaps.has(on))return;seenCaps.add(on);
+  for(const c of room.captions||[])if(c.on===on)caps.push({text:c.text,t:0,max:c.dur||4.2});
+}
+function fadeTo(cb){if(fadeDir>0)return;fadeDir=1;fadeCb=()=>{cb();latch=true;};}
+
+/* =====================================================================
+   WORLD: crate, recess + plate, gate, hatch, part
+   ===================================================================== */
+const pit=()=>room.plate;
+const pitOpen=()=>room.plate&&st.crate.st!=='set';
+function crateBlocks(){const cr=st.crate;return cr.st!=='set'||cr.h-2-cr.cy>4;}
+
+function updCrate(dt){
+  const cr=st.crate,pl=pit();
+  if(cr.st==='floor'&&pl){
+    // stopper: the recess walls stop a crate that is sliding over it
+    if(cr.x+cr.w>pl.x&&cr.x<pl.x+pl.w){
+      if(cr.x+cr.w>pl.x+pl.w){cr.x=pl.x+pl.w-cr.w;cr.v=0;}
+      if(cr.x<pl.x&&cr.x+cr.w/2>pl.x+pl.w)cr.x=pl.x;
+    }
+    // once its centre is over the hole there is nothing holding it up
+    const mid=cr.x+cr.w/2;
+    if(mid>pl.x+2&&mid<pl.x+pl.w-2){cr.st='fall';cr.vy=0;cr.x0=cr.x;cr.ft=0;cr.dir=mid<pl.x+pl.w/2?1:-1;cr.v=0;}
+  }
+  if(cr.st==='fall'){
+    cr.ft+=dt;cr.vy+=G*dt;cr.cy+=cr.vy*dt;
+    const tx=pl.x+(pl.w-cr.w)/2;cr.x=lerp(cr.x0,tx,smooth(cr.cy/pl.depth));
+    cr.rot=Math.sin(Math.PI*clamp(cr.cy/pl.depth,0,1))*.13*cr.dir;
+    if(cr.cy>=pl.depth){
+      cr.cy=pl.depth;cr.rot=0;cr.st='set';
+      const p=clamp(cr.vy/700,.6,1.4);
+      shake=Math.max(shake,6*p);
+      FX.dust(pl.x-6,GY,8,p,-1);FX.dust(pl.x+pl.w+6,GY,8,p,1);FX.ring(pl.x+pl.w/2,GY,p);
+      FX.flash(pl.x+pl.w/2,GY+pl.depth-4,.8,'255,220,150');
+      rig.earL.vel-=14;rig.earR.vel-=12;rig.hOy.vel-=30;
+    }
+  }
+  if(cr.st==='set'){
+    st.plate=damp(st.plate,1,10,dt);
+    st.cable=Math.min(1,st.cable+dt*1.6);
+  }
+}
+function updGates(dt){
+  const g=room.gate,ex=room.exit;
+  if(g){
+    const under=Math.abs(rig.x-(g.x+g.w/2))<70;
+    const want=st.cable>=1?1:(under&&st.gate.v>.3?st.gate.v:0);
+    const was=st.gate.v;st.gate.step(want,dt);st.gate.v=clamp(st.gate.v,0,1.06);
+    if(was<.02&&st.gate.v>=.02)FX.dust(g.x+g.w/2,GY,5,.5);
+  }
+  if(ex){
+    const ready=!room.part||st.got, near=rig.x>ex.x-300;
+    const was=st.door.v;st.door.step(ready&&near?1:0,dt);st.door.v=clamp(st.door.v,0,1.06);
+    if(was<.02&&st.door.v>=.02)FX.steam(ex.x+20,GY-150,4,.7);
+  }
+}
+/* solid x-intervals at catbot's height. clr = root distance it can get to the face */
+function blockers(){
+  const b=[{x0:-1e4,x1:16,clr:CAT.nose}], cr=st.crate, R=room;
+  if(crateBlocks())b.push({x0:cr.x,x1:cr.x+cr.w,clr:CAT.nose});
+  if(pitOpen()){const pl=pit();b.push({x0:pl.x,x1:pl.x+pl.w,clr:CAT.paw});}
+  if(R.gate&&st.gate.v<.8)b.push({x0:R.gate.x,x1:R.gate.x+R.gate.w,clr:CAT.nose});
+  if(R.exit&&st.door.v<.8)b.push({x0:R.exit.x+10,x1:R.exit.x+30,clr:CAT.nose});
+  return b;
+}
+let BL=[];
+function constrain(){
+  for(const b of BL){
+    if(b.x0>rig.x){const lim=b.x0-b.clr;if(rig.x>lim){rig.x=lim;if(rig.vx>0)rig.vx=0;}}
+    else if(b.x1<rig.x){const lim=b.x1+b.clr;if(rig.x<lim){rig.x=lim;if(rig.vx<0)rig.vx=0;}}
+  }
+}
+
+/* =====================================================================
+   PUSH: lifted from the rig's push study. Force = strain × leg
+   compression × catbot's weight; stick-slip against the crate's mass.
+   ===================================================================== */
+function contactX(dir){const cr=st.crate;return dir>0?cr.x-CAT.nose:cr.x+cr.w+CAT.nose;}
+function endPush(){P.on=false;P.str=0;P.F=0;}
+function push(dt,c,dir){
+  const cr=st.crate;
+  if(!P.on){
+    const ok=dir&&cr.st==='floor'&&rig.facing===dir&&rig.turnT<0&&!rig.air&&Math.abs(rig.x-contactX(dir))<2.5;
+    if(!ok)return false;
+    Object.assign(P,{on:true,dir,pt:0,str:0,F:0,cd:0});caption('push');
+  }
+  if(dir!==P.dir||cr.st!=='floor'){endPush();return false;}
+  P.pt+=dt;
+  const s=seg(P.pt,0,.5), k=s*(.55+.45*P.str), slip=room.floorSlip;
+  Object.assign(c,{crouch:.42*k,pitch:-.15*k,headDrop:14*k,headPitch:-.32*k,headFwd:0,earL:40*k,earR:36*k,lid:.3+.15*P.str,lidTilt:.6+.4*P.str,pupil:.3,mouth:-.7*P.str,lookX:.6,lookY:-.2,
+    tailBase:lerp(162,176,s),tailCurve:lerp(-9,-2.5,s),tailTip:-6,tailStiff:1.4,wagAmp:1,hindReach:-16*s,gaitRate:0,earFlick:false,weight:CAT.weight,slip});
+  const face=dir>0?cr.x-2:cr.x+cr.w+2;
+  c.manual.FN={x:face,y:24,ang:1.45,rate:9};c.manual.FF={x:face,y:31,ang:1.45,rate:8};
+  const hn=rig.leg('HN'),hf=rig.leg('HF');
+  const ext=-(rig.footErr(hn)+rig.footErr(hf))/2, stuck=cr.v<=0, both=hn.planted&&hf.planted;
+  const force=()=>CAT.weight*(.5+.72*P.str)*clamp(1.12-Math.max(0,ext)/38,0,1.12);
+  const muS=cr.mass, muK=cr.mass*.74*(1-.8*slip);
+  P.cd-=dt;
+  if(stuck&&P.pt>.45){
+    if(ext>12&&both&&P.cd<=0){rig.forceStep(P.nx?'HF':'HN',.2);P.nx^=1;P.cd=.26;P.str*=.6;}
+    else if(both)P.str=Math.min(1,P.str+dt*1.15);
+    P.F=force();
+    if(P.F>muS){cr.v=6;FX.dust(cr.x+4,GY,5,.7,-1);FX.dust(cr.x+cr.w-4,GY,5,.7,1);shake=Math.max(shake,2.2);}
+    if(P.str>.75&&Math.random()<dt*5){const kp=rig.toWorld(rig.keyP);FX.steam(kp.x,kp.y-4,1,.8);}
+  }else if(!stuck){
+    P.F=force();
+    cr.v=Math.max(0,cr.v+(P.F-muK)*340/cr.mass*dt);
+    if(cr.v===0)P.str=.2;
+    if(Math.random()<dt*14)FX.dust(cr.x+rnd(0,cr.w),GY,1,.5,-dir);
+    if(Math.random()<dt*20)scratch(dir>0?cr.x+rnd(2,20):cr.x+cr.w-rnd(2,20)-14,rnd(8,18),.35);
+  }
+  cr.x+=dir*cr.v*dt;
+  c.kin=dir*cr.v+(contactX(dir)-rig.x)*10;
+  c.strain=stuck?(P.pt>.45?P.str:0):.35;
+  return true;
+}
+
+/* =====================================================================
+   CONTROL: input -> ctrl, per mode
+   ===================================================================== */
+function walk(dt,c,dir){
+  const slip=room.floorSlip;
+  c.slip=slip;c.accel=260*(1-.8*slip);c.weight=CAT.weight;
+  if(push(dt,c,dir))return;
+  if(dir){
+    idle=0;
+    if(dir===walkDir&&Math.abs(rig.vx)>40)walkT+=dt;else if(dir!==walkDir)walkT=0;
+    walkDir=dir;
+    const max=walkT>1.6?165:105;               // hold it and it breaks into a trot
+    c.face=dir;c.vx=(dir===rig.facing&&rig.turnT<0)?dir*max:0;
+    if(max>140){c.earL=c.earR=16;c.tailBase=172;c.tailCurve=-5;}
+  }else{idle+=dt;walkT=0;walkDir=0;}
+  if(Math.abs(rig.vx)<8&&!dir){
+    lookT-=dt;if(lookT<0){lookT=rnd(.9,2.4);look=rnd(-1,1);}
+    c.lookX=look;c.headYaw=.35+look*.22;c.wagAmp=7;c.wagFreq=.6;
+  }
+}
+function control(dt,c){
+  if(latch&&!dirInput())latch=false;
+  const dir=latch?0:dirInput();
+  modeT+=dt;
+  if(mode==='play'){
+    walk(dt,c,dir);
+    // reset tile: front paws on it, facing it
+    const rs=room.reset;
+    if(rs&&rig.facing<0&&rig.x-45<rs.x+rs.w-14){mode='rewind';modeT=0;fadeTo(()=>{resetRoom();mode='play';});}
+    // exit hatch
+    const ex=room.exit;
+    if(ex&&rig.x>ex.x+64){mode='exit';modeT=0;fadeTo(()=>{mode='card';modeT=0;});}
+    // the part (simple pickup for now)
+    const pt=room.part;
+    if(pt&&!st.got&&rig.facing>0&&rig.x+56>pt.x){st.got=true;installed.add(pt.id);FX.flash(pt.x,GY-14,1,'255,220,140');}
+  }else if(mode==='rewind'){
+    c.vx=0;c.keySpin=-14;c.lid=.4;
+  }else if(mode==='exit'){
+    c.vx=105;c.face=1;
+  }else if(mode==='card'){
+    if(modeT>3.4&&fadeDir===0){fadeTo(()=>{installed.clear();seenCaps.clear();loadRoom(0);mode='play';});}
+  }
+}
+
+/* =====================================================================
+   EVENTS -> particles
+   ===================================================================== */
+function handleRigEvents(){
+  for(const e of rig.events){
+    if(e.k==='land'){const p=clamp(e.mag/420,.4,1.6);FX.dust(e.x-30,e.y,6,p,-1);FX.dust(e.x+30,e.y,6,p,1);FX.ring(e.x,e.y,p);shake=Math.max(shake,Math.min(6,e.mag/110));}
+    else if(e.k==='thud'){const p=clamp(e.mag/260,.3,1.3);FX.dust(e.x,e.y,9,p);FX.ring(e.x,e.y,p*.6);shake=Math.max(shake,Math.min(5,e.mag/70));}
+    else if(e.k==='headthud'){FX.dust(e.x,e.y,6,.7);shake=Math.max(shake,Math.min(4,e.mag/70));}
+    else if(e.k==='step'){FX.dust(e.x,e.y,2,.45);}
+    else if(e.k==='scuff'){FX.dust(e.x,e.y,1,.3,-rig.facing);}
+  }
+  rig.events.length=0;
+}
+
+/* =====================================================================
+   DRAW: room
+   ===================================================================== */
+function camTarget(){return clamp(rig.x-W*.42+rig.facing*30,0,room.w-W);}
+const STARS=Array.from({length:26},()=>[rnd(-1,1),rnd(-1,1),rnd(.4,1.3)]);
+function drawRoom(g,t){
+  const R=room, x0=camX-4, x1=camX+W+4;
+  // hull wall
+  const wall=g.createLinearGradient(0,0,0,GY-24);wall.addColorStop(0,'#1d222b');wall.addColorStop(1,'#363d4a');
+  g.fillStyle=wall;g.fillRect(x0,0,x1-x0,GY-24);
+  g.strokeStyle='rgba(0,0,0,.25)';g.lineWidth=1;
+  for(const y of [64,168]){g.beginPath();g.moveTo(x0,y);g.lineTo(x1,y);g.stroke();}
+  for(let x=60;x<R.w;x+=170){
+    if(x<x0-20||x>x1+20)continue;
+    g.fillStyle='rgba(0,0,0,.2)';g.fillRect(x,0,16,GY-30);
+    g.fillStyle='rgba(255,255,255,.05)';g.fillRect(x,0,2,GY-30);
+    g.fillStyle='rgba(0,0,0,.35)';for(let y=20;y<GY-40;y+=26){g.beginPath();g.arc(x+8,y,1.6,0,TAU);g.fill();}
+  }
+  // stencilled livery: the title lives on the hull
+  g.save();g.font='600 72px Oswald,sans-serif';g.fillStyle='rgba(214,165,78,.13)';g.fillText('CATBOT',330,150);
+  g.font='600 12px Oswald,sans-serif';g.fillStyle='rgba(214,165,78,.2)';g.fillText('REPAIR UNIT  ·  AFT HOLD  ·  KEEP WOUND',334,172);g.restore();
+  // porthole + the light shaft it throws (upper-left light, same as the shadows)
+  if(R.port){
+    const px=R.port.x,py=118;
+    g.save();g.beginPath();g.arc(px,py,30,0,TAU);g.clip();
+    g.fillStyle='#05070d';g.fillRect(px-30,py-30,60,60);
+    g.fillStyle='rgba(220,235,255,.85)';
+    for(const [sx,sy,r] of STARS){const xx=px+((sx*30+t*1.5)%60+60)%60-30;g.fillRect(xx,py+sy*30,r,r);}
+    g.restore();
+    g.lineWidth=7;g.strokeStyle='#59606b';g.beginPath();g.arc(px,py,33,0,TAU);g.stroke();
+    g.lineWidth=1.5;g.strokeStyle=OL;g.beginPath();g.arc(px,py,36.5,0,TAU);g.stroke();g.beginPath();g.arc(px,py,29.5,0,TAU);g.stroke();
+    g.fillStyle='#8d939b';for(let i=0;i<8;i++){const a=i/8*TAU;g.beginPath();g.arc(px+Math.cos(a)*33,py+Math.sin(a)*33,1.5,0,TAU);g.fill();}
+    g.save();g.globalCompositeOperation='lighter';
+    const sh=g.createLinearGradient(px,py,px+260,GY);sh.addColorStop(0,'rgba(190,215,255,.09)');sh.addColorStop(1,'rgba(190,215,255,0)');
+    g.fillStyle=sh;g.beginPath();g.moveTo(px-24,py+12);g.lineTo(px+22,py-14);g.lineTo(px+330,GY+30);g.lineTo(px+150,GY+30);g.closePath();g.fill();g.restore();
+  }
+  // baseboard, deck, deck cross-section (cutaway)
+  g.fillStyle='#171b21';g.fillRect(x0,GY-32,x1-x0,8);
+  const dk=g.createLinearGradient(0,GY-24,0,GY+2);dk.addColorStop(0,'#3a3f48');dk.addColorStop(1,'#565c66');
+  g.fillStyle=dk;g.fillRect(x0,GY-24,x1-x0,26);
+  g.strokeStyle='rgba(0,0,0,.3)';g.beginPath();g.moveTo(x0,GY-13);g.lineTo(x1,GY-13);g.stroke();
+  const cx=camX+W/2;
+  for(let x=Math.floor(x0/64)*64;x<x1;x+=64){g.beginPath();g.moveTo(x,GY-24);g.lineTo(x+(x-cx)*.05,GY+2);g.stroke();}
+  g.fillStyle='rgba(255,255,255,.18)';g.fillRect(x0,GY+1,x1-x0,1.5);
+  g.fillStyle='#4b5059';g.fillRect(x0,GY+2.5,x1-x0,8);
+  const xs=g.createLinearGradient(0,GY+10,0,H);xs.addColorStop(0,'#23272e');xs.addColorStop(1,'#111419');
+  g.fillStyle=xs;g.fillRect(x0,GY+10.5,x1-x0,H-GY);
+  g.strokeStyle='rgba(255,255,255,.04)';g.lineWidth=3;
+  for(let x=Math.floor(x0/90)*90;x<x1;x+=90){g.beginPath();g.moveTo(x,GY+14);g.lineTo(x+90,H);g.moveTo(x+90,GY+14);g.lineTo(x,H);g.stroke();}
+  g.fillStyle='rgba(0,0,0,.45)';for(let x=Math.floor(x0/30)*30+15;x<x1;x+=30){g.beginPath();g.arc(x,GY+6.5,1.3,0,TAU);g.fill();}
+  drawReset(g,t);
+  drawPit(g,t);
+  drawCable(g,t);
+  drawExitBack(g);
+  drawGateBack(g);
+}
+function drawReset(g,t){
+  const rs=room.reset;if(!rs)return;
+  const near=clamp(1-(rig.x-rs.x-rs.w)/160,0,1), pul=.5+.5*Math.sin(t*3);
+  const x=rs.x,w=rs.w;
+  g.beginPath();g.moveTo(x+4,GY-23);g.lineTo(x+w-4,GY-23);g.lineTo(x+w,GY+1);g.lineTo(x,GY+1);g.closePath();
+  g.fillStyle=`rgb(${90+40*near|0},${70+26*near|0},${40+10*near|0})`;g.fill();g.lineWidth=1.2;g.strokeStyle=OL;g.stroke();
+  // hazard edge + the rewind glyph
+  g.save();g.clip();g.fillStyle='rgba(20,12,4,.45)';for(let i=-2;i<w/10+2;i++){g.beginPath();g.moveTo(x+i*10,GY+1);g.lineTo(x+i*10+5,GY+1);g.lineTo(x+i*10+11,GY-5);g.lineTo(x+i*10+6,GY-5);g.closePath();g.fill();}g.restore();
+  const gx=x+w/2,gy=GY-13,a=.35+.4*near+.15*pul*near;
+  g.save();g.translate(gx,gy);g.scale(1,.38);
+  g.strokeStyle=`rgba(255,214,140,${a})`;g.lineWidth=4;g.beginPath();g.arc(0,0,18,-.4*Math.PI,1.25*Math.PI);g.stroke();
+  g.fillStyle=`rgba(255,214,140,${a})`;g.beginPath();g.moveTo(-6,-22);g.lineTo(10,-18);g.lineTo(-2,-8);g.closePath();g.fill();g.restore();
+  if(near>.02){g.save();g.globalCompositeOperation='lighter';softEllipse(g,gx,GY-10,70,14,.12*near*(.7+.3*pul),'255,190,90');g.restore();}
+  g.font='600 9px Oswald,sans-serif';g.fillStyle='rgba(214,165,78,.4)';g.fillText('REWIND',x+w/2-15,GY-36);
+}
+function drawPit(g,t){
+  const pl=room.plate;if(!pl)return;
+  const x=pl.x,w=pl.w,d=pl.depth;
+  const gr=g.createLinearGradient(0,GY-24,0,GY+d);gr.addColorStop(0,'#0a0c10');gr.addColorStop(1,'#181b21');
+  g.fillStyle=gr;g.fillRect(x,GY-24,w,d+24);
+  g.strokeStyle='rgba(255,255,255,.05)';g.lineWidth=1;for(let y=GY;y<GY+d;y+=16){g.beginPath();g.moveTo(x,y);g.lineTo(x+w,y);g.stroke();}
+  // the plate, and the lamp that reports it
+  const pd=st.plate*3;
+  g.fillStyle='#3b3f45';g.fillRect(x+2,GY+d-1,w-4,6);
+  const pg=g.createLinearGradient(0,GY+d-6+pd,0,GY+d+pd);pg.addColorStop(0,'#ffe3a0');pg.addColorStop(1,'#8c5b22');
+  g.fillStyle=pg;g.fillRect(x+6,GY+d-6+pd,w-12,6);g.strokeStyle=OL;g.strokeRect(x+6,GY+d-6+pd,w-12,6);
+  // near lip + stopper wall (far side, hazard-striped)
+  g.fillStyle='#4b5059';g.fillRect(x-4,GY-24,4,d+30);
+  const sx=x+w;
+  g.fillStyle='#5a616b';g.fillRect(sx,GY-24,10,d+30);
+  g.save();g.beginPath();g.rect(sx,GY+12,10,d-8);g.clip();
+  for(let y=GY;y<GY+d+20;y+=12){g.fillStyle='#d6a54e';g.beginPath();g.moveTo(sx,y);g.lineTo(sx+10,y-6);g.lineTo(sx+10,y);g.lineTo(sx,y+6);g.closePath();g.fill();}
+  g.restore();g.strokeStyle=OL;g.lineWidth=1;g.strokeRect(sx,GY-24,10,d+30);
+  // lamp post on the deck past the stopper
+  const on=st.plate>.5;
+  g.fillStyle='#2b2f36';g.fillRect(sx+14,GY-44,5,22);
+  g.beginPath();g.arc(sx+16.5,GY-48,6,0,TAU);g.fillStyle=on?'#7dffb0':'#ff5a4a';g.fill();g.strokeStyle=OL;g.stroke();
+  g.save();g.globalCompositeOperation='lighter';softEllipse(g,sx+16.5,GY-48,22,22,.35+.1*Math.sin(t*4),on?'110,255,170':'255,90,70');g.restore();
+}
+function drawCable(g,t){
+  const pl=room.plate,gt=room.gate;if(!pl||!gt)return;
+  const a=pl.x+pl.w+16,b=gt.x+gt.w/2,y=GY+30;
+  g.strokeStyle='#0b0d11';g.lineWidth=4;g.beginPath();g.moveTo(a,GY+12);g.lineTo(a,y);g.lineTo(b,y);g.lineTo(b,GY+12);g.stroke();
+  const live=st.cable;if(live<=0)return;
+  g.strokeStyle='rgba(95,208,255,.55)';g.lineWidth=1.6;g.beginPath();g.moveTo(a,y);g.lineTo(lerp(a,b,live),y);g.stroke();
+  g.save();g.globalCompositeOperation='lighter';
+  for(let i=0;i<5;i++){const u=((t*.6+i/5)%1)*live;softEllipse(g,lerp(a,b,u),y,9,4,.5,'95,208,255');}
+  g.restore();
+}
+function drawGateBack(g){
+  const gt=room.gate;if(!gt)return;
+  g.fillStyle='#14171c';g.fillRect(gt.x-2,GY-24,gt.w+4,24);   // slot in the deck
+}
+function drawGateFront(g){
+  const gt=room.gate;if(!gt)return;
+  const x=gt.x,w=gt.w,o=clamp(st.gate.v,0,1.06), bot=GY-o*(GY-58);
+  // panel
+  const gr=g.createLinearGradient(x,0,x+w,0);gr.addColorStop(0,'#7a818b');gr.addColorStop(.3,'#565c66');gr.addColorStop(1,'#2c3036');
+  g.fillStyle=gr;g.fillRect(x,-10,w,bot+10);
+  g.strokeStyle=OL;g.lineWidth=1.2;g.strokeRect(x,-10,w,bot+10);
+  g.fillStyle='#8d939b';for(let y=bot-14;y>0;y-=30){g.beginPath();g.arc(x+w/2,y,1.6,0,TAU);g.fill();}
+  g.save();g.beginPath();g.rect(x,bot-22,w,22);g.clip();
+  for(let i=0;i<5;i++){g.fillStyle=i%2?'#d6a54e':'#22150a';g.fillRect(x,bot-22+i*5,w,5);}g.restore();
+  // ceiling housing
+  g.fillStyle='#2a2e35';g.fillRect(x-12,0,w+24,52);g.strokeStyle=OL;g.strokeRect(x-12,0,w+24,52);
+  const on=st.cable>=1;g.beginPath();g.arc(x+w/2,42,4,0,TAU);g.fillStyle=on?'#7dffb0':'#ff5a4a';g.fill();
+}
+function drawExitBack(g){
+  const ex=room.exit;if(!ex)return;
+  const x=ex.x;
+  // corridor beyond the bulkhead
+  const cg=g.createLinearGradient(x,0,x+260,0);cg.addColorStop(0,'#0c0e12');cg.addColorStop(1,'#020203');
+  g.fillStyle=cg;g.fillRect(x+40,0,room.w-x,H);
+  g.fillStyle='#0c0e12';g.fillRect(x,GY-150,40,150);
+}
+function drawExitFront(g,t){
+  const ex=room.exit;if(!ex)return;
+  const x=ex.x,o=clamp(st.door.v,0,1.06), ready=!room.part||st.got;
+  // bulkhead above the doorway + the deck below it
+  const gr=g.createLinearGradient(x,0,x+40,0);gr.addColorStop(0,'#6d747d');gr.addColorStop(.3,'#4b5058');gr.addColorStop(1,'#2a2e34');
+  g.fillStyle=gr;g.fillRect(x,0,40,GY-150);g.fillRect(x,GY+2,40,H-GY);
+  g.strokeStyle='rgba(255,255,255,.3)';g.beginPath();g.moveTo(x+.5,0);g.lineTo(x+.5,GY-150);g.stroke();
+  for(let i=0;i<4;i++){g.fillStyle=i%2?'#d6a54e':'#22150a';g.fillRect(x,GY-160+i*3,40,3);}
+  // hatch: slides up into the lintel
+  const top=GY-150,bot=GY-o*150;
+  if(bot>top+1){
+    g.fillStyle='#3e434b';g.fillRect(x+10,top,20,bot-top);g.strokeStyle=OL;g.lineWidth=1;g.strokeRect(x+10,top,20,bot-top);
+    g.fillStyle='#8d939b';for(let y=bot-12;y>top;y-=24){g.beginPath();g.arc(x+20,y,1.5,0,TAU);g.fill();}
+  }
+  // status ring above the door
+  g.beginPath();g.arc(x+20,GY-176,7,0,TAU);g.fillStyle=ready?'#7dffb0':'#ff5a4a';g.fill();g.strokeStyle=OL;g.lineWidth=1.4;g.stroke();
+  g.save();g.globalCompositeOperation='lighter';softEllipse(g,x+20,GY-176,26,26,.3+.1*Math.sin(t*3),ready?'110,255,170':'255,90,70');g.restore();
+}
+function drawCrateW(g){
+  const cr=st.crate;
+  g.save();
+  if(cr.rot){const px=cr.x+cr.w/2,py=GY+cr.cy;g.translate(px,py);g.rotate(cr.rot);g.translate(-px,-py);}
+  g.translate(0,cr.cy);drawCrate(g,cr);g.restore();
+  // seated flush: its lid is now a patch of deck you can walk on
+  if(cr.st==='set'&&cr.h-2-cr.cy<=4){
+    const top=GY+cr.cy-cr.h+2, gr=g.createLinearGradient(0,top-24,0,top);gr.addColorStop(0,'#5e3c1c');gr.addColorStop(1,'#9a6a35');
+    g.fillStyle=gr;g.fillRect(cr.x,top-24,cr.w,24);
+    g.strokeStyle='rgba(30,15,5,.5)';g.lineWidth=1;
+    for(let i=1;i<4;i++){g.beginPath();g.moveTo(cr.x,top-24+i*6);g.lineTo(cr.x+cr.w,top-24+i*6);g.stroke();}
+    g.strokeStyle=OL;g.strokeRect(cr.x,top-24,cr.w,24);
+  }
+}
+function drawPart(g,t){
+  const pt=room.part;if(!pt||st.got)return;
+  const rock=Math.sin(t*2.2)*.18, x=pt.x+rock*6, y=GY-15;
+  g.save();g.translate(x,y);g.rotate(rock);g.scale(1,-1);disc(g,0,0,15,NEAR,t*.3,false);g.restore();
+  if((t*.7)%1<.08){g.save();g.globalCompositeOperation='lighter';softEllipse(g,x-6,y-8,10,10,.6,'255,240,200');g.restore();}
+}
+function partShadow(g,t){
+  const pt=room.part;if(!pt||st.got)return;
+  g.beginPath();g.arc(pt.x,GY-15,15,0,TAU);g.fill();
+}
+function vignette(g){
+  const gr=g.createRadialGradient(W/2,H*.55,H*.38,W/2,H*.55,W*.7);gr.addColorStop(0,'rgba(0,0,0,0)');gr.addColorStop(1,'rgba(0,0,0,.5)');
+  g.fillStyle=gr;g.fillRect(0,0,W,H);
+}
+function drawCaptions(g,dt){
+  for(let i=caps.length-1;i>=0;i--){if((caps[i].t+=dt)>caps[i].max)caps.splice(i,1);}
+  const c=caps[0];if(!c)return;
+  const a=Math.min(1,c.t/.45,(c.max-c.t)/.9);
+  g.font='400 15px Inter,sans-serif';const tw=g.measureText(c.text).width;
+  g.fillStyle=`rgba(18,20,26,${.72*a})`;g.fillRect(W/2-tw/2-16,H-62,tw+32,30);
+  g.fillStyle=`rgba(239,230,210,${a})`;g.fillText(c.text,W/2-tw/2,H-42);
+}
+function drawCard(g){
+  if(mode!=='card')return;
+  const a=Math.min(1,modeT/.5);
+  g.fillStyle='#0b0d11';g.fillRect(0,0,W,H);
+  g.globalAlpha=a;g.textAlign='center';
+  g.font='600 13px Oswald,sans-serif';g.fillStyle='#d6a54e';g.fillText(`ROOM ${roomI+1}  ·  ${room.name.toUpperCase()}`,W/2,H/2-26);
+  g.font='600 34px Oswald,sans-serif';g.fillStyle='#efe6d2';g.fillText(`${installed.size} PART${installed.size===1?'':'S'} BACK WHERE ${installed.size===1?'IT BELONGS':'THEY BELONG'}`,W/2,H/2+10);
+  g.font='400 14px Inter,sans-serif';g.fillStyle='rgba(239,230,210,.6)';g.fillText('The rest of the shuttle is still dark.',W/2,H/2+40);
+  g.textAlign='left';g.globalAlpha=1;
+}
+
+/* =====================================================================
+   LOOP
+   ===================================================================== */
+function resize(){
+  const vw=innerWidth,vh=innerHeight,w=Math.min(vw,vh*W/H),dpr=Math.min(2,devicePixelRatio||1);
+  cv.style.width=w+'px';cv.style.height=(w*H/W)+'px';
+  cv.width=Math.round(w*dpr);cv.height=Math.round(w*H/W*dpr);S=cv.width/W;
+  for(const c of [catC,silC]){c.width=cv.width;c.height=cv.height;}
+}
+addEventListener('resize',resize);
+
+let last=performance.now(), acc=0, T=0;
+const SUB=1/240;
+function frame(now){
+  const dt=Math.min(.05,(now-last)/1000);last=now;
+  tick(dt);render(dt);
+  requestAnimationFrame(frame);
+}
+function tick(dt){
+  T+=dt;
+  const c=freshCtrl();
+  control(dt,c);
+  BL=blockers();
+  acc+=dt;let n=0;while(acc>=SUB&&n<40){rig.update(SUB,c);constrain();acc-=SUB;n++;}
+  updCrate(dt);updGates(dt);
+  handleRigEvents();updParts(dt);
+  camX=damp(camX,camTarget(),4,dt);
+  if(fadeDir){fade+=fadeDir*dt*2.4;if(fade>=1&&fadeDir>0){fade=1;fadeDir=-1;const cb=fadeCb;fadeCb=null;cb&&cb();camX=camTarget();}if(fade<=0&&fadeDir<0){fade=0;fadeDir=0;}}
+}
+
+function render(dt){
+  const cw=cv.width,ch=cv.height;
+  const sx=(Math.random()-.5)*shake,sy=(Math.random()-.5)*shake;
+  ctx.setTransform(S,0,0,S,sx*S,sy*S);
+  ctx.save();ctx.translate(-camX,0);
+  drawRoom(ctx,T);
+  drawScratches(ctx);
+  ctx.restore();
+  // cat -> offscreen, then its silhouette for the projected shadow
+  cctx.setTransform(1,0,0,1,0,0);cctx.clearRect(0,0,cw,ch);cctx.setTransform(S,0,0,S,-camX*S,0);drawCat(cctx,rig);
+  sctx.setTransform(1,0,0,1,0,0);sctx.globalCompositeOperation='source-over';sctx.clearRect(0,0,cw,ch);
+  sctx.drawImage(catC,0,0);sctx.globalCompositeOperation='source-in';sctx.fillStyle='#0a0705';sctx.fillRect(0,0,cw,ch);sctx.globalCompositeOperation='source-over';
+  ctx.save();ctx.transform(1,0,-SK,SS,SK*GY,(1-SS)*GY);
+  if(FILTER)ctx.filter='blur(2px)';
+  ctx.save();ctx.translate(-camX,0);ctx.fillStyle='rgba(8,5,3,.33)';
+  const cr=st.crate;if(cr.cy<1)ctx.fillRect(cr.x,GY-cr.h+2,cr.w,cr.h);
+  ctx.fillStyle='rgba(8,5,3,.3)';partShadow(ctx,T);ctx.restore();
+  ctx.globalAlpha=.36;ctx.drawImage(silC,0,0,W,H);ctx.restore();
+  ctx.save();ctx.translate(-camX,0);
+  contactAO(ctx,rig);
+  drawCrateW(ctx);
+  drawPart(ctx,T);
+  ctx.restore();
+  ctx.save();ctx.setTransform(1,0,0,1,sx*S,sy*S);ctx.drawImage(catC,0,0);ctx.restore();
+  ctx.save();ctx.translate(-camX,0);
+  drawGlow(ctx,rig);
+  drawGateFront(ctx);
+  drawExitFront(ctx,T);
+  drawParts(ctx);
+  ctx.restore();
+  ctx.setTransform(S,0,0,S,0,0);
+  vignette(ctx);
+  drawCaptions(ctx,dt);
+  drawCard(ctx);
+  if(fade>0){ctx.fillStyle=`rgba(11,13,17,${fade})`;ctx.fillRect(0,0,W,H);}
+}
+
+/* =====================================================================
+   INPUT: movement only
+   ===================================================================== */
+addEventListener('keydown',e=>{
+  const k=e.key.toLowerCase();
+  if(k==='arrowleft'||k==='a'){keys.l=true;e.preventDefault();}
+  else if(k==='arrowright'||k==='d'){keys.r=true;e.preventDefault();}
+});
+addEventListener('keyup',e=>{const k=e.key.toLowerCase();if(k==='arrowleft'||k==='a')keys.l=false;else if(k==='arrowright'||k==='d')keys.r=false;});
+addEventListener('blur',()=>{keys.l=keys.r=false;});
+for(const [id,key] of [['padL','l'],['padR','r']]){
+  const b=document.getElementById(id);
+  b.addEventListener('pointerdown',e=>{keys[key]=true;b.classList.add('on');b.setPointerCapture(e.pointerId);e.preventDefault();});
+  for(const ev of ['pointerup','pointercancel','lostpointercapture'])b.addEventListener(ev,()=>{keys[key]=false;b.classList.remove('on');});
+}
+const touchy=()=>document.body.classList.add('touch');
+if(matchMedia('(pointer:coarse)').matches)touchy();
+addEventListener('pointerdown',e=>{if(e.pointerType==='touch')touchy();},{capture:true});
+addEventListener('contextmenu',e=>e.preventDefault());
+
+resize();loadRoom(0);caption('start');
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
