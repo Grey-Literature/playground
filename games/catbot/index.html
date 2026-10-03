@@ -19,6 +19,27 @@ body.hub .pad{display:none}
   border:1px solid rgba(214,165,78,.45);background:rgba(42,48,59,.35)}
 #stick.on{display:block}
 #stick i{position:absolute;left:50%;top:50%;width:46px;height:46px;border-radius:50%;background:rgba(214,165,78,.4);border:1px solid rgba(255,227,160,.6);transform:translate(-50%,-50%)}
+/* the cover page: a plain page in front of the opening (see "COVER" in the script) */
+body.cover .pad{display:none}
+#cover{position:fixed;inset:0;z-index:20;display:flex;background:#0b0d11;color:#efe6d2;padding:28px 20px;box-sizing:border-box;overflow-y:auto;touch-action:pan-y;-webkit-user-select:text;user-select:text}
+#cover[hidden]{display:none}
+#cover .in{max-width:520px;width:100%;margin:auto;text-align:center}
+#cover h1{font:600 46px/1 Oswald,sans-serif;letter-spacing:.2em;padding-left:.2em;margin:0 0 8px;color:#d6a54e}
+#cover .tag{font:400 15px Inter,sans-serif;color:rgba(239,230,210,.65);margin:0 0 26px}
+#cover p{font:400 15px/1.65 Inter,sans-serif;color:rgba(239,230,210,.85);margin:0 0 14px}
+#cover .how{font:400 13px/1.65 Inter,sans-serif;color:rgba(239,230,210,.6);margin:26px 0 0}
+#cover .how b{font-weight:600;color:rgba(239,230,210,.85)}
+#play{font:600 18px Oswald,sans-serif;letter-spacing:.24em;padding:14px 44px 14px 50px;color:#12151b;background:#d6a54e;border:0;border-radius:6px;cursor:pointer}
+#play:hover,#play:focus-visible{background:#ffe3a0;outline:none}
+#snd{font:600 12px Oswald,sans-serif;letter-spacing:.14em;margin-top:16px;padding:6px 12px;color:#d6a54e;background:none;border:1px solid rgba(214,165,78,.4);border-radius:4px;cursor:pointer}
+#snd:hover,#snd:focus-visible{border-color:#ffe3a0;color:#ffe3a0;outline:none}
+#cover .fine{font:400 12px/1.6 Inter,sans-serif;color:rgba(239,230,210,.45);margin:10px 0 0}
+#cover .jam{margin-top:22px;font-size:11px;color:rgba(239,230,210,.35)}
+#cover p+button{margin-top:10px}
+@media (max-height:480px){   /* a short embed (the game's own frame is 720x405): keep PLAY on screen without scrolling */
+  #cover{padding:14px 20px}#cover h1{font-size:34px;margin-bottom:4px}#cover .tag{margin-bottom:12px;font-size:13px}
+  #cover p{font-size:13px;line-height:1.5;margin-bottom:8px}#play{padding:10px 40px 10px 46px;font-size:16px}#snd{margin-top:10px}
+}
 #padL{left:max(18px,env(safe-area-inset-left))}
 #padR{right:max(18px,env(safe-area-inset-right))}
 </style>
@@ -26,6 +47,19 @@ body.hub .pad{display:none}
 <body>
 <div id="wrap"><canvas id="stage" aria-label="Catbot: walk left and right"></canvas></div>
 <div id="stick"><i></i></div>
+<div id="cover">
+  <div class="in">
+    <h1>CATBOT</h1>
+    <div class="tag">a clockwork repair cat · a wrecked shuttle</div>
+    <p>A shuttle has crashed on a dead world, and something small survived it: a brass-and-copper clockwork cat that has no idea it is a repair unit. Wind it up, wander the wreck, and find out what is broken.</p>
+    <p>Ship parts look like toys to a cat, so the ship gets put back together one plaything at a time.</p>
+    <button id="play" type="button">PLAY</button>
+    <div><button id="snd" type="button"></button></div>
+    <div class="fine" id="sndHint"></div>
+    <div class="how">Walking is the only verb. <b>◀ ▶</b> or <b>A D</b> to walk (<b>▲ ▼</b> or <b>W S</b> too, on the deck plan). On a phone, hold the on-screen arrows. Everything else is somewhere to stand. You can also start by walking instead of pressing PLAY.</div>
+    <div class="fine jam">Made for Jamference: AI Game Jam Hack 1 · built with Claude (Opus 5.5 and Sonnet 5.5) in Claude Code</div>
+  </div>
+</div>
 <div class="pad" id="padL" role="button" aria-label="walk left">◀</div>
 <div class="pad" id="padR" role="button" aria-label="walk right">▶</div>
 <script src="catbot.js"></script>
@@ -210,7 +244,7 @@ function push(dt,c,dir){
     if(ext>12&&both&&P.cd<=0){rig.forceStep(P.nx?'HF':'HN',.2);P.nx^=1;P.cd=.26;P.str*=.6;}
     else if(both)P.str=Math.min(1,P.str+dt*1.15);
     P.F=force();
-    if(P.F>muS){cr.v=6;FX.dust(cr.x+4,GY,5,.7,-1);FX.dust(cr.x+cr.w-4,GY,5,.7,1);shake=Math.max(shake,2.2);}
+    if(P.F>muS){cr.v=6;FX.dust(cr.x+4,GY,5,.7,-1);FX.dust(cr.x+cr.w-4,GY,5,.7,1);shake=Math.max(shake,2.2);sfx('unstick',{x:cr.x+cr.w/2});}   // static friction breaks: the strain loop gives way to the scrape
     if(P.str>.75&&Math.random()<dt*5){const kp=rig.toWorld(rig.keyP);FX.steam(kp.x,kp.y-4,1,.8);}
   }else if(!stuck){
     P.F=force();
@@ -415,7 +449,10 @@ function control(dt,c){
   const dir=latch?0:dirInput();
   modeT+=dt;
   if(inHub()){HUB.ctrl(dir,latch?0:dirY());return;}   // the deck plan reads its own input
-  if(mode==='intro'){
+  if(mode==='cover'){
+    slump(c,T);
+    if(!latch&&anyInput())beginOpening();      // the first step starts the opening, same as PLAY (and is the gesture that lets audio start)
+  }else if(mode==='intro'){
     slump(c,T);OPEN.ctrl(c,modeT);
     if(dir){AUDIO.unlock();fadeTo(()=>OPEN.finish(false));}     // any step skips the opening (and is the first gesture: audio starts here)
   }else if(mode==='asleep'){
@@ -459,9 +496,10 @@ const settings=(()=>{const d={sound:true,calm:false,kit:false};try{return Object
 function saveSettings(){try{localStorage.setItem('catbot.settings',JSON.stringify(settings));}catch(e){}}
 const calmK=()=>settings.calm?.2:1;           // screen shake + flashes multiplier
 /* sound (audio.js) is optional: if the file failed to load, every call below becomes a no-op and the game runs as it always did */
-if(typeof AUDIO==='undefined'){window.AUDIO={sfx(){},start(){},stop(){},enable(){},unlock(){},frame(){},music:{setLayers(){}}};window.sfx=()=>{};}
+if(typeof AUDIO==='undefined'){window.AUDIO={sfx(){},start(){},stop(){},enable(){},unlock(){},frame(){},muffle(){},duck(){},stopAll(){},active(){return false;},music:{setLayers(){}}};window.sfx=()=>{};}
 AUDIO.enable(settings.sound);                 // sound follows the trolley's SOUND / MUTE floor button
-AUDIO.view=()=>({x:camX,w:W});                // lets sfx({x}) pan against the room camera
+// lets sfx({x}) pan against whatever camera is showing: the deck plan's own (HUB.cam, centre + zoom), else the room's (zoom is 1 outside the opening's close-up)
+AUDIO.view=()=>inHub()?({x:HUB.cam.x-W/(2*HUB.cam.z),w:W/HUB.cam.z}):({x:camX,w:W/zoom});
 {const f=FX.flash;FX.flash=(x,y,p,rgb)=>f(x,y,p*(settings.calm?.35:1),rgb);}
 const PADS=[{id:'kit',dx:-72},{id:'sound',dx:0},{id:'calm',dx:72}], CART_HALF=100;
 const run={t:0,rewinds:0};
@@ -652,8 +690,10 @@ function audioFrame(dt){
   // ice: hiss scaled by how slippery the floor is and how fast catbot is going
   const ice=inRoom?(room.floorSlip||0)*Math.min(1,Math.abs(rig.vx)/165):0;
   if(ice>.02&&!rig.air&&(mode==='play'||mode==='exit'))AUDIO.start('ice',{amt:ice});else AUDIO.stop('ice');
-  // ambient clockwork: its rate follows rig energy. Silent in the opening (no cat on screen yet) and muted on the card.
-  if(mode!=='intro'&&mode!=='card')AUDIO.start('tick',{energy:rig.E});else AUDIO.stop('tick');
+  // ambient clockwork: its rate follows rig energy. Silent on the cover and muted on the card. In the opening it belongs to the cue sheet:
+  // it begins with the click at 35.6 and stops when the key stops, then this takes over again.
+  const quiet=mode==='cover'||mode==='card'||(mode==='intro'&&!OPEN.ticking());
+  if(!quiet)AUDIO.start('tick',{energy:rig.E});else AUDIO.stop('tick');
   AUDIO.frame(dt);
 }
 
@@ -935,7 +975,7 @@ addEventListener('resize',resize);
 let last=performance.now(), acc=0, T=0;
 const SUB=1/240;
 function frame(now){
-  const dt=Math.min(.05,(now-last)/1000);last=now;
+  const dt=Math.max(0,Math.min(.05,(now-last)/1000));last=now;   // never negative: a page's first frame can be stamped before `last` was read, and a negative dt at rest NaNs the hub token (0 x -Infinity)
   tick(dt);render(dt);
   requestAnimationFrame(frame);
 }
@@ -945,7 +985,8 @@ function tick(dt){
   const c=freshCtrl();
   const din=dirInput();
   control(dt,c);pulse=0;pulseY=0;
-  if(!['intro','asleep','wake','card'].includes(mode))run.t+=dt;
+  if(!['cover','intro','asleep','wake','card'].includes(mode))run.t+=dt;
+  syncCover();
   if(inHub())HUB.update(dt);                 // the deck plan: the room's rig and props stay frozen behind it
   else{
     if(st.cart)updCart(dt,din);
@@ -963,6 +1004,7 @@ function tick(dt){
 function view(g){g.scale(zoom,zoom);g.translate(-camX,-camY);}
 function render(dt){
   const cw=cv.width,ch=cv.height;
+  if(mode==='cover'){ctx.setTransform(S,0,0,S,0,0);ctx.fillStyle='#0b0d11';ctx.fillRect(0,0,W,H);return;}   // the cover page (DOM) is in front; nothing to draw behind it
   if(mode==='intro'&&OPEN.cine(modeT)){OPEN.render(ctx,modeT);if(fade>0){ctx.fillStyle=`rgba(11,13,17,${fade})`;ctx.fillRect(0,0,W,H);}return;}
   if(inHub()){
     HUB.render(ctx,dt);
@@ -1061,6 +1103,38 @@ const touchy=()=>document.body.classList.add('touch');
 if(matchMedia('(pointer:coarse)').matches)touchy();
 addEventListener('pointerdown',e=>{if(e.pointerType==='touch')touchy();},{capture:true});
 addEventListener('contextmenu',e=>e.preventDefault());
+
+/* =====================================================================
+   COVER: a plain page in front of the opening, with a summary of the game.
+   PLAY (or the first step with the keys) starts the opening. That gesture is
+   also what lets the browser start audio, so the opening can have sound.
+   The Sound toggle is for muted browsers and devices: a page cannot see a
+   muted tab or a muted system volume, so the player says so, and the sounds
+   are captioned instead. It is the same flag as the trolley's SOUND button.
+   Visibility follows mode (every route out of 'cover', dev hashes included,
+   hides it).
+   ===================================================================== */
+const coverEl=document.getElementById('cover'), sndBtn=document.getElementById('snd'), sndHint=document.getElementById('sndHint'), playBtn=document.getElementById('play');
+let coverOn=true;
+document.body.classList.add('cover');
+function syncCover(){
+  const on=mode==='cover';
+  if(on===coverOn)return;
+  coverOn=on;coverEl.hidden=!on;document.body.classList.toggle('cover',on);
+}
+function showSnd(){
+  sndBtn.textContent=settings.sound?'SOUND ON':'SOUND OFF';
+  sndHint.textContent=settings.sound?'Muted browser or device? Switch sound off here and the sounds are captioned instead.'
+    :'Sounds are captioned instead. The trolley in the first room has a SOUND button to turn it back on.';
+}
+function beginOpening(){
+  if(mode!=='cover')return;
+  AUDIO.unlock();latch=true;OPEN.begin();      // latch: the key that started it must not also skip it
+}
+playBtn.addEventListener('click',beginOpening);
+sndBtn.addEventListener('click',()=>{settings.sound=!settings.sound;AUDIO.enable(settings.sound);saveSettings();showSnd();});
+showSnd();
+try{playBtn.focus({preventScroll:true});}catch(e){}
 
 resize();loadRoom(0);sleep();
 requestAnimationFrame(frame);

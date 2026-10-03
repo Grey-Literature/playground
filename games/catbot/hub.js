@@ -15,6 +15,7 @@ const DW=36;                                // door gap width
 const BUS_T=126, BUS_B=280;                 // conduit bus rows along the atrium's edges
 const POCKET=26, MAT=34, SILL=12;           // doorway recess depth; floor mat in front of a door; how far in counts as "through"
 const TR=8.5, MAXV=130, ACC=460;            // token radius, top speed, acceleration (px, px/s, px/s²)
+const SENSE=10;                             // a locked hatch answers a token this many px short of touching it (touchHatch)
 const MODES=['hub','hubin','hubgo'];
 
 /* ---------------------------------------------------------------------
@@ -42,7 +43,7 @@ const DECK={
 for(const s of DECK.slots){s.part=s.part||s.id;s.room=s.room||s.id;}
 GAME.totalParts=DECK.slots.length;           // the goal is one socket per compartment; the toolbox in the rooms reads the same number
 const rt={};                                 // runtime state per slot id
-for(const s of DECK.slots)rt[s.id]={lit:0,door:0,flash:0,blink:0,charge:0,rv:false,show:0,near:0,bumpT:0,pow:0};
+for(const s of DECK.slots)rt[s.id]={lit:0,door:0,flash:0,blink:0,charge:0,rv:false,show:0,near:0,bumpT:0,touch:9,pow:0};   // touch: seconds since the token last touched this hatch
 
 /* ---------- state ---------- */
 let t=0, shown=new Set();                    // shown: parts the plan has already lit
@@ -181,11 +182,22 @@ function pushRect(k,R,slot){
   }else{nx=dx/d;ny=dy/d;pen=TR-d;}
   k.x+=nx*pen;k.y+=ny*pen;
   const vn=k.vx*nx+k.vy*ny;
+  if(slot)rt[slot.id].touch=0;                // touching it counts as touched (see touchHatch)
   if(vn<0){
     const bounce=slot?1.35:1;                 // a hatch bounces you a little; a wall just slides you
     k.vx-=nx*vn*bounce;k.vy-=ny*vn*bounce;
     if(slot&&-vn>22)bump(slot,k.x-nx*TR,k.y-ny*TR,nx,ny);
   }
+}
+/* A locked hatch also answers a token that merely passes close to it. Hugging the wall past a door barely touches
+   the frame (it stands 3 px proud of the wall), and a hard corner hit flings the cat ~8 px off the wall, so the next
+   door could be passed in silence. Within SENSE px of the frame it counts as touched: a fresh touch (none for 0.3 s)
+   bumps it, so sliding on to the next door says no again, but standing or pressing there says it once, not repeatedly. */
+function touchHatch(s,k){
+  const R=hatchRect(s),cx=clamp(k.x,R.x,R.x+R.w),cy=clamp(k.y,R.y,R.y+R.h),dx=k.x-cx,dy=k.y-cy,d=Math.hypot(dx,dy);
+  if(d>=TR+SENSE)return;
+  const o=rt[s.id],fresh=o.touch>.3;o.touch=0;
+  if(fresh)bump(s,cx,cy,d>1e-4?dx/d:0,d>1e-4?dy/d:1);
 }
 function pushCircle(k,cx,cy,r){
   const dx=k.x-cx,dy=k.y-cy,d=Math.hypot(dx,dy),m=r+TR;if(d>=m)return;
@@ -198,11 +210,13 @@ function solve(k){
     for(const s of DECK.slots)if(sealed(s))pushRect(k,hatchRect(s),s);
     for(const [x,y] of DECK.pillars)pushCircle(k,x,y,7);
   }
+  for(const s of DECK.slots)if(sealed(s))touchHatch(s,k);
 }
 /* a sealed hatch refuses you: lamp blink, sparks, a wobble. The first time, it says why. */
 function bump(s,x,y,nx,ny){
   const o=rt[s.id];if(o.bumpT>0)return;
   o.bumpT=.7;o.blink=1;sparks(x,y,6,nx,ny);tok.wob.vel+=8;tok.earL.vel-=6;tok.earR.vel-=6;
+  sfx('nuh',{x});                                                  // "nu-uh": once per bump (bumpT above is the debounce), panned to the door
   const why=gated(s)?'gated':s.req?'ckunbuilt':'sealed';
   if(!seenCaps.has('hub-'+why)){
     seenCaps.add('hub-'+why);
@@ -721,7 +735,7 @@ function update(dt){
     const o=rt[s.id],tg=shown.has(s.part)?1:0,dp=doorPos(s);
     o.lit+=clamp(tg-o.lit,-dt*1.2,dt*1.2);
     o.pow=damp(o.pow,s===CK&&ckOn?1:0,2.5,dt);
-    o.flash=Math.max(0,o.flash-dt*1.6);o.blink=Math.max(0,o.blink-dt*2);o.bumpT=Math.max(0,o.bumpT-dt);
+    o.flash=Math.max(0,o.flash-dt*1.6);o.blink=Math.max(0,o.blink-dt*2);o.bumpT=Math.max(0,o.bumpT-dt);o.touch+=dt;
     // the door: ajar at rest, open as catbot comes near, shut and red when sealed
     o.near=k?Math.hypot(k.x-dp.x,k.y-dp.y):999;
     o.door=damp(o.door,sealed(s)?0:o.near<72?1:.6,6,dt);

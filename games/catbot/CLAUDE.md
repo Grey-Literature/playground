@@ -31,7 +31,7 @@ this folder is where the character is settled first.
 | `catbot-storyboard.webp` | Concept storyboard (idle, ear scan, stretch, pivot, pounce, land) |
 | `catbot-sprite` | Sprite-sheet concept (PNG, no extension) |
 | `index.html` | **The game.** Room 1 + intro. Room data, world, control modes, render |
-| `opening.js` | Opening cinematic (premise): space → cabin → impact → the real hold, close in. Boots the game into it; delete the script tag and the game starts at the title |
+| `opening.js` | Opening cinematic (premise): space → cabin → impact → the real hold, close in, with its sound cue sheet and a muted-caption fallback. Boots the game on the **cover page** (`mode='cover'`, in `index.html`); PLAY or the first step calls `OPEN.begin()`. Delete the script tag and the game starts at the title |
 | `audio.js` | Sound layer: Web Audio, all synthesized, placeholder sounds. Loaded after `catbot.js`, before the game script; see **Audio** below. Optional: if it fails to load the game runs silent |
 | `hub.js` | The deck plan: the top-down hub that doubles as the goal screen. Loaded after `opening.js`; see **The hub** below. Dev entry: `index.html#hub&parts=hip,engine` (skips the opening, lands in the hub with those parts shown) |
 | `catbot.js` | Shared rig: `Catbot` physics, drawing, shadows, particles, crate/lamp props |
@@ -73,10 +73,13 @@ this folder is where the character is settled first.
   pounce/fly-home/click restores both. Installed parts
   survive a rewind.
 - Control layering kept from the rig: mode → `ctrl` → `Catbot.update`.
-  Modes: intro → asleep → wake → play ⇄ (pounce | oops | chase) → exit → card
+  Modes: cover → intro → asleep → wake → play ⇄ (pounce | oops | chase) → exit → card
   → hub (the card is the beat between the hold and the deck plan; it no longer
-  loops back to asleep). Any movement skips
-  the intro; the input latch stops that same keypress also waking it.
+  loops back to asleep). The cover is a plain DOM page (summary, PLAY, a Sound
+  toggle) in front of the opening: PLAY or the first step starts it, and that
+  gesture is also what lets the browser start audio. Once the opening is running,
+  any movement skips it; the input latch stops that same keypress also waking
+  it (and the key that started it from skipping it).
 - The opening's last shot is the game itself (`zoom`/`camY` on the room
   camera, darkness overlay), so the cut to the aft hold is a camera move,
   not a scene swap. `room.wreck` is the crash debris it shows; set dressing only.
@@ -111,7 +114,12 @@ this folder is where the character is settled first.
   plot table carries the REPAIR ring. `GAME.totalParts = DECK.slots.length`.
 - **A slot is sealed unless a `ROOMS[]` entry has its id** (cockpit is also
   gated on every other socket). Add the room and the door opens, with no hub
-  change. Sealed doors bump the token, flare their lamp and say why once.
+  change. Sealed doors bump the token, flare their lamp, play a "nu-uh" (`nuh`)
+  and say why once. A hard hit bumps (`-vn>22` in `pushRect`), and so does any
+  *fresh touch* within `SENSE` (10 px) of the frame (`touchHatch`, no contact
+  for 0.3 s): a hard corner hit flings the cat ~8 px off the wall, so without the
+  sensor a glide along the wall passed the next door in silence. Holding into
+  one door says it once; sliding on to the next says it again.
 - **Token:** brass puck, ears on springs, lagging tail, stride-locked wobble,
   sits into a loaf after 1.2 s. 8-way: arrows / WASD / touch thumb-stick
   (a floating stick that only sets `keys.l/r/u/d`; the room pads are hidden
@@ -149,7 +157,16 @@ header; no easter eggs in it.
 - **To add a sound:** write one entry in `SOUNDS` (name, `ref` = the raw mag
   that counts as full level, `gap` = rate limit in ms, a few `tone()`/`burst()`
   calls), then call `sfx('name',{x})` where it happens. Every number to retune
-  is in that table.
+  is in that table. `end` (a fraction of `vol`) on a tone or burst lifts the
+  floor of its decay so a thud can keep ringing; the default fades ~80 dB.
+- **Weight needs mid, not just sub.** A thud that lives under ~150 Hz vanishes
+  on laptop and phone speakers. The crate seating was measured at 8% of its
+  energy above 150 Hz and a peak of 0.13 (it read as a faint clang); rebuilt
+  with a 150-400 Hz body, a long ring and a smaller settle it is 46% and 0.42.
+  The limiter caps every loud sound near the same peak, so heaviness comes from
+  spectrum and duration, not input level. `land`, `thud`, `headthud` and `boom`
+  are still sub-heavy (under 10% above 150 Hz) and could get the same treatment.
+  Measure with an `OfflineAudioContext` + `AUDIO.attach(ctx,true)`.
 - **Chain:** voices -> sfx/ambient bus -> master (0.35, 0 when muted) ->
   DynamicsCompressor (soft limiter) -> out. Peak measured under a 480-voice
   barrage: 0.78. Per-name rate limit plus a 28-voice cap keep bursts (trot,
@@ -164,18 +181,46 @@ header; no easter eggs in it.
   rig's frozen energy. Nothing drains energy yet, so the slow-down only shows
   on the way into `asleep` (about a second, the rig's own damping) and as the
   speed-up on wake.
+- **The opening has a cue sheet** (`sound()` in `opening.js`, hung off its own
+  `at(...)` marks and state so sound can't drift from picture). Shot 1 is heard
+  through the hull (a low-pass, since space is silent); the cabin is clear
+  (alarm on each beacon pulse, hull creaks at the ends of the roll, lockers,
+  then clatter driven by the real floor bounces, per object kind; the yarn
+  rolls in silence on purpose, a rustle sounded like the box and would not be
+  heard over the alarm anyway); the push-in on the yarn is a focus pull (muffle); the fall is wind; the impact is boom, crunch,
+  debris, then the world goes dull and rings; 29-31 s is the dying tube; 31.0
+  is true silence (`duck(0)`, replacing the old "Silence." caption) with one
+  distant tink; the click at 35.6 is the first tick of the ambient clock, which
+  keeps going until the key stops at 48.55 (a held-breath gap, then the game's
+  own tick resumes); the key turn is six climbing ratchet clicks. Scene-level
+  controls for this: `AUDIO.muffle(hz,secs)`, `AUDIO.duck(level,secs)`,
+  `AUDIO.stopAll(secs)` (used when the opening is skipped), `AUDIO.active()`.
+- **Captions when sound can't be heard.** The cut opening captions live in
+  `LINES` (`opening.js`) with a kind: `fb` = story line, shown only when sound
+  isn't audible; `snd` = stands in for a sound, shown only then, small, italic
+  and [bracketed]. "Audible" is `AUDIO.active()`: not muted in-game, context
+  running, not failed. A page cannot see a muted tab or a muted system volume,
+  so for those the cover's Sound toggle (same `settings.sound` flag as the
+  trolley button) is the player's way to say so.
 - **Dev aids:** `AUDIO.trace` (what was asked for: `{name,mag,pan,ok}`, loops
-  as `+name`/`-name`), `AUDIO.peak()`, `AUDIO.debug()`, `AUDIO.limits(false)`
+  as `+name`/`-name`, scene calls as `~muffle`/`~duck`/`~stopAll`),
+  `AUDIO.peak()`, `AUDIO.spectrum()`, `AUDIO.debug()`, `AUDIO.limits(false)`
   (rate limit and voice cap off, for barrage tests).
 - **What the event system doesn't expose** (sound works around it, it doesn't
   fake it): `step` only fires at trot speed or with `stepDust`, so the rig now
   also emits `foot` on every plant and footsteps use that; nothing says what
   material is under a foot (ice is read from `room.floorSlip`); the bad leg's
   four ratchet jerks happen inside `update()` with no event; the crate's
-  break-free has no event (the strain loop just changes); the plate has no
-  event of its own (it clicks 80 ms after the crate seats). The hub is silent
-  except for the ambient tick: its bump / socket-light / cockpit-unlock /
-  door-in moments are the obvious next `sfx()` sites.
+  break-free has no rig event, but the push code has the exact line
+  (`P.F>muS`), which calls `sfx('unstick')`; the plate has no event of its own
+  (it clicks 80 ms after the crate seats). The strain loop is noise, not a
+  tone: grit through a band-pass, roughened and chattered by two looping
+  envelopes (stick-slip), plus rumble, a faint servo groan and a squeal near
+  the limit. Filter brightness and level rise with `P.str`; crate speed adds
+  scrape. The hub is silent
+  except for the ambient tick and the locked-door `nuh` ("nu-uh", from
+  `bump()`, panned to the door against the hub's own camera): its socket-light /
+  cockpit-unlock / door-in moments are the obvious next `sfx()` sites.
 
 ## What the rig can't sell (yet)
 
