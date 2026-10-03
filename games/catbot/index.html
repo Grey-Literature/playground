@@ -79,10 +79,12 @@ function resetRoom(){
   st={
     crate:{x:R.crate.x,w:R.crate.w,h:R.crate.h,mass:R.crate.mass??1,v:0,cy:0,vy:0,rot:0,st:'floor',x0:0,ft:0},
     gate:new Spring(0,1.4,.38), door:new Spring(0,1.8,.5),
-    plate:0, cable:0, partT:0, got:installed.has(R.part?.id)
+    plate:0, cable:0, got:installed.has(R.part?.id), oops:null, pk:{}
   };
+  for(const k of [...flags])if(/^(perk|jump|test|puff)/.test(k))flags.delete(k);
   Object.assign(P,{on:false,str:0,F:0});
   rig.reset(R.start.x);if(R.start.face<0)rig.flip();
+  rig.hipGear=installed.has('hip')?1:0;
   idle=0;walkT=0;
 }
 function caption(on){
@@ -108,7 +110,10 @@ function updCrate(dt){
     }
     // once its centre is over the hole there is nothing holding it up
     const mid=cr.x+cr.w/2;
-    if(mid>pl.x+2&&mid<pl.x+pl.w-2){cr.st='fall';cr.vy=0;cr.x0=cr.x;cr.ft=0;cr.dir=mid<pl.x+pl.w/2?1:-1;cr.v=0;}
+    if(mid>pl.x+2&&mid<pl.x+pl.w-2){
+      cr.st='fall';cr.vy=0;cr.x0=cr.x;cr.ft=0;cr.dir=mid<pl.x+pl.w/2?1:-1;cr.v=0;
+      if(P.on){endPush();st.oops=0;rig.thv-=1.3;rig.hOx.vel+=70;rig.hOy.vel-=40;rig.vy-=60;rig.tailFlick(3);}
+    }
   }
   if(cr.st==='fall'){
     cr.ft+=dt;cr.vy+=G*dt;cr.cy+=cr.vy*dt;
@@ -205,16 +210,18 @@ function push(dt,c,dir){
 
 /* =====================================================================
    CONTROL: input -> ctrl, per mode
+   asleep -> wake -> play <-> (pounce | oops) -> exit -> card -> asleep
    ===================================================================== */
 function walk(dt,c,dir){
   const slip=room.floorSlip;
-  c.slip=slip;c.accel=260*(1-.8*slip);c.weight=CAT.weight;
+  c.slip=slip;c.accel=260*(1-.8*slip);c.weight=CAT.weight;c.limp=rig.hipGear<1?1:0;
   if(push(dt,c,dir))return;
   if(dir){
     idle=0;
     if(dir===walkDir&&Math.abs(rig.vx)>40)walkT+=dt;else if(dir!==walkDir)walkT=0;
     walkDir=dir;
-    const max=walkT>1.6?165:105;               // hold it and it breaks into a trot
+    // hold it and it breaks into a trot. not on a bad hip, though.
+    const max=c.limp?92:walkT>1.6?165:105;
     c.face=dir;c.vx=(dir===rig.facing&&rig.turnT<0)?dir*max:0;
     if(max>140){c.earL=c.earR=16;c.tailBase=172;c.tailCurve=-5;}
   }else{idle+=dt;walkT=0;walkDir=0;}
@@ -223,27 +230,132 @@ function walk(dt,c,dir){
     c.lookX=look;c.headYaw=.35+look*.22;c.wagAmp=7;c.wagFreq=.6;
   }
 }
+/* wound down: the end pose of the rig's wind-down study, held */
+function slump(c,t){
+  Object.assign(c,{energy:.05+.04*Math.sin(t*2),lid:.85,lidTilt:-.6,colF:1,colH:1,headDrop:34,headPitch:-.5,earL:58,earR:52,
+    tailStiff:.08,tailBase:205,tailCurve:4,tailTip:0,height:.84,bodyFreq:1.8,lookY:-.6,pupil:.7,wagAmp:0,earFlick:false,blink:false,keySpin:0,mouth:-.6,lift:.22,limp:1});
+  const f=rig.facing,sx=rig.x+f*(rig.shJ.x+38),hx=rig.x+f*(rig.hipJ.x+17);
+  c.manual.FN={x:sx,y:0,rate:10};c.manual.FF={x:sx-6*f,y:0,rate:9};
+  c.manual.HN={x:hx,y:0,rate:8};c.manual.HF={x:hx-5*f,y:0,rate:8};
+}
+function sleep(){
+  mode='asleep';modeT=0;
+  for(let t=0;t<2.6;t+=SUB){const c=freshCtrl();slump(c,t);rig.update(SUB,c);}   // pre-roll the collapse off-screen
+  rig.events.length=0;parts.length=0;scratches.length=0;shake=0;camX=camTarget();
+}
+/* first step: the rewind. Same beats as the rig study, re-timed from the keypress */
+function wake(dt,c,t){
+  const E=seg(t,.4,1.2), f=rig.facing;
+  Object.assign(c,{energy:t<1.2?E*(.4+Math.random()*.6):1,height:lerp(.84,1,E),headPitch:-(1-E)*.5,earL:(1-E)*58,earR:(1-E)*52,tailStiff:.08+.92*E,
+    tailBase:lerp(205,162,E),tailCurve:lerp(4,-9,E),tailTip:lerp(0,-16,E),lid:t<1.2?lerp(.85,.5,t/1.2):0,lidTilt:lerp(-.6,.35,E),
+    bodyFreq:lerp(1.8,3.2,E),pupil:t<1.2?.7:.25,lookY:-(1-E)*.6,wagAmp:3*E,earFlick:false,mouth:-(1-E)*.6,blink:false,limp:1});
+  c.keySpin=t<1.2?-24:2;
+  const cf=1-seg(t,1.8,2.2), ch=1-seg(t,1.4,1.8);
+  c.colF=cf;c.colH=ch;c.headDrop=lerp(15,34,cf)*(1-seg(t,1.2,1.6));
+  if(cf>.02&&t<1.95){const sx=rig.x+f*(rig.shJ.x+38);c.manual.FN={x:sx,y:0,rate:10};c.manual.FF={x:sx-6*f,y:0,rate:9};}
+  if(ch>.02&&t<1.6){const hx=rig.x+f*(rig.hipJ.x+17);c.manual.HN={x:hx,y:0,rate:8};c.manual.HF={x:hx-5*f,y:0,rate:8};}
+  if(t>1.2&&t<2.5){c.earL=-14;c.earR=-12;}
+  if(t<1.2&&(st.tick=(st.tick||0)+dt)>.075){st.tick=0;const k=rig.toWorld(rig.keyP);FX.sparks(k.x,k.y,1,f*(Math.random()<.5?1:-1),.5);}
+  if(once('relit',t>=1.2)){const p=rig.toWorld(rig.bp(60,-2));FX.flash(p.x,p.y,1.2);rig.earL.vel-=16;rig.earR.vel-=14;rig.tailFlick(4);}
+  if(once('clunk',t>=2.22)){rig.vy-=140;rig.hOy.vel-=60;for(const id of ['FN','HN']){const l=rig.leg(id);FX.dust(l.fx,GY,3,.5);}shake=Math.max(shake,2.2);}
+  if(t>2.6){mode='play';modeT=0;caption('start');}
+}
+const flags=new Set();
+function once(k,cond){if(cond&&!flags.has(k)){flags.add(k);return true;}return false;}
+
+/* the toy: freeze, wiggle, pounce, pin it. Then it wriggles free and goes home. */
+function pounceReady(){
+  const pt=room.part;if(!pt||st.got||rig.air||rig.turnT>=0)return false;
+  const d=pt.x-rig.x, f=Math.sign(d);
+  if(f!==rig.facing||Math.abs(d)>190||Math.abs(d)<40)return false;
+  return !BL.some(b=>f>0?(b.x0>rig.x&&b.x0<pt.x):(b.x1<rig.x&&b.x1>pt.x));
+}
+function pounce(dt,c,t){
+  const pt=room.part, f=rig.facing, k=st.pk;
+  c.limp=rig.hipGear<1?1:0;c.vx=0;c.accel=k.land?2500:900;c.earFlick=false;   // claws in on landing: it stops short
+  if(t<1.95&&!k.flying&&!k.home){
+    const hx=rig.toWorld({x:rig.hx,y:rig.hy}).x;
+    Object.assign(c,{earL:-16,earR:-14,pupil:1,lid:0,lidTilt:-.1,headTilt:.3,mouth:.3,lookX:clamp((pt.x-hx)*f/120,-1,1),lookY:-.4});
+  }
+  if(once('perk',t>.05)){rig.earL.vel-=12;rig.earR.vel-=12;}
+  if(t<.95){c.crouch=.5*seg(t,.1,.5);}
+  if(t>=.5&&t<.95){
+    Object.assign(c,{hipLift:7+Math.sin(t*24)*2.5,pitch:-.05,wagTip:18,tipFreq:4,gaitRate:0});
+    k.wg=(k.wg??0)-dt;if(k.wg<0){k.wg=.11;rig.forceStep(k.wf?'HF':'HN',.1);k.wf=!k.wf;}
+  }
+  if(once('jump',t>=.95)){const tx=pt.x-f*64;rig.jump(430,f*clamp(Math.abs(tx-rig.x)/.36,60,340));}
+  if(t>.95&&rig.air){c.tuck=.7;c.claws=1;c.tailBase=185;c.tailCurve=-4;}
+  if(t>1.0&&!rig.air&&!k.land){k.land=t;FX.dust(pt.x,GY,4,.6);}
+  if(k.land&&!k.flying&&!k.home){
+    const lt=t-k.land;
+    c.crouch=.22;c.happy=lt>.1?1:0;c.mouth=1.2;c.claws=lt<.3?1:0;c.tailBase=130;c.wagAmp=6;c.wagFreq=2.5;
+    c.manual.FN={x:pt.x-f*2,y:22,ang:.25,rate:30};
+    k.squash=Math.max(0,1-lt*4);
+    if(lt>.6){k.flying=t;k.fx=pt.x;k.fy=GY-15;}
+  }
+  if(k.flying&&!k.home){
+    // it goes back where it came from. catbot watches it go, over its shoulder.
+    const u=clamp((t-k.flying)/.8,0,1), e=easeIO(u), hip=rig.toWorld(rig.hipJ);
+    k.x=lerp(k.fx,hip.x,e);k.y=lerp(k.fy,hip.y,e)-Math.sin(Math.PI*u)*46;k.u=u;
+    Object.assign(c,{headYaw:-.75,lookX:-1,lookY:-.2,headFwd:-6,headTilt:-.08,earL:42,earR:58,pupil:.9,lid:0,crouch:.1,mouth:0});
+    if(Math.random()<dt*30)FX.sparks(k.x,k.y,1,-f,.25);
+    if(u>=1){
+      k.home=t;rig.hipGear=1;st.got=true;installed.add(pt.id);
+      const hp=rig.toWorld(rig.hipJ);FX.flash(hp.x,hp.y,1.1,'255,225,150');FX.sparks(hp.x,hp.y,10,-f,.7);FX.sparks(hp.x,hp.y,6,f,.5);
+      rig.vy-=90;rig.thv+=.9;rig.earL.vel-=18;rig.earR.vel-=16;rig.tailFlick(5);shake=Math.max(shake,2.6);
+    }
+  }
+  if(k.home){
+    const ht=t-k.home;
+    // startled -> test the leg -> pleased with itself
+    Object.assign(c,{headYaw:ht<.9?-.6:.35,lookX:ht<.9?-1:.4,lookY:0,pupil:ht<.5?.2:.5,lid:0,earL:-16,earR:-14,mouth:ht<.6?-.4:.6,headFwd:ht<.9?-4:0});
+    for(const [i,tt] of [[0,.55],[1,.8],[2,1.05]])if(once('test'+i,ht>=tt))rig.forceStep('HN',.14);
+    if(ht>1.3){Object.assign(c,{happy:1,tailBase:118,tailCurve:-4,tailTip:-12,wagAmp:6,wagFreq:3,keySpin:6});}
+    if(once('puff',ht>=1.35)){const kp=rig.toWorld(rig.keyP);FX.steam(kp.x,kp.y-4,5,.9);}
+    if(ht>2.1){mode='play';modeT=0;}
+  }
+}
+/* the crate fell out from under its paws. it meant to do that. */
+function oops(dt,c,dir,t){
+  if(t>.7&&dir){st.oops=null;return false;}
+  c.limp=rig.hipGear<1?1:0;c.vx=0;c.accel=500;
+  Object.assign(c,{lid:.5,lidTilt:.55,lookX:-.6,lookY:.1,headYaw:.15,earL:24,earR:18,mouth:-.15,earFlick:false,blink:false});
+  if(t>.95&&t<2.7){
+    // groom: paw up to the muzzle, three licks, eyes shut
+    const lt=t-.95, f=rig.facing;
+    Object.assign(c,{lid:.95,headPitch:-.28+Math.sin(lt*10)*.07,headDrop:4,headTilt:.12,mouth:.2,earL:6,earR:4});
+    c.manual.FN={x:rig.x+f*(rig.hx+3),y:rig.hy-19,ang:1.0,rate:9};c.pawFront=1;
+  }
+  if(t>2.9){st.oops=null;}
+  return true;
+}
 function control(dt,c){
   if(latch&&!dirInput())latch=false;
   const dir=latch?0:dirInput();
   modeT+=dt;
-  if(mode==='play'){
+  if(mode==='asleep'){
+    slump(c,T);
+    if(dir){mode='wake';modeT=0;latch=true;}
+  }else if(mode==='wake'){
+    wake(dt,c,modeT);
+  }else if(mode==='pounce'){
+    pounce(dt,c,modeT);
+  }else if(mode==='play'){
+    if(st.oops!=null&&oops(dt,c,dir,st.oops+=dt))return;
     walk(dt,c,dir);
+    if(pounceReady()){mode='pounce';modeT=0;st.pk={};endPush();return;}
     // reset tile: front paws on it, facing it
     const rs=room.reset;
     if(rs&&rig.facing<0&&rig.x-45<rs.x+rs.w-14){mode='rewind';modeT=0;fadeTo(()=>{resetRoom();mode='play';});}
     // exit hatch
     const ex=room.exit;
     if(ex&&rig.x>ex.x+64){mode='exit';modeT=0;fadeTo(()=>{mode='card';modeT=0;});}
-    // the part (simple pickup for now)
-    const pt=room.part;
-    if(pt&&!st.got&&rig.facing>0&&rig.x+56>pt.x){st.got=true;installed.add(pt.id);FX.flash(pt.x,GY-14,1,'255,220,140');}
   }else if(mode==='rewind'){
-    c.vx=0;c.keySpin=-14;c.lid=.4;
+    c.vx=0;c.keySpin=-14;c.lid=.4;c.limp=rig.hipGear<1?1:0;
   }else if(mode==='exit'){
     c.vx=105;c.face=1;
   }else if(mode==='card'){
-    if(modeT>3.4&&fadeDir===0){fadeTo(()=>{installed.clear();seenCaps.clear();loadRoom(0);mode='play';});}
+    if(modeT>3.4&&fadeDir===0){fadeTo(()=>{installed.clear();seenCaps.clear();flags.clear();loadRoom(0);sleep();});}
   }
 }
 
@@ -424,22 +536,37 @@ function drawCrateW(g){
     g.strokeStyle=OL;g.strokeRect(cr.x,top-24,cr.w,24);
   }
 }
-function drawPart(g,t){
-  const pt=room.part;if(!pt||st.got)return;
-  const rock=Math.sin(t*2.2)*.18, x=pt.x+rock*6, y=GY-15;
-  g.save();g.translate(x,y);g.rotate(rock);g.scale(1,-1);disc(g,0,0,15,NEAR,t*.3,false);g.restore();
-  if((t*.7)%1<.08){g.save();g.globalCompositeOperation='lighter';softEllipse(g,x-6,y-8,10,10,.6,'255,240,200');g.restore();}
+/* the part looks exactly like the hip disc it belongs in: a toy, to a cat */
+function partPos(t){
+  const pt=room.part,k=st.pk;
+  if(k.flying)return {x:k.x,y:k.y,r:lerp(15,17,k.u),a:t*14,sq:0};
+  const rock=k.land?0:Math.sin(t*2.2)*.18;
+  return {x:pt.x+rock*6,y:GY-15,r:15,a:k.land?0:t*.3,rock,sq:k.squash||0};
 }
+function drawPartAt(g,t){
+  const p=partPos(t);
+  g.save();g.translate(p.x,p.y+p.sq*3);g.rotate(p.rock||0);g.scale(1+.16*p.sq,-(1-.2*p.sq));disc(g,0,0,p.r,NEAR,p.a,false);g.restore();
+  if(!st.pk.land&&(t*.7)%1<.08){g.save();g.globalCompositeOperation='lighter';softEllipse(g,p.x-6,p.y-8,10,10,.6,'255,240,200');g.restore();}
+}
+function drawPart(g,t){if(room.part&&!st.got&&!st.pk.flying)drawPartAt(g,t);}
+function drawPartFly(g,t){if(room.part&&!st.got&&st.pk.flying)drawPartAt(g,t);}
 function partShadow(g,t){
-  const pt=room.part;if(!pt||st.got)return;
-  g.beginPath();g.arc(pt.x,GY-15,15,0,TAU);g.fill();
+  if(!room.part||st.got)return;
+  const p=partPos(t);g.beginPath();g.arc(p.x,p.y,p.r,0,TAU);g.fill();
+}
+function drawTitle(g){
+  const a=mode==='asleep'?Math.min(1,modeT/1.2):mode==='wake'?Math.max(0,1-modeT*2.5):0;if(a<=0)return;
+  const pul=.75+.25*Math.sin(T*2.4);
+  g.textAlign='center';
+  g.font='600 22px Oswald,sans-serif';g.fillStyle=`rgba(214,165,78,${a*pul})`;g.fillText('◀     ▶',W/2,H-58);
+  g.font='400 14px Inter,sans-serif';g.fillStyle=`rgba(239,230,210,${a*.75})`;g.fillText('walk to wind it up',W/2,H-36);
+  g.textAlign='left';
 }
 function vignette(g){
   const gr=g.createRadialGradient(W/2,H*.55,H*.38,W/2,H*.55,W*.7);gr.addColorStop(0,'rgba(0,0,0,0)');gr.addColorStop(1,'rgba(0,0,0,.5)');
   g.fillStyle=gr;g.fillRect(0,0,W,H);
 }
-function drawCaptions(g,dt){
-  for(let i=caps.length-1;i>=0;i--){if((caps[i].t+=dt)>caps[i].max)caps.splice(i,1);}
+function drawCaptions(g){
   const c=caps[0];if(!c)return;
   const a=Math.min(1,c.t/.45,(c.max-c.t)/.9);
   g.font='400 15px Inter,sans-serif';const tw=g.measureText(c.text).width;
@@ -477,6 +604,7 @@ function frame(now){
 }
 function tick(dt){
   T+=dt;
+  if(caps[0]&&(caps[0].t+=dt)>caps[0].max)caps.shift();
   const c=freshCtrl();
   control(dt,c);
   BL=blockers();
@@ -513,13 +641,15 @@ function render(dt){
   ctx.save();ctx.setTransform(1,0,0,1,sx*S,sy*S);ctx.drawImage(catC,0,0);ctx.restore();
   ctx.save();ctx.translate(-camX,0);
   drawGlow(ctx,rig);
+  drawPartFly(ctx,T);
   drawGateFront(ctx);
   drawExitFront(ctx,T);
   drawParts(ctx);
   ctx.restore();
   ctx.setTransform(S,0,0,S,0,0);
   vignette(ctx);
-  drawCaptions(ctx,dt);
+  drawTitle(ctx);
+  drawCaptions(ctx);
   drawCard(ctx);
   if(fade>0){ctx.fillStyle=`rgba(11,13,17,${fade})`;ctx.fillRect(0,0,W,H);}
 }
@@ -544,7 +674,7 @@ if(matchMedia('(pointer:coarse)').matches)touchy();
 addEventListener('pointerdown',e=>{if(e.pointerType==='touch')touchy();},{capture:true});
 addEventListener('contextmenu',e=>e.preventDefault());
 
-resize();loadRoom(0);caption('start');
+resize();loadRoom(0);sleep();
 requestAnimationFrame(frame);
 </script>
 </body>

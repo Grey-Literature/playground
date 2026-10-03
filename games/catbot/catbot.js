@@ -96,7 +96,7 @@ const DEF={
   tailBase:162,tailCurve:-9,tailTip:-16,tailStiff:1,wagAmp:3,wagFreq:1.1,wagTip:0,tipFreq:2.5,
   energy:1,flicker:0,keySpin:null,claws:0,strain:0,
   gaitRate:1,gaitHz:0,duty:0,lift:1,weight:1,slip:0,hindReach:0,frontReach:0,stepDust:0,
-  bodyFreq:3.2,tuck:0,manual:null
+  bodyFreq:3.2,tuck:0,limp:0,pawFront:0,manual:null
 };
 function freshCtrl(){const c=Object.assign({},DEF);c.manual={};return c;}
 
@@ -121,6 +121,7 @@ class Catbot{
     this.hOx=new Spring(0,3.4,.4);this.hOy=new Spring(0,3.4,.32);
     this.hA=new Spring(0,3,.5);this.tilt=new Spring(0,2.4,.45);
     this.events=[];this.c=freshCtrl();
+    this.hipGear=1;                    // 0 = near hip socket empty (the game's first missing part)
     this.reset(200);
   }
   leg(id){return this.legs.find(l=>l.id===id);}
@@ -166,7 +167,8 @@ class Catbot{
     this.emit('land',-this.vy,{x:this.x,y:GY});
   }
   footfall(lg,speed,c){
-    const J=(8+speed*.33)*c.weight;
+    const lame=lg.id==='HN'?c.limp:0;    // the bad leg lands hard: a hitch you can see in the body
+    const J=(8+speed*.33)*c.weight*(1+lame*1.2);
     this.vy-=J;this.thv+=(lg.hind?1:-1)*J/L*.6;this.hOy.vel-=J*.45;
     if(c.stepDust||speed>150)this.emit('step',J,{x:lg.fx,y:GY-(lg.near?0:6)});
   }
@@ -256,7 +258,7 @@ class Catbot{
       if(lg.cyc==null)lg.cyc=cyc;
       if(cyc!==lg.cyc){
         lg.cyc=cyc;
-        if(lg.planted&&f>0){const err=Math.abs(lg.fx-nX);if(speed>4||err>4||c.gaitHz)this.startSwing(lg,clamp((1-duty)/f,.07,.45));}
+        if(lg.planted&&f>0){const err=Math.abs(lg.fx-nX);if(speed>4||err>4||c.gaitHz)this.startSwing(lg,clamp((1-duty)/f,.07,.45)*(lg.id==='HN'?1-.45*c.limp:1));}
       }
       if(lg.planted){
         if(c.slip)lg.fx+=this.vx*dt*c.slip;
@@ -267,10 +269,10 @@ class Catbot{
         const lead=c.gaitHz?7*this.facing:this.vx*stance*.5;
         const tx=nX+this.vx*(1-sw)*lg.dur+lead;
         lg.fx=lerp(lg.sx,tx,e);
-        const lift=(5+Math.min(speed,170)*.07)*c.lift+(c.gaitHz?2:0);
+        const lift=(5+Math.min(speed,170)*.07)*c.lift*(lg.id==='HN'?1-.8*c.limp:1)+(c.gaitHz?2:0);
         lg.fy=lg.sy*(1-e)+lift*Math.sin(Math.PI*Math.pow(sw,.85));
         lg.pang=-.6*Math.sin(Math.PI*sw)*Math.min(1,lift/6);
-        if(c.lift<.5&&lg.fy<2.5&&Math.random()<dt*25)this.emit('scuff',1,{x:lg.fx,y:GY-(lg.near?0:6)});
+        if((c.lift<.5||(lg.id==='HN'&&c.limp>.3))&&lg.fy<2.5&&Math.random()<dt*25)this.emit('scuff',1,{x:lg.fx,y:GY-(lg.near?0:6)});
         if(lg.sw>=1){lg.planted=true;lg.fy=0;lg.fx=tx;lg.pang=0;this.footfall(lg,speed,c);}
       }
     }
@@ -358,6 +360,16 @@ function paw(c,x,y,ang,P,claws){
   }
   c.restore();
 }
+/* an empty hip: rim, sheared tooth stubs, a bare axle */
+function socket(c,x,y,r,P){
+  c.save();c.translate(x,y);
+  c.beginPath();c.arc(0,0,r,0,TAU);c.fillStyle=P.bD;c.fill();c.lineWidth=1.5;c.strokeStyle=OL;c.stroke();
+  const g=c.createRadialGradient(r*.25,-r*.25,0,0,0,r*.8);g.addColorStop(0,'#07040a');g.addColorStop(1,'#2e1c0c');
+  c.beginPath();c.arc(0,0,r*.78,0,TAU);c.fillStyle=g;c.fill();
+  c.fillStyle=P.bX;for(const a of [.4,1.9,3.3,4.6,5.6]){c.save();c.rotate(a);c.fillRect(r*.6,-1.7,r*.2,3.4);c.restore();}
+  c.beginPath();c.arc(0,0,r*.2,0,TAU);c.fillStyle=P.stL;c.fill();c.lineWidth=.8;c.strokeStyle=OL;c.stroke();
+  c.restore();
+}
 function drawLeg(c,lg,P,r){
   const {J,K,H,P:F}=lg;
   if(lg.hind){
@@ -368,7 +380,7 @@ function drawLeg(c,lg,P,r){
     limb(c,H.x,H.y,F.x+1,F.y+4,8,7,STC(P));
     bolt(c,K.x,K.y,3.2,P);bolt(c,H.x,H.y,2.6,P);
     paw(c,F.x,F.y,lg.pang,P,r.claws);
-    disc(c,J.x,J.y,17,P,r.gear*1.3,false);
+    if(lg.id==='HN'&&r.hipGear<1)socket(c,J.x,J.y,17,P);else disc(c,J.x,J.y,17,P,r.gear*1.3,false);
   }else{
     const W=H;
     limb(c,J.x,J.y,K.x,K.y,14,10,BR(P));
@@ -538,8 +550,10 @@ function drawCat(c,r){
   c.beginPath();c.roundRect(-4.5,-12,9,24,3);c.fillStyle=NEAR.stD;c.fill();c.lineWidth=1.2;c.strokeStyle=OL;c.stroke();
   c.fillStyle=NEAR.b;for(const y of [-7,0,7]){c.beginPath();c.arc(0,y,1.3,0,TAU);c.fill();}
   c.restore();
-  drawLeg(c,L_('FN'),NEAR,r);
+  // pawFront: near forepaw drawn over the face (grooming); otherwise the head overlaps it
+  if(!r.c.pawFront)drawLeg(c,L_('FN'),NEAR,r);
   drawHead(c,r);
+  if(r.c.pawFront)drawLeg(c,L_('FN'),NEAR,r);
   c.restore();
 }
 function drawGlow(g,r){
