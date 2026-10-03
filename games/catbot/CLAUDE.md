@@ -32,6 +32,7 @@ this folder is where the character is settled first.
 | `catbot-sprite` | Sprite-sheet concept (PNG, no extension) |
 | `index.html` | **The game.** Room 1 + intro. Room data, world, control modes, render |
 | `opening.js` | Opening cinematic (premise): space → cabin → impact → the real hold, close in. Boots the game into it; delete the script tag and the game starts at the title |
+| `audio.js` | Sound layer: Web Audio, all synthesized, placeholder sounds. Loaded after `catbot.js`, before the game script; see **Audio** below. Optional: if it fails to load the game runs silent |
 | `hub.js` | The deck plan: the top-down hub that doubles as the goal screen. Loaded after `opening.js`; see **The hub** below. Dev entry: `index.html#hub&parts=hip,engine` (skips the opening, lands in the hub with those parts shown) |
 | `catbot.js` | Shared rig: `Catbot` physics, drawing, shadows, particles, crate/lamp props |
 | `catbot-rig.html` | Dev pose picker (not part of the game): the 8 rig studies, loads `catbot.js` |
@@ -85,7 +86,8 @@ this folder is where the character is settled first.
   (toolbox panel, sound, steady = reduced shake/flashes) are pressed by
   standing still on one for 0.7 s; walking over them does nothing, and
   any walking re-arms them. Settings persist in localStorage
-  (`catbot.settings`). Sound is a stored flag only: there's no audio yet.
+  (`catbot.settings`). The SOUND / MUTE button is the audio's mute switch
+  (`settings.sound` -> `AUDIO.enable()`); no other sound control exists.
 - **Toolbox panel** (top right, opened from the trolley, peeks open by
   itself when a part is installed). The lid reads TOYS until the hip
   clicks, then flips to REPAIR KIT and repair % appears. It shows only the
@@ -128,6 +130,53 @@ this folder is where the character is settled first.
   trays + cucumber, window, bunks + sweeping light, planters, sand + paws,
   crates + recess, console.
 
+## Audio (`audio.js`)
+
+Plumbing plus ugly placeholder sounds, not a mix. No music yet. All
+synthesized with Web Audio (oscillators, filtered noise, envelopes): no audio
+files, no libraries, no build step, no asset-rights question. Output only, so
+the movement-only jam rule is untouched. Signed Claude Sonnet 5.5 in the file
+header; no easter eggs in it.
+
+- **Sound is a second consumer of events the game already produces.**
+  One-shots: `sfx(name,{mag,x,rate,delay})`. `handleRigEvents` forwards every
+  rig event (`sfx(e.k,...)`, the sound table is keyed by the same names, a kind
+  with no sound is ignored). Each mechanic calls `sfx()` on the same line as
+  its `FX.*` call. Loops are states: `AUDIO.start(name,params)` (idempotent,
+  doubles as "set params") / `AUDIO.stop(name)`, fed once per tick by
+  `audioFrame()` in `index.html`. `AUDIO.music.setLayers(n)` is a stub that
+  does nothing (called when a part is installed).
+- **To add a sound:** write one entry in `SOUNDS` (name, `ref` = the raw mag
+  that counts as full level, `gap` = rate limit in ms, a few `tone()`/`burst()`
+  calls), then call `sfx('name',{x})` where it happens. Every number to retune
+  is in that table.
+- **Chain:** voices -> sfx/ambient bus -> master (0.35, 0 when muted) ->
+  DynamicsCompressor (soft limiter) -> out. Peak measured under a 480-voice
+  barrage: 0.78. Per-name rate limit plus a 28-voice cap keep bursts (trot,
+  the scuff stream) from piling up.
+- **Starts from a gesture, fails soft.** The context is created on the first
+  key / pointer / touchend (touch needs the release) and the wake latch calls
+  `AUDIO.unlock()`. Suspended while the tab is hidden. If Web Audio is missing,
+  throws, or `audio.js` fails to load, every call is a no-op and `index.html`
+  falls back to a stub, so the game plays exactly as before.
+- **Ambient:** a quiet clockwork tick whose rate is `lerp(0.7, 3.4 Hz, rig.E)`.
+  Off in the opening (`intro`), muted on the card, running in the hub at the
+  rig's frozen energy. Nothing drains energy yet, so the slow-down only shows
+  on the way into `asleep` (about a second, the rig's own damping) and as the
+  speed-up on wake.
+- **Dev aids:** `AUDIO.trace` (what was asked for: `{name,mag,pan,ok}`, loops
+  as `+name`/`-name`), `AUDIO.peak()`, `AUDIO.debug()`, `AUDIO.limits(false)`
+  (rate limit and voice cap off, for barrage tests).
+- **What the event system doesn't expose** (sound works around it, it doesn't
+  fake it): `step` only fires at trot speed or with `stepDust`, so the rig now
+  also emits `foot` on every plant and footsteps use that; nothing says what
+  material is under a foot (ice is read from `room.floorSlip`); the bad leg's
+  four ratchet jerks happen inside `update()` with no event; the crate's
+  break-free has no event (the strain loop just changes); the plate has no
+  event of its own (it clicks 80 ms after the crate seats). The hub is silent
+  except for the ambient tick: its bump / socket-light / cockpit-unlock /
+  door-in moments are the obvious next `sfx()` sites.
+
 ## What the rig can't sell (yet)
 
 - **Carrying.** No jaw and no grip, so catbot can't pick the gear up and
@@ -144,8 +193,9 @@ this folder is where the character is settled first.
   scripted lean, not a real pivot on the edge.
 - **Looking at the hip.** Head yaw tops out around ¾ turned. "Looks back
   over its shoulder" is yaw plus eyes; it can't really look at its own hip.
-- **Purr / kneading as sound.** No audio yet. The ticking-as-purring idea
-  needs a sound layer.
+- **Purr / kneading as sound.** The sound layer exists now, but only as
+  placeholders: there is no purr voice, no kneading rhythm. The ambient tick
+  is the seed of the ticking-as-purring idea.
 
 ## Open questions
 
@@ -160,5 +210,9 @@ this folder is where the character is settled first.
   the other seven sockets; the yarn is a room-phase decision.
 - Re-entering a finished room (aft hold) replays it with the part already in,
   so the hatch opens straight away. Fine for now.
+- Sounds were verified by trace, meter and offline-style barrage, not by ear.
+  Expect to retune levels, pitches and the ambient tick once they've been
+  heard. Hub sounds, a wind-down that actually drains `rig.E`, and any music
+  are not started.
 - Folder name is lowercase `catbot` (category convention is PascalCase);
   rename before it's linked from `games-index.html`, if it ever is.

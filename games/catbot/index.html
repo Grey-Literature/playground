@@ -29,6 +29,7 @@ body.hub .pad{display:none}
 <div class="pad" id="padL" role="button" aria-label="walk left">◀</div>
 <div class="pad" id="padR" role="button" aria-label="walk right">▶</div>
 <script src="catbot.js"></script>
+<script src="audio.js"></script>
 <script>
 'use strict';
 /* =====================================================================
@@ -140,6 +141,7 @@ function updCrate(dt){
       shake=Math.max(shake,6*p);
       FX.dust(pl.x-6,GY,8,p,-1);FX.dust(pl.x+pl.w+6,GY,8,p,1);FX.ring(pl.x+pl.w/2,GY,p);
       FX.flash(pl.x+pl.w/2,GY+pl.depth-4,.8,'255,220,150');
+      sfx('crate',{mag:p,x:pl.x+pl.w/2});sfx('plate',{x:pl.x+pl.w/2,delay:.08});   // the plate has no event of its own: it clicks just after the crate seats
       rig.earL.vel-=14;rig.earR.vel-=12;rig.hOy.vel-=30;
     }
   }
@@ -154,12 +156,12 @@ function updGates(dt){
     const under=Math.abs(rig.x-(g.x+g.w/2))<70;
     const want=st.cable>=1?1:(under&&st.gate.v>.3?st.gate.v:0);
     const was=st.gate.v;st.gate.step(want,dt);st.gate.v=clamp(st.gate.v,0,1.06);
-    if(was<.02&&st.gate.v>=.02)FX.dust(g.x+g.w/2,GY,5,.5);
+    if(was<.02&&st.gate.v>=.02){FX.dust(g.x+g.w/2,GY,5,.5);sfx('gate',{x:g.x+g.w/2});}
   }
   if(ex){
     const ready=!room.part||st.got, near=rig.x>ex.x-300;
     const was=st.door.v;st.door.step(ready&&near?1:0,dt);st.door.v=clamp(st.door.v,0,1.06);
-    if(was<.02&&st.door.v>=.02)FX.steam(ex.x+20,GY-150,4,.7);
+    if(was<.02&&st.door.v>=.02){FX.steam(ex.x+20,GY-150,4,.7);sfx('hatch',{x:ex.x+20});}
   }
 }
 /* solid x-intervals at catbot's height. clr = root distance it can get to the face */
@@ -244,7 +246,7 @@ function walk(dt,c,dir){
     lookT-=dt;if(lookT<0){lookT=rnd(.9,2.4);look=rnd(-1,1);}
     c.lookX=look;c.headYaw=.35+look*.22;c.wagAmp=7;c.wagFreq=.6;
     // standing on a bad hip: now and then the gear train slips and the leg jerks
-    if(c.limp&&idle>1&&Math.random()<dt*.4){rig.forceStep('HN',.3);const h=rig.toWorld(rig.hipJ);FX.sparks(h.x,h.y,2,-rig.facing,.3);rig.earR.vel+=6;}
+    if(c.limp&&idle>1&&Math.random()<dt*.4){rig.forceStep('HN',.3);const h=rig.toWorld(rig.hipJ);FX.sparks(h.x,h.y,2,-rig.facing,.3);sfx('slip',{x:h.x});rig.earR.vel+=6;}
   }
 }
 /* wound down: the end pose of the rig's wind-down study, held */
@@ -272,8 +274,8 @@ function wake(dt,c,t){
   if(cf>.02&&t<1.95){const sx=rig.x+f*(rig.shJ.x+38);c.manual.FN={x:sx,y:0,rate:10};c.manual.FF={x:sx-6*f,y:0,rate:9};}
   if(ch>.02&&t<1.6){const hx=rig.x+f*(rig.hipJ.x+17);c.manual.HN={x:hx,y:0,rate:8};c.manual.HF={x:hx-5*f,y:0,rate:8};}
   if(t>1.2&&t<2.5){c.earL=-14;c.earR=-12;}
-  if(t<1.2&&(st.tick=(st.tick||0)+dt)>.075){st.tick=0;const k=rig.toWorld(rig.keyP);FX.sparks(k.x,k.y,1,f*(Math.random()<.5?1:-1),.5);}
-  if(once('relit',t>=1.2)){const p=rig.toWorld(rig.bp(60,-2));FX.flash(p.x,p.y,1.2);rig.earL.vel-=16;rig.earR.vel-=14;rig.tailFlick(4);}
+  if(t<1.2&&(st.tick=(st.tick||0)+dt)>.075){st.tick=0;const k=rig.toWorld(rig.keyP);FX.sparks(k.x,k.y,1,f*(Math.random()<.5?1:-1),.5);sfx('ratchet',{mag:t/1.2,x:k.x});}   // one click per spark; pitch climbs as it winds
+  if(once('relit',t>=1.2)){const p=rig.toWorld(rig.bp(60,-2));FX.flash(p.x,p.y,1.2);sfx('relit',{x:p.x});rig.earL.vel-=16;rig.earR.vel-=14;rig.tailFlick(4);}
   if(once('clunk',t>=2.22)){rig.vy-=140;rig.hOy.vel-=60;for(const id of ['FN','HN']){const l=rig.leg(id);FX.dust(l.fx,GY,3,.5);}shake=Math.max(shake,2.2);}
   if(t>2.6){mode='play';modeT=0;caption('start');}
 }
@@ -294,21 +296,21 @@ function pounce(dt,c,t){
     const hx=rig.toWorld({x:rig.hx,y:rig.hy}).x;
     Object.assign(c,{earL:-16,earR:-14,pupil:1,lid:0,lidTilt:-.1,headTilt:.3,mouth:.3,lookX:clamp((pt.x-hx)*f/120,-1,1),lookY:-.4});
   }
-  if(once('perk',t>.05)){rig.earL.vel-=12;rig.earR.vel-=12;}
+  if(once('perk',t>.05)){rig.earL.vel-=12;rig.earR.vel-=12;sfx('perk',{x:rig.x});}
   if(t<.95){c.crouch=.5*seg(t,.1,.5);}
   if(t>=.5&&t<.95){
     Object.assign(c,{hipLift:7+Math.sin(t*24)*2.5,pitch:-.05,wagTip:18,tipFreq:4,gaitRate:0});
     k.wg=(k.wg??0)-dt;if(k.wg<0){k.wg=.11;rig.forceStep(k.wf?'HF':'HN',.1);k.wf=!k.wf;}
   }
-  if(once('jump',t>=.95)){const tx=pt.x-f*64;rig.jump(430,f*clamp(Math.abs(tx-rig.x)/.36,60,340));}
+  if(once('jump',t>=.95)){const tx=pt.x-f*64;rig.jump(430,f*clamp(Math.abs(tx-rig.x)/.36,60,340));sfx('pounce',{x:rig.x});}
   if(t>.95&&rig.air){c.tuck=.7;c.claws=1;c.tailBase=185;c.tailCurve=-4;}
-  if(t>1.0&&!rig.air&&!k.land){k.land=t;FX.dust(pt.x,GY,4,.6);}
+  if(t>1.0&&!rig.air&&!k.land){k.land=t;FX.dust(pt.x,GY,4,.6);sfx('pin',{x:pt.x});}
   if(k.land&&!k.flying&&!k.home){
     const lt=t-k.land;
     c.crouch=.22;c.happy=lt>.1?1:0;c.mouth=1.2;c.claws=lt<.3?1:0;c.tailBase=130;c.wagAmp=6;c.wagFreq=2.5;
     c.manual.FN={x:pt.x-f*2,y:22,ang:.25,rate:30};
     k.squash=Math.max(0,1-lt*4);
-    if(lt>.6){k.flying=t;k.fx=pt.x;k.fy=GY-15;}
+    if(lt>.6){k.flying=t;k.fx=pt.x;k.fy=GY-15;sfx('partfly',{x:pt.x});}
   }
   if(k.flying&&!k.home){
     // it goes back where it came from. catbot watches it go, over its shoulder.
@@ -319,6 +321,7 @@ function pounce(dt,c,t){
     if(u>=1){
       k.home=t;rig.hipGear=1;st.got=true;installed.add(pt.id);
       const hp=rig.toWorld(rig.hipJ);FX.flash(hp.x,hp.y,1.1,'255,225,150');FX.sparks(hp.x,hp.y,10,-f,.7);FX.sparks(hp.x,hp.y,6,f,.5);
+      sfx('socket',{x:hp.x});AUDIO.music.setLayers(installed.size);   // setLayers is a stub today: this is where the score will hear "one more part is back"
       rig.vy-=90;rig.thv+=.9;rig.earL.vel-=18;rig.earR.vel-=16;rig.tailFlick(5);shake=Math.max(shake,2.6);
     }
   }
@@ -328,7 +331,7 @@ function pounce(dt,c,t){
     Object.assign(c,{headYaw:ht<.9?-.6:.35,lookX:ht<.9?-1:.4,lookY:0,pupil:ht<.5?.2:.5,lid:0,earL:-16,earR:-14,mouth:ht<.6?-.4:.6,headFwd:ht<.9?-4:0});
     for(const [i,tt] of [[0,.55],[1,.8],[2,1.05]])if(once('test'+i,ht>=tt))rig.forceStep('HN',.14);
     if(ht>1.3){Object.assign(c,{happy:1,tailBase:118,tailCurve:-4,tailTip:-12,wagAmp:6,wagFreq:3,keySpin:6});}
-    if(once('puff',ht>=1.35)){const kp=rig.toWorld(rig.keyP);FX.steam(kp.x,kp.y-4,5,.9);}
+    if(once('puff',ht>=1.35)){const kp=rig.toWorld(rig.keyP);FX.steam(kp.x,kp.y-4,5,.9);sfx('puff',{x:kp.x});}
     if(ht>2.1){mode='play';modeT=0;}
   }
 }
@@ -414,10 +417,10 @@ function control(dt,c){
   if(inHub()){HUB.ctrl(dir,latch?0:dirY());return;}   // the deck plan reads its own input
   if(mode==='intro'){
     slump(c,T);OPEN.ctrl(c,modeT);
-    if(dir)fadeTo(()=>OPEN.finish(false));     // any step skips the opening
+    if(dir){AUDIO.unlock();fadeTo(()=>OPEN.finish(false));}     // any step skips the opening (and is the first gesture: audio starts here)
   }else if(mode==='asleep'){
     slump(c,T);
-    if(dir){mode='wake';modeT=0;latch=true;}
+    if(dir){mode='wake';modeT=0;latch=true;AUDIO.unlock();}   // the first walk input is the user gesture that starts audio
   }else if(mode==='wake'){
     wake(dt,c,modeT);
   }else if(mode==='pounce'){
@@ -431,10 +434,10 @@ function control(dt,c){
     if(pounceReady()){mode='pounce';modeT=0;st.pk={};endPush();return;}
     // reset tile: front paws on it, facing it
     const rs=room.reset;
-    if(rs&&rig.facing<0&&rig.x-45<rs.x+rs.w-14){mode='rewind';modeT=0;run.rewinds++;fadeTo(()=>{resetRoom();mode='play';});}
+    if(rs&&rig.facing<0&&rig.x-45<rs.x+rs.w-14){mode='rewind';modeT=0;run.rewinds++;sfx('rewind');fadeTo(()=>{resetRoom();mode='play';});}
     // exit hatch
     const ex=room.exit;
-    if(ex&&rig.x>ex.x+64){mode='exit';modeT=0;fadeTo(()=>{if(HUB.hasNew()){mode='card';modeT=0;}else HUB.enter(room.id);});}   // the card only when there is something new to report
+    if(ex&&rig.x>ex.x+64){mode='exit';modeT=0;fadeTo(()=>{if(HUB.hasNew()){mode='card';modeT=0;sfx('card');}else HUB.enter(room.id);});}   // the card only when there is something new to report
   }else if(mode==='rewind'){
     c.vx=0;c.keySpin=-14;c.lid=.4;c.limp=rig.hipGear<1?1:0;
   }else if(mode==='exit'){
@@ -455,6 +458,10 @@ const GAME={totalParts:8};                    // hub.js overwrites this with its
 const settings=(()=>{const d={sound:true,calm:false,kit:false};try{return Object.assign(d,JSON.parse(localStorage.getItem('catbot.settings')||'{}'));}catch(e){return d;}})();
 function saveSettings(){try{localStorage.setItem('catbot.settings',JSON.stringify(settings));}catch(e){}}
 const calmK=()=>settings.calm?.2:1;           // screen shake + flashes multiplier
+/* sound (audio.js) is optional: if the file failed to load, every call below becomes a no-op and the game runs as it always did */
+if(typeof AUDIO==='undefined'){window.AUDIO={sfx(){},start(){},stop(){},enable(){},unlock(){},frame(){},music:{setLayers(){}}};window.sfx=()=>{};}
+AUDIO.enable(settings.sound);                 // sound follows the trolley's SOUND / MUTE floor button
+AUDIO.view=()=>({x:camX,w:W});                // lets sfx({x}) pan against the room camera
 {const f=FX.flash;FX.flash=(x,y,p,rgb)=>f(x,y,p*(settings.calm?.35:1),rgb);}
 const PADS=[{id:'kit',dx:-72},{id:'sound',dx:0},{id:'calm',dx:72}], CART_HALF=100;
 const run={t:0,rewinds:0};
@@ -503,9 +510,14 @@ function updCart(dt,dir){
     p.charge+=dt/.7;
     if(p.charge>=1){
       p.charge=0;p.armed=false;p.blink=1;
-      if(p.id==='kit')settings.kit=!settings.kit;
-      else if(p.id==='sound')settings.sound=!settings.sound;
-      else settings.calm=!settings.calm;
+      if(p.id==='sound'){
+        // the press is heard either way: turning on enables first, turning off clicks first (master ramps down over ~30 ms)
+        if(!settings.sound){settings.sound=true;AUDIO.enable(true);sfx('pad',{x:px});}
+        else{sfx('pad',{x:px});settings.sound=false;AUDIO.enable(false);}
+      }else{
+        sfx('pad',{x:px});
+        if(p.id==='kit')settings.kit=!settings.kit;else settings.calm=!settings.calm;
+      }
       saveSettings();
       FX.sparks(px,GY-10,4,0,.3);rig.earL.vel-=10;rig.earR.vel-=9;rig.hOy.vel-=25;
     }
@@ -595,7 +607,7 @@ function drawKit(g,dt){
     g.fillText(`Room ${roomI+1} · ${room.name}`,lx,ty+93);
     g.textAlign='right';g.fillText(`${fmtTime(run.t)}   ·   ${run.rewinds} rewind${run.rewinds===1?'':'s'}`,x0+pw-14,ty+93);g.textAlign='left';
     g.fillStyle='rgba(239,230,210,.45)';
-    g.fillText(`Sound ${settings.sound?'on':'off'} (none yet) · Shake ${settings.calm?'reduced':'on'}`,lx,ty+112);
+    g.fillText(`Sound ${settings.sound?'on':'off'} · Shake ${settings.calm?'reduced':'on'}`,lx,ty+112);
     g.restore();
   }
   // lid: label flips from TOYS to REPAIR KIT when the hip goes in
@@ -610,10 +622,15 @@ function drawKit(g,dt){
 }
 
 /* =====================================================================
-   EVENTS -> particles
+   EVENTS -> particles, and sound
+   Each rig event feeds two consumers: the FX below and sfx() (audio.js,
+   whose table is keyed by the same names; a kind with no sound is ignored).
+   'step' is the dust cue and only fires at trot speed (or with stepDust), so
+   footsteps are sounded from 'foot', which fires on every plant.
    ===================================================================== */
 function handleRigEvents(){
   for(const e of rig.events){
+    sfx(e.k,{mag:e.mag,x:e.x});
     if(e.k==='land'){const p=clamp(e.mag/420,.4,1.6);FX.dust(e.x-30,e.y,6,p,-1);FX.dust(e.x+30,e.y,6,p,1);FX.ring(e.x,e.y,p);shake=Math.max(shake,Math.min(6,e.mag/110));}
     else if(e.k==='thud'){const p=clamp(e.mag/260,.3,1.3);FX.dust(e.x,e.y,9,p);FX.ring(e.x,e.y,p*.6);shake=Math.max(shake,Math.min(5,e.mag/70));}
     else if(e.k==='headthud'){FX.dust(e.x,e.y,6,.7);shake=Math.max(shake,Math.min(4,e.mag/70));}
@@ -622,6 +639,22 @@ function handleRigEvents(){
     else if(e.k==='grind'){FX.sparks(e.x,e.y,3,-rig.facing,.35);shake=Math.max(shake,.7);}
   }
   rig.events.length=0;
+}
+/* Sound's per-frame feed, called once per tick after the sim. One-shots come
+   from events at the moment things happen (above, and the sfx() lines at each
+   mechanic). Loops are *states*, so they read state here: start() is
+   idempotent and doubles as "set params", stop() fades out. Mute needs no
+   branch here: audio.js drops everything while settings.sound is off. */
+function audioFrame(dt){
+  const inRoom=!inHub();
+  // leaning on the crate: pitch and level ride the same P.str that bends the cat; slide adds grit once the crate moves
+  if(inRoom&&P.on)AUDIO.start('strain',{amt:P.str,slide:st.crate.v/80});else AUDIO.stop('strain');
+  // ice: hiss scaled by how slippery the floor is and how fast catbot is going
+  const ice=inRoom?(room.floorSlip||0)*Math.min(1,Math.abs(rig.vx)/165):0;
+  if(ice>.02&&!rig.air&&(mode==='play'||mode==='exit'))AUDIO.start('ice',{amt:ice});else AUDIO.stop('ice');
+  // ambient clockwork: its rate follows rig energy. Silent in the opening (no cat on screen yet) and muted on the card.
+  if(mode!=='intro'&&mode!=='card')AUDIO.start('tick',{energy:rig.E});else AUDIO.stop('tick');
+  AUDIO.frame(dt);
 }
 
 /* =====================================================================
@@ -923,6 +956,7 @@ function tick(dt){
     if(mode==='intro')OPEN.update(dt,modeT);
     else{camX=damp(camX,camTarget(),4,dt);camY=Math.abs(camY)<.05?0:damp(camY,0,5,dt);}
   }
+  audioFrame(dt);
   if(fadeDir){fade+=fadeDir*dt*2.4;if(fade>=1&&fadeDir>0){fade=1;fadeDir=-1;const cb=fadeCb;fadeCb=null;cb&&cb();camX=camTarget();}if(fade<=0&&fadeDir<0){fade=0;fadeDir=0;}}
 }
 

@@ -170,6 +170,7 @@ class Catbot{
     const lame=lg.id==='HN'?c.limp:0;    // the bad leg lands hard: a hitch you can see in the body
     const J=(8+speed*.33)*c.weight*(1+lame*1.2);
     this.vy-=J;this.thv+=(lg.hind?1:-1)*J/L*.6;this.hOy.vel-=J*.45;
+    this.emit('foot',J,{x:lg.fx,y:GY-(lg.near?0:6)});     // every plant, at any speed: the sound layer's footstep ('step' below is the dust cue and only fires at trot or with stepDust)
     if(c.stepDust||speed>150)this.emit('step',J,{x:lg.fx,y:GY-(lg.near?0:6)});
     // and the empty socket grinds on the axle: a nose-down hitch and sparks at the hip
     if(lame>.3){this.thv-=.35*lame;this.hOy.vel-=12*lame;this.emit('grind',lame,this.toWorld(this.hipJ));}
