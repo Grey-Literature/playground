@@ -32,6 +32,7 @@ this folder is where the character is settled first.
 | `catbot-sprite` | Sprite-sheet concept (PNG, no extension) |
 | `index.html` | **The game.** Room 1 + intro. Room data, world, control modes, render |
 | `opening.js` | Opening cinematic (premise): space → cabin → impact → the real hold, close in. Boots the game into it; delete the script tag and the game starts at the title |
+| `hub.js` | The deck plan: the top-down hub that doubles as the goal screen. Loaded after `opening.js`; see **The hub** below. Dev entry: `index.html#hub&parts=hip,engine` (skips the opening, lands in the hub with those parts shown) |
 | `catbot.js` | Shared rig: `Catbot` physics, drawing, shadows, particles, crate/lamp props |
 | `catbot-rig.html` | Dev pose picker (not part of the game): the 8 rig studies, loads `catbot.js` |
 
@@ -48,7 +49,8 @@ this folder is where the character is settled first.
 
 ## Game structure (settled by room 1)
 
-- **Movement only, literally.** Keys ← → / A D and two touch pads. No
+- **Movement only, literally.** Keys ← → / A D and two touch pads in the
+  rooms (the deck plan adds ↑ ↓ / W S and swaps the pads for a thumb-stick). No
   Shift-trot: holding a direction for 1.6 s breaks into a trot instead
   (not while the hip is broken). Title, restart and room change are all
   places you walk: first step winds it up, the REWIND tile resets the room,
@@ -68,10 +70,11 @@ this folder is where the character is settled first.
   (nose-down hitch + sparks at the socket via the rig's `grind` event), and
   standing still it occasionally slips a gear and the leg jerks. The
   pounce/fly-home/click restores both. Installed parts
-  survive a rewind; the end card resets the demo loop.
+  survive a rewind.
 - Control layering kept from the rig: mode → `ctrl` → `Catbot.update`.
   Modes: intro → asleep → wake → play ⇄ (pounce | oops | chase) → exit → card
-  (the end card loops back to asleep, not the intro). Any movement skips
+  → hub (the card is the beat between the hold and the deck plan; it no longer
+  loops back to asleep). Any movement skips
   the intro; the input latch stops that same keypress also waking it.
 - The opening's last shot is the game itself (`zoom`/`camY` on the room
   camera, darkness overlay), so the cut to the aft hold is a camera move,
@@ -87,9 +90,43 @@ this folder is where the character is settled first.
   itself when a part is installed). The lid reads TOYS until the hip
   clicks, then flips to REPAIR KIT and repair % appears. It shows only the
   current room's parts (silhouette → object); the yarn is never listed.
-  `GAME.totalParts` (6) is a placeholder until the room list is final.
+  `GAME.totalParts` is the hub's slot count (`DECK.slots.length` in
+  `hub.js`, currently 8), so the toolbox bar and the deck plan agree.
 - Easter egg (approved per `AGENTS.md`): `chase` mode. Signature lives in
   `makeStarLog()` and the console; don't remove it.
+- Easter egg #2, the hub's (approved per `AGENTS.md`, 2026-10-03): sit on the
+  plot table for 8 s and a footnote types itself into the blueprint's bottom
+  margin, signed Claude Sonnet 5.5 (`FOOT`, `startFoot()`, `drawFoot()` in
+  `hub.js`; also logged to the console). Don't remove it.
+
+## The hub (`hub.js`)
+
+- **The plan is the goal screen.** One compartment per `DECK.slots[]` entry
+  (8: aft hold, engine, galley, observation, berthing, hydroponics,
+  sanitation, cockpit), each with one socket. An installed part (`installed`
+  Set, keyed by the slot's `part` id) fills its socket with the real disc art,
+  warms the room to brass and lights a conduit to the cockpit. The central
+  plot table carries the REPAIR ring. `GAME.totalParts = DECK.slots.length`.
+- **A slot is sealed unless a `ROOMS[]` entry has its id** (cockpit is also
+  gated on every other socket). Add the room and the door opens, with no hub
+  change. Sealed doors bump the token, flare their lamp and say why once.
+- **Token:** brass puck, ears on springs, lagging tail, stride-locked wobble,
+  sits into a loaf after 1.2 s. 8-way: arrows / WASD / touch thumb-stick
+  (a floating stick that only sets `keys.l/r/u/d`; the room pads are hidden
+  in the hub). Collision = circle vs the room rects minus each door's
+  doorway pocket, plus pillars; the plot table is a low step you can stand on.
+- **Doors:** stand still on a door's mat for 0.7 s and a hint tag reads out
+  (SANITATION gets struck through and re-scrawled LITTER BOX). Walk past the
+  sill to go in: zoom onto the compartment, fade, then `intoRoom()` loads the
+  room with the camera high (`camY=-46`, eased to 0) and catbot dropping in.
+- **Coming back:** exit hatch → the card only if a part is new to the plan
+  (`HUB.hasNew()`), else straight to the hub. The camera pulls out of the
+  room's compartment, catbot walks out of its door, new sockets light one by
+  one. When the last non-cockpit socket lights, a pulse runs down every
+  conduit and the cockpit gets power (`ckOn`).
+- **Floor glyphs** (`drawGlyph`) preview each room faintly: belts + vent,
+  trays + cucumber, window, bunks + sweeping light, planters, sand + paws,
+  crates + recess, console.
 
 ## What the rig can't sell (yet)
 
@@ -115,5 +152,13 @@ this folder is where the character is settled first.
 - Rooms 2+ (ice `floorSlip`, cucumbers, knocking things off shelves,
   idle director, yarn-as-main-coil) — designed in the Sonnet chat, not built.
 - Fail states: still none in room 1.
+- Hip gear is catbot's own socket, but the deck plan shows it as slot 1 of
+  the shuttle (the aft hold's socket). Left that way; revisit if the story
+  wants the hip kept off the shuttle blueprint.
+- How the yarn travels. The cockpit is its socket and sanitation is "where
+  you'd bury it", but catbot can't carry. The hub only gates the cockpit on
+  the other seven sockets; the yarn is a room-phase decision.
+- Re-entering a finished room (aft hold) replays it with the part already in,
+  so the hatch opens straight away. Fine for now.
 - Folder name is lowercase `catbot` (category convention is PascalCase);
   rename before it's linked from `games-index.html`, if it ever is.

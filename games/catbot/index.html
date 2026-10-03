@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Catbot</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;600&family=Inter:wght@400;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;600&family=Inter:wght@400;600&family=Permanent+Marker&display=swap" rel="stylesheet">
 <style>
 html,body{margin:0;height:100%;background:#12151b;overflow:hidden;touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 #wrap{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
@@ -14,12 +14,18 @@ canvas{display:block}
   font:600 30px Oswald,sans-serif;color:#d6a54e;background:rgba(42,48,59,.55);border:1px solid rgba(214,165,78,.45);touch-action:none}
 .pad.on{background:rgba(214,165,78,.35);color:#ffe3a0}
 body.touch .pad{display:flex}
+body.hub .pad{display:none}
+#stick{position:fixed;width:112px;height:112px;margin:-56px 0 0 -56px;border-radius:50%;display:none;pointer-events:none;
+  border:1px solid rgba(214,165,78,.45);background:rgba(42,48,59,.35)}
+#stick.on{display:block}
+#stick i{position:absolute;left:50%;top:50%;width:46px;height:46px;border-radius:50%;background:rgba(214,165,78,.4);border:1px solid rgba(255,227,160,.6);transform:translate(-50%,-50%)}
 #padL{left:max(18px,env(safe-area-inset-left))}
 #padR{right:max(18px,env(safe-area-inset-right))}
 </style>
 </head>
 <body>
 <div id="wrap"><canvas id="stage" aria-label="Catbot: walk left and right"></canvas></div>
+<div id="stick"><i></i></div>
 <div class="pad" id="padL" role="button" aria-label="walk left">◀</div>
 <div class="pad" id="padR" role="button" aria-label="walk right">▶</div>
 <script src="catbot.js"></script>
@@ -70,15 +76,18 @@ const ROOMS=[{
    ===================================================================== */
 const rig=new Catbot();
 const CAT={weight:1, nose:88, paw:62};      // nose: root→face of whatever it leans on; paw: root→ledge edge
-const keys={l:false,r:false};
-let pulse=0;                                  // a tap shorter than a frame still counts once
+const keys={l:false,r:false,u:false,d:false}; // rooms read l/r; the deck plan reads all four
+let pulse=0, pulseY=0;                        // a tap shorter than a frame still counts once
 const dirInput=()=>(keys.r?1:0)-(keys.l?1:0)||pulse;
+const dirY=()=>(keys.d?1:0)-(keys.u?1:0)||pulseY;
+const anyInput=()=>dirInput()||dirY();
 let room, roomI=0, st, camX=0, camY=0, zoom=1, mode='play', modeT=0, fade=1, fadeDir=-1, fadeCb=null;
 let idle=0, walkT=0, walkDir=0, look=0, lookT=0, latch=false;   // latch: ignore a key still held from before a fade
 const installed=new Set();                    // installed parts survive a rewind
 const seenCaps=new Set(), caps=[];
 const P={on:false,dir:0,pt:0,str:0,F:0,cd:0,nx:0};
 
+const inHub=()=>mode==='hub'||mode==='hubin'||mode==='hubgo';   // hub.js owns these modes
 function loadRoom(i){room=ROOMS[i];roomI=i;resetRoom();camX=camTarget();}
 function resetRoom(){
   const R=room;
@@ -216,7 +225,7 @@ function push(dt,c,dir){
 
 /* =====================================================================
    CONTROL: input -> ctrl, per mode
-   asleep -> wake -> play <-> (pounce | oops) -> exit -> card -> asleep
+   asleep -> wake -> play <-> (pounce | oops) -> exit -> card -> hub (hub.js)
    ===================================================================== */
 function walk(dt,c,dir){
   const slip=room.floorSlip;
@@ -399,9 +408,10 @@ function oops(dt,c,dir,t){
   return true;
 }
 function control(dt,c){
-  if(latch&&!dirInput())latch=false;
+  if(latch&&!anyInput())latch=false;
   const dir=latch?0:dirInput();
   modeT+=dt;
+  if(inHub()){HUB.ctrl(dir,latch?0:dirY());return;}   // the deck plan reads its own input
   if(mode==='intro'){
     slump(c,T);OPEN.ctrl(c,modeT);
     if(dir)fadeTo(()=>OPEN.finish(false));     // any step skips the opening
@@ -424,13 +434,13 @@ function control(dt,c){
     if(rs&&rig.facing<0&&rig.x-45<rs.x+rs.w-14){mode='rewind';modeT=0;run.rewinds++;fadeTo(()=>{resetRoom();mode='play';});}
     // exit hatch
     const ex=room.exit;
-    if(ex&&rig.x>ex.x+64){mode='exit';modeT=0;fadeTo(()=>{mode='card';modeT=0;});}
+    if(ex&&rig.x>ex.x+64){mode='exit';modeT=0;fadeTo(()=>{if(HUB.hasNew()){mode='card';modeT=0;}else HUB.enter(room.id);});}   // the card only when there is something new to report
   }else if(mode==='rewind'){
     c.vx=0;c.keySpin=-14;c.lid=.4;c.limp=rig.hipGear<1?1:0;
   }else if(mode==='exit'){
     c.vx=105;c.face=1;
   }else if(mode==='card'){
-    if(modeT>3.4&&fadeDir===0){fadeTo(()=>{installed.clear();seenCaps.clear();flags.clear();run.t=0;run.rewinds=0;loadRoom(0);sleep();});}
+    if(modeT>2.8&&fadeDir===0)fadeTo(()=>HUB.enter(room.id));     // the card is the beat between the hold and the deck plan
   }
 }
 
@@ -441,7 +451,7 @@ function control(dt,c){
    pressed by standing still on one until the ring fills, so walking over
    them never presses anything.
    ===================================================================== */
-const GAME={totalParts:6};                    // placeholder until the room list is final. The yarn coil counts but is never listed.
+const GAME={totalParts:8};                    // hub.js overwrites this with its slot count (DECK.slots.length). The yarn coil counts but is never listed.
 const settings=(()=>{const d={sound:true,calm:false,kit:false};try{return Object.assign(d,JSON.parse(localStorage.getItem('catbot.settings')||'{}'));}catch(e){return d;}})();
 function saveSettings(){try{localStorage.setItem('catbot.settings',JSON.stringify(settings));}catch(e){}}
 const calmK=()=>settings.calm?.2:1;           // screen shake + flashes multiplier
@@ -623,7 +633,7 @@ function drawRoom(g,t){
   const R=room, x0=camX-4, x1=camX+W+4;
   // hull wall
   const wall=g.createLinearGradient(0,0,0,GY-24);wall.addColorStop(0,'#1d222b');wall.addColorStop(1,'#363d4a');
-  g.fillStyle=wall;g.fillRect(x0,0,x1-x0,GY-24);
+  g.fillStyle=wall;g.fillRect(x0,-90,x1-x0,GY-24+90);   // runs above the frame: the camera starts high when catbot drops in from the deck plan
   g.strokeStyle='rgba(0,0,0,.25)';g.lineWidth=1;
   for(const y of [64,168]){g.beginPath();g.moveTo(x0,y);g.lineTo(x1,y);g.stroke();}
   for(let x=60;x<R.w;x+=170){
@@ -861,10 +871,10 @@ function vignette(g){
 }
 function drawCaptions(g){
   const c=caps[0];if(!c)return;
-  const a=Math.min(1,c.t/.45,(c.max-c.t)/.9);
-  g.font='400 15px Inter,sans-serif';const tw=g.measureText(c.text).width;
-  g.fillStyle=`rgba(18,20,26,${.72*a})`;g.fillRect(W/2-tw/2-16,H-62,tw+32,30);
-  g.fillStyle=`rgba(239,230,210,${a})`;g.fillText(c.text,W/2-tw/2,H-42);
+  const a=Math.min(1,c.t/.45,(c.max-c.t)/.9), hub=inHub();   // the deck plan has no spare floor: its captions take a slim strip in the bottom hull margin
+  g.font=`400 ${hub?12:15}px Inter,sans-serif`;const tw=g.measureText(c.text).width;
+  g.fillStyle=`rgba(18,20,26,${(hub?.85:.72)*a})`;g.fillRect(W/2-tw/2-16,hub?H-23:H-62,tw+32,hub?20:30);
+  g.fillStyle=`rgba(239,230,210,${a})`;g.fillText(c.text,W/2-tw/2,hub?H-9.5:H-42);
 }
 function drawCard(g){
   if(mode!=='card')return;
@@ -873,7 +883,7 @@ function drawCard(g){
   g.globalAlpha=a;g.textAlign='center';
   g.font='600 13px Oswald,sans-serif';g.fillStyle='#d6a54e';g.fillText(`ROOM ${roomI+1}  ·  ${room.name.toUpperCase()}`,W/2,H/2-26);
   g.font='600 34px Oswald,sans-serif';g.fillStyle='#efe6d2';g.fillText(`${installed.size} PART${installed.size===1?'':'S'} BACK WHERE ${installed.size===1?'IT BELONGS':'THEY BELONG'}`,W/2,H/2+10);
-  g.font='400 14px Inter,sans-serif';g.fillStyle='rgba(239,230,210,.6)';g.fillText('The rest of the shuttle is still dark.',W/2,H/2+40);
+  g.font='400 14px Inter,sans-serif';g.fillStyle='rgba(239,230,210,.6)';g.fillText('The hatch opens onto the rest of the ship.',W/2,H/2+40);
   g.textAlign='left';g.globalAlpha=1;
 }
 
@@ -901,14 +911,18 @@ function tick(dt){
   if(caps[0]&&(caps[0].t+=dt)>caps[0].max)caps.shift();
   const c=freshCtrl();
   const din=dirInput();
-  control(dt,c);pulse=0;
-  if(st.cart)updCart(dt,din);
+  control(dt,c);pulse=0;pulseY=0;
   if(!['intro','asleep','wake','card'].includes(mode))run.t+=dt;
-  BL=blockers();
-  acc+=dt;let n=0;while(acc>=SUB&&n<40){rig.update(SUB,c);constrain();acc-=SUB;n++;}
-  updCrate(dt);updGates(dt);
-  handleRigEvents();updParts(dt);
-  if(mode==='intro')OPEN.update(dt,modeT);else camX=damp(camX,camTarget(),4,dt);
+  if(inHub())HUB.update(dt);                 // the deck plan: the room's rig and props stay frozen behind it
+  else{
+    if(st.cart)updCart(dt,din);
+    BL=blockers();
+    acc+=dt;let n=0;while(acc>=SUB&&n<40){rig.update(SUB,c);constrain();acc-=SUB;n++;}
+    updCrate(dt);updGates(dt);
+    handleRigEvents();updParts(dt);
+    if(mode==='intro')OPEN.update(dt,modeT);
+    else{camX=damp(camX,camTarget(),4,dt);camY=Math.abs(camY)<.05?0:damp(camY,0,5,dt);}
+  }
   if(fadeDir){fade+=fadeDir*dt*2.4;if(fade>=1&&fadeDir>0){fade=1;fadeDir=-1;const cb=fadeCb;fadeCb=null;cb&&cb();camX=camTarget();}if(fade<=0&&fadeDir<0){fade=0;fadeDir=0;}}
 }
 
@@ -916,6 +930,12 @@ function view(g){g.scale(zoom,zoom);g.translate(-camX,-camY);}
 function render(dt){
   const cw=cv.width,ch=cv.height;
   if(mode==='intro'&&OPEN.cine(modeT)){OPEN.render(ctx,modeT);if(fade>0){ctx.fillStyle=`rgba(11,13,17,${fade})`;ctx.fillRect(0,0,W,H);}return;}
+  if(inHub()){
+    HUB.render(ctx,dt);
+    ctx.setTransform(S,0,0,S,0,0);vignette(ctx);drawCaptions(ctx);
+    if(fade>0){ctx.fillStyle=`rgba(11,13,17,${fade})`;ctx.fillRect(0,0,W,H);}
+    return;
+  }
   const sx=(Math.random()-.5)*shake*calmK(),sy=(Math.random()-.5)*shake*calmK();
   ctx.setTransform(S,0,0,S,sx*S,sy*S);
   ctx.save();view(ctx);
@@ -927,9 +947,10 @@ function render(dt){
   if(zoom===1){   // projected shadow is screen-space; skipped in the opening's close-up
   sctx.setTransform(1,0,0,1,0,0);sctx.globalCompositeOperation='source-over';sctx.clearRect(0,0,cw,ch);
   sctx.drawImage(catC,0,0);sctx.globalCompositeOperation='source-in';sctx.fillStyle='#0a0705';sctx.fillRect(0,0,cw,ch);sctx.globalCompositeOperation='source-over';
-  ctx.save();ctx.transform(1,0,-SK,SS,SK*GY,(1-SS)*GY);
+  const gy=GY-camY;   // the floor line on screen: the drop into a room starts with the camera high
+  ctx.save();ctx.transform(1,0,-SK,SS,SK*gy,(1-SS)*gy);
   if(FILTER)ctx.filter='blur(2px)';
-  ctx.save();ctx.translate(-camX,0);ctx.fillStyle='rgba(8,5,3,.33)';
+  ctx.save();ctx.translate(-camX,-camY);ctx.fillStyle='rgba(8,5,3,.33)';
   const cr=st.crate;if(cr.cy<1)ctx.fillRect(cr.x,GY-cr.h+2,cr.w,cr.h);
   ctx.fillStyle='rgba(8,5,3,.3)';partShadow(ctx,T);ctx.restore();
   ctx.globalAlpha=.36;ctx.drawImage(silC,0,0,W,H);ctx.restore();
@@ -966,13 +987,41 @@ addEventListener('keydown',e=>{
   const k=e.key.toLowerCase();
   if(k==='arrowleft'||k==='a'){keys.l=true;pulse=-1;e.preventDefault();}
   else if(k==='arrowright'||k==='d'){keys.r=true;pulse=1;e.preventDefault();}
+  else if(k==='arrowup'||k==='w'){keys.u=true;pulseY=-1;e.preventDefault();}
+  else if(k==='arrowdown'||k==='s'){keys.d=true;pulseY=1;e.preventDefault();}
 });
-addEventListener('keyup',e=>{const k=e.key.toLowerCase();if(k==='arrowleft'||k==='a')keys.l=false;else if(k==='arrowright'||k==='d')keys.r=false;});
-addEventListener('blur',()=>{keys.l=keys.r=false;});
+addEventListener('keyup',e=>{
+  const k=e.key.toLowerCase();
+  if(k==='arrowleft'||k==='a')keys.l=false;else if(k==='arrowright'||k==='d')keys.r=false;
+  else if(k==='arrowup'||k==='w')keys.u=false;else if(k==='arrowdown'||k==='s')keys.d=false;
+});
+addEventListener('blur',()=>{keys.l=keys.r=keys.u=keys.d=false;});
 for(const [id,key] of [['padL','l'],['padR','r']]){
   const b=document.getElementById(id);
   b.addEventListener('pointerdown',e=>{keys[key]=true;pulse=key==='l'?-1:1;b.classList.add('on');b.setPointerCapture(e.pointerId);e.preventDefault();});
   for(const ev of ['pointerup','pointercancel','lostpointercapture'])b.addEventListener(ev,()=>{keys[key]=false;b.classList.remove('on');});
+}
+/* the deck plan swaps the two pads for a floating thumb-stick: touch anywhere, drag to walk.
+   It only sets the same four keys, so nothing downstream knows the difference. */
+{
+  const stick=document.getElementById('stick'),knob=stick.firstElementChild,R=46,DZ=14;
+  let id=null,ox=0,oy=0;
+  const release=()=>{id=null;keys.l=keys.r=keys.u=keys.d=false;stick.classList.remove('on');};
+  addEventListener('pointerdown',e=>{
+    if(id!==null||!inHub()||e.pointerType==='mouse')return;
+    id=e.pointerId;ox=e.clientX;oy=e.clientY;
+    stick.style.left=ox+'px';stick.style.top=oy+'px';knob.style.transform='translate(-50%,-50%)';stick.classList.add('on');
+    e.preventDefault();
+  },{passive:false});
+  addEventListener('pointermove',e=>{
+    if(e.pointerId!==id)return;
+    if(!inHub()){release();return;}
+    let dx=e.clientX-ox,dy=e.clientY-oy;const m=Math.hypot(dx,dy);
+    knob.style.transform=`translate(calc(-50% + ${m>R?dx/m*R:dx}px),calc(-50% + ${m>R?dy/m*R:dy}px))`;
+    const on=m>DZ;                                  // eight directions: a component counts once it is over ~38% of the drag
+    keys.r=on&&dx>.38*m;keys.l=on&&dx<-.38*m;keys.d=on&&dy>.38*m;keys.u=on&&dy<-.38*m;
+  });
+  for(const ev of ['pointerup','pointercancel'])addEventListener(ev,e=>{if(e.pointerId===id)release();});
 }
 const touchy=()=>document.body.classList.add('touch');
 if(matchMedia('(pointer:coarse)').matches)touchy();
@@ -983,5 +1032,6 @@ resize();loadRoom(0);sleep();
 requestAnimationFrame(frame);
 </script>
 <script src="opening.js"></script>
+<script src="hub.js"></script>
 </body>
 </html>
