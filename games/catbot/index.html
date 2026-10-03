@@ -66,7 +66,8 @@ const ROOMS=[{
 const rig=new Catbot();
 const CAT={weight:1, nose:88, paw:62};      // nose: root→face of whatever it leans on; paw: root→ledge edge
 const keys={l:false,r:false};
-const dirInput=()=>(keys.r?1:0)-(keys.l?1:0);
+let pulse=0;                                  // a tap shorter than a frame still counts once
+const dirInput=()=>(keys.r?1:0)-(keys.l?1:0)||pulse;
 let room, roomI=0, st, camX=0, mode='play', modeT=0, fade=1, fadeDir=-1, fadeCb=null;
 let idle=0, walkT=0, walkDir=0, look=0, lookT=0, latch=false;   // latch: ignore a key still held from before a fade
 const installed=new Set();                    // installed parts survive a rewind
@@ -633,7 +634,7 @@ function tick(dt){
   T+=dt;
   if(caps[0]&&(caps[0].t+=dt)>caps[0].max)caps.shift();
   const c=freshCtrl();
-  control(dt,c);
+  control(dt,c);pulse=0;
   BL=blockers();
   acc+=dt;let n=0;while(acc>=SUB&&n<40){rig.update(SUB,c);constrain();acc-=SUB;n++;}
   updCrate(dt);updGates(dt);
@@ -687,14 +688,14 @@ function render(dt){
    ===================================================================== */
 addEventListener('keydown',e=>{
   const k=e.key.toLowerCase();
-  if(k==='arrowleft'||k==='a'){keys.l=true;e.preventDefault();}
-  else if(k==='arrowright'||k==='d'){keys.r=true;e.preventDefault();}
+  if(k==='arrowleft'||k==='a'){keys.l=true;pulse=-1;e.preventDefault();}
+  else if(k==='arrowright'||k==='d'){keys.r=true;pulse=1;e.preventDefault();}
 });
 addEventListener('keyup',e=>{const k=e.key.toLowerCase();if(k==='arrowleft'||k==='a')keys.l=false;else if(k==='arrowright'||k==='d')keys.r=false;});
 addEventListener('blur',()=>{keys.l=keys.r=false;});
 for(const [id,key] of [['padL','l'],['padR','r']]){
   const b=document.getElementById(id);
-  b.addEventListener('pointerdown',e=>{keys[key]=true;b.classList.add('on');b.setPointerCapture(e.pointerId);e.preventDefault();});
+  b.addEventListener('pointerdown',e=>{keys[key]=true;pulse=key==='l'?-1:1;b.classList.add('on');b.setPointerCapture(e.pointerId);e.preventDefault();});
   for(const ev of ['pointerup','pointercancel','lostpointercapture'])b.addEventListener(ev,()=>{keys[key]=false;b.classList.remove('on');});
 }
 const touchy=()=>document.body.classList.add('touch');
