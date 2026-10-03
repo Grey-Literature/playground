@@ -522,6 +522,33 @@ function drawExitFront(g,t){
   g.beginPath();g.arc(x+20,GY-176,7,0,TAU);g.fillStyle=ready?'#7dffb0':'#ff5a4a';g.fill();g.strokeStyle=OL;g.lineWidth=1.4;g.stroke();
   g.save();g.globalCompositeOperation='lighter';softEllipse(g,x+20,GY-176,26,26,.3+.1*Math.sin(t*3),ready?'110,255,170':'255,90,70');g.restore();
 }
+/* soft horizontal contact band (a box sitting on the deck) */
+function softBar(g,x0,x1,y,h,a){
+  if(a<=.004)return;
+  const gr=g.createLinearGradient(0,y-h,0,y+h);gr.addColorStop(0,'rgba(8,5,3,0)');gr.addColorStop(.5,`rgba(8,5,3,${a})`);gr.addColorStop(1,'rgba(8,5,3,0)');
+  g.fillStyle=gr;g.fillRect(x0,y-h,x1-x0,h*2);
+  softEllipse(g,x0,y,h*2,h,a*.8);softEllipse(g,x1,y,h*2,h,a*.8);
+}
+/* crate: its mass presses a hard dark line into the deck. Straining against
+   it presses harder; once it breaks free the line loosens, pales and smears
+   back along the scrape. Falling, its shadow gathers on the plate. */
+function crateAO(g){
+  const cr=st.crate,pl=pit();
+  if(cr.st==='floor'){
+    const sl=Math.min(1,cr.v/40), d=P.on?P.dir:1, press=P.on&&cr.v<=0?.12*P.str:0;
+    const a=Math.min(.68,(.42+.1*cr.mass+press)*(1-.35*sl));
+    softBar(g,cr.x-2,cr.x+cr.w+2,GY+1,4.5-1.5*press*4,a);
+    if(sl>.02){const len=8+cr.v*.9, x=d>0?cr.x:cr.x+cr.w;softBar(g,Math.min(x,x-d*len),Math.max(x,x-d*len),GY+1.5,3,a*.45*sl);}
+  }else if(cr.st==='fall'){
+    const u=clamp(cr.cy/pl.depth,0,1);
+    softBar(g,pl.x+6+10*(1-u),pl.x+pl.w-6-10*(1-u),GY+pl.depth-4,3+3*(1-u),.12+.45*u);
+  }
+}
+function partAO(g,t){
+  if(!room.part||st.got)return;
+  const p=partPos(t), h=clamp(1-(GY-15-p.y)/110,0,1);
+  softEllipse(g,p.x+2,GY+1,13*(1+.25*p.sq)*(1.4-.4*h),3.2,.48*h*h);
+}
 function drawCrateW(g){
   const cr=st.crate;
   g.save();
@@ -634,6 +661,7 @@ function render(dt){
   ctx.fillStyle='rgba(8,5,3,.3)';partShadow(ctx,T);ctx.restore();
   ctx.globalAlpha=.36;ctx.drawImage(silC,0,0,W,H);ctx.restore();
   ctx.save();ctx.translate(-camX,0);
+  crateAO(ctx);partAO(ctx,T);
   contactAO(ctx,rig);
   drawCrateW(ctx);
   drawPart(ctx,T);

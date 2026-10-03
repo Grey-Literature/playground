@@ -564,12 +564,28 @@ function drawGlow(g,r){
   gr.addColorStop(0,`rgba(160,228,255,${.6*I})`);gr.addColorStop(.35,`rgba(60,170,255,${.22*I})`);gr.addColorStop(1,'rgba(40,120,255,0)');
   g.fillStyle=gr;g.fillRect(p.x-R,p.y-R,R*2,R*2);g.restore();
 }
+/* contact shadows: they carry the weight.
+   load  = how hard the hull is bearing down: body-spring compression below
+           standing height, motor strain, and the downward speed of a landing.
+   slide = planted feet that are moving with the body (ice, c.slip) smear
+           their shadow back along the slide and lose the hard pressure core. */
 function contactAO(g,r){
+  const c=r.c, wt=c.weight??1, slip=c.slip||0;
+  const comp=clamp((60-r.y)/22,-.3,1), impact=r.air?0:clamp(-r.vy/420,0,.7);
+  const load=wt*(1+.45*Math.max(0,comp)+.5*r.strain+impact);
+  const vs=r.vx*slip, sl=Math.min(1,Math.abs(vs)/150), dir=Math.sign(vs);
   for(const lg of r.legs){
-    const far=!lg.near, a=.44*clamp(1-lg.fy/22,0,1)*(far?.8:1);
-    softEllipse(g,lg.fx+r.facing*(3+(far?5:0)),GY-(far?6:0)+1,10,3,a);
+    const far=!lg.near, up=clamp(1-lg.fy/22,0,1);
+    if(up<=0)continue;
+    // a straining cat drives through its hind feet
+    const L=load*(lg.hind?1+.6*r.strain:1-.25*r.strain);
+    const a=Math.min(.72,.44*up*(far?.8:1)*(.7+.35*L))*(1-.3*sl);
+    const x=lg.fx+r.facing*(3+(far?5:0)), y=GY-(far?6:0)+1;
+    softEllipse(g,x,y,10*(.9+.18*L),3*(.85+.3*L),a);
+    if(lg.planted&&sl>.02){const len=Math.abs(vs)*.14;softEllipse(g,x-dir*len*.5,y,10+len*.5,2.6,a*.55*sl);}
   }
-  softEllipse(g,r.x,GY-2,64,8,.26*clamp(1-(r.y-17)/110,0,1));
+  const body=.26*clamp(1-(r.y-17)/110,0,1)*(.85+.3*load);
+  softEllipse(g,r.x-dir*Math.abs(vs)*.06,GY-2,64*(.95+.1*Math.max(0,comp))+Math.abs(vs)*.08,8,Math.min(.5,body));
 }
 
 /* =====================================================================
