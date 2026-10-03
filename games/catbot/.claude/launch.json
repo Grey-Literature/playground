@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "catbot",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "8737", "--bind", "127.0.0.1"],
+      "port": 8737
+    }
+  ]
+}
