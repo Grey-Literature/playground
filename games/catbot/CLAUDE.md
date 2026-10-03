@@ -31,6 +31,7 @@ this folder is where the character is settled first.
 | `catbot-storyboard.webp` | Concept storyboard (idle, ear scan, stretch, pivot, pounce, land) |
 | `catbot-sprite` | Sprite-sheet concept (PNG, no extension) |
 | `index.html` | **The game.** Room 1 + intro. Room data, world, control modes, render |
+| `opening.js` | Opening cinematic (premise): space → cabin → impact → the real hold, close in. Boots the game into it; delete the script tag and the game starts at the title |
 | `catbot.js` | Shared rig: `Catbot` physics, drawing, shadows, particles, crate/lamp props |
 | `catbot-rig.html` | Dev pose picker (not part of the game): the 8 rig studies, loads `catbot.js` |
 
@@ -69,7 +70,12 @@ this folder is where the character is settled first.
   pounce/fly-home/click restores both. Installed parts
   survive a rewind; the end card resets the demo loop.
 - Control layering kept from the rig: mode → `ctrl` → `Catbot.update`.
-  Modes: asleep → wake → play ⇄ (pounce | oops | chase) → exit → card.
+  Modes: intro → asleep → wake → play ⇄ (pounce | oops | chase) → exit → card
+  (the end card loops back to asleep, not the intro). Any movement skips
+  the intro; the input latch stops that same keypress also waking it.
+- The opening's last shot is the game itself (`zoom`/`camY` on the room
+  camera, darkness overlay), so the cut to the aft hold is a camera move,
+  not a scene swap. `room.wreck` is the crash debris it shows; set dressing only.
 - Easter egg (approved per `AGENTS.md`): `chase` mode. Signature lives in
   `makeStarLog()` and the console; don't remove it.
 

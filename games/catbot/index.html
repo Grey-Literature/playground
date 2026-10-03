@@ -54,6 +54,10 @@ const ROOMS=[{
   part:{x:1040, id:'hip'},                  // what catbot thinks is a toy
   exit:{x:1180},                            // hatch in the end bulkhead; opens once the part is in
   port:{x:190},                             // porthole (light source, matches the shadow direction)
+  wreck:[                                   // set dressing from the crash: drawn on the back deck, never collides
+    {k:'plate',x:170,a:-.42},{k:'gear',x:214,r:7},{k:'nut',x:296},{k:'nut',x:305},{k:'gear',x:334,r:5},
+    {k:'wrench',x:362,a:.25},{k:'cable',x:300},{k:'scorch',x:282},{k:'bin',x:912},{k:'gear',x:966,r:6},{k:'nut',x:985}
+  ],
   captions:[
     {on:'start', text:'← →  or  A D.   Walking is the only verb.'},
     {on:'push',  text:'Heavy things move if you lean on them long enough.'}
@@ -68,7 +72,7 @@ const CAT={weight:1, nose:88, paw:62};      // nose: root→face of whatever it 
 const keys={l:false,r:false};
 let pulse=0;                                  // a tap shorter than a frame still counts once
 const dirInput=()=>(keys.r?1:0)-(keys.l?1:0)||pulse;
-let room, roomI=0, st, camX=0, mode='play', modeT=0, fade=1, fadeDir=-1, fadeCb=null;
+let room, roomI=0, st, camX=0, camY=0, zoom=1, mode='play', modeT=0, fade=1, fadeDir=-1, fadeCb=null;
 let idle=0, walkT=0, walkDir=0, look=0, lookT=0, latch=false;   // latch: ignore a key still held from before a fade
 const installed=new Set();                    // installed parts survive a rewind
 const seenCaps=new Set(), caps=[];
@@ -397,7 +401,10 @@ function control(dt,c){
   if(latch&&!dirInput())latch=false;
   const dir=latch?0:dirInput();
   modeT+=dt;
-  if(mode==='asleep'){
+  if(mode==='intro'){
+    slump(c,T);OPEN.ctrl(c,modeT);
+    if(dir)fadeTo(()=>OPEN.finish(false));     // any step skips the opening
+  }else if(mode==='asleep'){
     slump(c,T);
     if(dir){mode='wake';modeT=0;latch=true;}
   }else if(mode==='wake'){
@@ -496,6 +503,28 @@ function drawRoom(g,t){
   drawCable(g,t);
   drawExitBack(g);
   drawGateBack(g);
+  drawWreck(g,t);
+}
+function drawWreck(g,t){
+  const P=NEAR,y=GY-12;
+  for(const w of room.wreck||[]){
+    if(w.x<camX-80||w.x>camX+W/zoom+80)continue;
+    g.save();
+    if(w.k==='scorch'){const gr=g.createRadialGradient(w.x,GY-90,4,w.x,GY-90,70);gr.addColorStop(0,'rgba(5,3,2,.55)');gr.addColorStop(1,'rgba(5,3,2,0)');g.fillStyle=gr;g.fillRect(w.x-70,GY-160,140,140);}
+    else if(w.k==='cable'){
+      // torn conduit from the ceiling, still live
+      const sw=Math.sin(t*.9)*4, ex=w.x+16+sw, ey=GY-150;
+      g.strokeStyle='#0b0d11';g.lineWidth=4;g.beginPath();g.moveTo(w.x,0);g.quadraticCurveTo(w.x+4,ey*.6,ex,ey);g.stroke();
+      g.strokeStyle='#c3673d';g.lineWidth=1.2;g.beginPath();g.moveTo(ex,ey);g.lineTo(ex-3,ey+6);g.moveTo(ex,ey);g.lineTo(ex+4,ey+5);g.stroke();
+      if(Math.random()<.025){g.globalCompositeOperation='lighter';softEllipse(g,ex,ey+5,16,16,.8,'180,220,255');}
+    }
+    else if(w.k==='plate'){g.translate(w.x,GY-20);g.rotate(w.a);g.fillStyle='#6d747d';g.beginPath();g.moveTo(-22,-14);g.lineTo(20,-12);g.lineTo(24,8);g.lineTo(6,4);g.lineTo(-20,10);g.closePath();g.fill();g.strokeStyle=OL;g.lineWidth=1.2;g.stroke();g.fillStyle='#8d939b';for(const [bx,by] of [[-16,-8],[14,-6],[-14,5]]){g.beginPath();g.arc(bx,by,1.4,0,TAU);g.fill();}}
+    else if(w.k==='gear'){g.translate(w.x,y);g.scale(1,.38);gear(g,0,0,w.r,9,w.x,P.b);}
+    else if(w.k==='nut'){g.translate(w.x,y+2);g.scale(1,.5);g.beginPath();for(let i=0;i<6;i++){const q=i/6*TAU;g.lineTo(Math.cos(q)*3.5,Math.sin(q)*3.5);}g.closePath();g.fillStyle='#9aa0a8';g.fill();g.strokeStyle=OL;g.lineWidth=.8;g.stroke();}
+    else if(w.k==='wrench'){g.translate(w.x,y);g.rotate(w.a);limb(g,-11,0,8,0,4,4,STC(P),1);g.beginPath();g.arc(10,0,5,.6,TAU-.6);g.lineWidth=3;g.strokeStyle=P.st;g.stroke();}
+    else if(w.k==='bin'){g.translate(w.x,GY-8);g.rotate(-.08);g.fillStyle='#3e434b';g.fillRect(-26,-28,52,28);g.fillStyle='#0b0d10';g.fillRect(14,-24,10,20);g.strokeStyle=OL;g.lineWidth=1.2;g.strokeRect(-26,-28,52,28);g.fillStyle='#d6a54e';g.fillRect(-20,-22,14,3);}
+    g.restore();
+  }
 }
 function drawReset(g,t){
   const rs=room.reset;if(!rs)return;
@@ -706,20 +735,23 @@ function tick(dt){
   acc+=dt;let n=0;while(acc>=SUB&&n<40){rig.update(SUB,c);constrain();acc-=SUB;n++;}
   updCrate(dt);updGates(dt);
   handleRigEvents();updParts(dt);
-  camX=damp(camX,camTarget(),4,dt);
+  if(mode==='intro')OPEN.update(dt,modeT);else camX=damp(camX,camTarget(),4,dt);
   if(fadeDir){fade+=fadeDir*dt*2.4;if(fade>=1&&fadeDir>0){fade=1;fadeDir=-1;const cb=fadeCb;fadeCb=null;cb&&cb();camX=camTarget();}if(fade<=0&&fadeDir<0){fade=0;fadeDir=0;}}
 }
 
+function view(g){g.scale(zoom,zoom);g.translate(-camX,-camY);}
 function render(dt){
   const cw=cv.width,ch=cv.height;
+  if(mode==='intro'&&OPEN.cine(modeT)){OPEN.render(ctx,modeT);if(fade>0){ctx.fillStyle=`rgba(11,13,17,${fade})`;ctx.fillRect(0,0,W,H);}return;}
   const sx=(Math.random()-.5)*shake,sy=(Math.random()-.5)*shake;
   ctx.setTransform(S,0,0,S,sx*S,sy*S);
-  ctx.save();ctx.translate(-camX,0);
+  ctx.save();view(ctx);
   drawRoom(ctx,T);
   drawScratches(ctx);
   ctx.restore();
   // cat -> offscreen, then its silhouette for the projected shadow
-  cctx.setTransform(1,0,0,1,0,0);cctx.clearRect(0,0,cw,ch);cctx.setTransform(S,0,0,S,-camX*S,0);drawCat(cctx,rig);
+  cctx.setTransform(1,0,0,1,0,0);cctx.clearRect(0,0,cw,ch);cctx.setTransform(S*zoom,0,0,S*zoom,-camX*S*zoom,-camY*S*zoom);drawCat(cctx,rig);
+  if(zoom===1){   // projected shadow is screen-space; skipped in the opening's close-up
   sctx.setTransform(1,0,0,1,0,0);sctx.globalCompositeOperation='source-over';sctx.clearRect(0,0,cw,ch);
   sctx.drawImage(catC,0,0);sctx.globalCompositeOperation='source-in';sctx.fillStyle='#0a0705';sctx.fillRect(0,0,cw,ch);sctx.globalCompositeOperation='source-over';
   ctx.save();ctx.transform(1,0,-SK,SS,SK*GY,(1-SS)*GY);
@@ -728,14 +760,15 @@ function render(dt){
   const cr=st.crate;if(cr.cy<1)ctx.fillRect(cr.x,GY-cr.h+2,cr.w,cr.h);
   ctx.fillStyle='rgba(8,5,3,.3)';partShadow(ctx,T);ctx.restore();
   ctx.globalAlpha=.36;ctx.drawImage(silC,0,0,W,H);ctx.restore();
-  ctx.save();ctx.translate(-camX,0);
+  }
+  ctx.save();view(ctx);
   crateAO(ctx);partAO(ctx,T);
   contactAO(ctx,rig);
   drawCrateW(ctx);
   drawPart(ctx,T);
   ctx.restore();
   ctx.save();ctx.setTransform(1,0,0,1,sx*S,sy*S);ctx.drawImage(catC,0,0);ctx.restore();
-  ctx.save();ctx.translate(-camX,0);
+  ctx.save();view(ctx);
   drawGlow(ctx,rig);
   drawPartFly(ctx,T);
   drawGateFront(ctx);
@@ -744,6 +777,7 @@ function render(dt){
   ctx.restore();
   ctx.setTransform(S,0,0,S,0,0);
   vignette(ctx);
+  if(mode==='intro')OPEN.overlay(ctx,modeT,true);
   drawStarLog(ctx,dt);
   drawTitle(ctx);
   drawCaptions(ctx);
@@ -774,5 +808,6 @@ addEventListener('contextmenu',e=>e.preventDefault());
 resize();loadRoom(0);sleep();
 requestAnimationFrame(frame);
 </script>
+<script src="opening.js"></script>
 </body>
 </html>
