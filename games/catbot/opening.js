@@ -254,7 +254,7 @@ function ctrl(c,t){
 /* shots 1-3 draw their own stage; true while that's the case */
 function cine(t){return t<SH.wreck;}
 function render(g,t){
-  const qx=(Math.random()-.5)*quake,qy=(Math.random()-.5)*quake;
+  const qx=(Math.random()-.5)*quake*calmK(),qy=(Math.random()-.5)*quake*calmK();
   g.setTransform(S,0,0,S,0,0);g.fillStyle='#000';g.fillRect(0,0,W,H);   // nothing left over at rotated/zoomed edges
   g.setTransform(S,0,0,S,qx*S,qy*S);
   if(t<SH.cabin){
@@ -268,7 +268,7 @@ function render(g,t){
     drawGround(g,t);
     if(t<28.6){const p=ship3(t);drawFx(g);drawShuttle(g,p.x,p.y,p.s,p.a,t,{lost:4,heat:1});}
     else{drawShuttle(g,W*.62,300,1.3,2.75,t,{lost:4,heat:Math.max(0,1-(t-28.6)*2),dead:true});drawFx(g);}
-    if(flash>0){g.setTransform(S,0,0,S,0,0);g.fillStyle=`rgba(255,248,235,${flash})`;g.fillRect(0,0,W,H);}
+    if(flash>0){g.setTransform(S,0,0,S,0,0);g.fillStyle=`rgba(255,248,235,${flash*(settings.calm?.35:1)})`;g.fillRect(0,0,W,H);}
   }else if(t<SH.silence){
     // metal folds, lights die: the cabin on its side, one tube still trying
     const l=t<30.6?(Math.random()<.4?.12:.55):0;

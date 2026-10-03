@@ -76,6 +76,18 @@ this folder is where the character is settled first.
 - The opening's last shot is the game itself (`zoom`/`camY` on the room
   camera, darkness overlay), so the cut to the aft hold is a camera move,
   not a scene swap. `room.wreck` is the crash debris it shows; set dressing only.
+- **Settings are places, not menus** (jam mods: "the character moves to
+  select", like Unrailed!). A service trolley rides a wall rail and parks
+  near catbot whenever it stands still for 1.2 s. Its three floor buttons
+  (toolbox panel, sound, steady = reduced shake/flashes) are pressed by
+  standing still on one for 0.7 s; walking over them does nothing, and
+  any walking re-arms them. Settings persist in localStorage
+  (`catbot.settings`). Sound is a stored flag only: there's no audio yet.
+- **Toolbox panel** (top right, opened from the trolley, peeks open by
+  itself when a part is installed). The lid reads TOYS until the hip
+  clicks, then flips to REPAIR KIT and repair % appears. It shows only the
+  current room's parts (silhouette → object); the yarn is never listed.
+  `GAME.totalParts` (6) is a placeholder until the room list is final.
 - Easter egg (approved per `AGENTS.md`): `chase` mode. Signature lives in
   `makeStarLog()` and the console; don't remove it.
 

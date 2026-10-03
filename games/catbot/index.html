@@ -60,7 +60,8 @@ const ROOMS=[{
   ],
   captions:[
     {on:'start', text:'← →  or  A D.   Walking is the only verb.'},
-    {on:'push',  text:'Heavy things move if you lean on them long enough.'}
+    {on:'push',  text:'Heavy things move if you lean on them long enough.'},
+    {on:'cart',  text:'The service trolley follows you. Stand still on a button to press it.'}
   ]
 }];
 
@@ -84,7 +85,7 @@ function resetRoom(){
   st={
     crate:{x:R.crate.x,w:R.crate.w,h:R.crate.h,mass:R.crate.mass??1,v:0,cy:0,vy:0,rot:0,st:'floor',x0:0,ft:0},
     gate:new Spring(0,1.4,.38), door:new Spring(0,1.8,.5),
-    plate:0, cable:0, got:installed.has(R.part?.id), oops:null, pk:{}
+    plate:0, cable:0, got:installed.has(R.part?.id), oops:null, pk:{}, cart:newCart()
   };
   for(const k of [...flags])if(/^(perk|jump|test|puff)/.test(k))flags.delete(k);
   Object.assign(P,{on:false,str:0,F:0});
@@ -420,7 +421,7 @@ function control(dt,c){
     if(pounceReady()){mode='pounce';modeT=0;st.pk={};endPush();return;}
     // reset tile: front paws on it, facing it
     const rs=room.reset;
-    if(rs&&rig.facing<0&&rig.x-45<rs.x+rs.w-14){mode='rewind';modeT=0;fadeTo(()=>{resetRoom();mode='play';});}
+    if(rs&&rig.facing<0&&rig.x-45<rs.x+rs.w-14){mode='rewind';modeT=0;run.rewinds++;fadeTo(()=>{resetRoom();mode='play';});}
     // exit hatch
     const ex=room.exit;
     if(ex&&rig.x>ex.x+64){mode='exit';modeT=0;fadeTo(()=>{mode='card';modeT=0;});}
@@ -429,8 +430,173 @@ function control(dt,c){
   }else if(mode==='exit'){
     c.vx=105;c.face=1;
   }else if(mode==='card'){
-    if(modeT>3.4&&fadeDir===0){fadeTo(()=>{installed.clear();seenCaps.clear();flags.clear();loadRoom(0);sleep();});}
+    if(modeT>3.4&&fadeDir===0){fadeTo(()=>{installed.clear();seenCaps.clear();flags.clear();run.t=0;run.rewinds=0;loadRoom(0);sleep();});}
   }
+}
+
+/* =====================================================================
+   SERVICE CART: settings, the movement-only way (jam mods: "the character
+   moves to select"). A rail cart follows catbot along the back of the deck
+   and parks on clear floor nearby whenever it stops. Its floor buttons are
+   pressed by standing still on one until the ring fills, so walking over
+   them never presses anything.
+   ===================================================================== */
+const GAME={totalParts:6};                    // placeholder until the room list is final. The yarn coil counts but is never listed.
+const settings=(()=>{const d={sound:true,calm:false,kit:false};try{return Object.assign(d,JSON.parse(localStorage.getItem('catbot.settings')||'{}'));}catch(e){return d;}})();
+function saveSettings(){try{localStorage.setItem('catbot.settings',JSON.stringify(settings));}catch(e){}}
+const calmK=()=>settings.calm?.2:1;           // screen shake + flashes multiplier
+{const f=FX.flash;FX.flash=(x,y,p,rgb)=>f(x,y,p*(settings.calm?.35:1),rgb);}
+const PADS=[{id:'kit',dx:-72},{id:'sound',dx:0},{id:'calm',dx:72}], CART_HALF=100;
+const run={t:0,rewinds:0};
+const ui={o:0,peek:0,flip:0,lastParts:0};
+function newCart(){return {x:null,tx:null,wheel:0,pads:PADS.map(p=>({...p,charge:0,armed:true,blink:0}))};}
+function cartFree(cx){
+  const R=room,a=cx-CART_HALF,b=cx+CART_HALF;
+  if(a<(R.reset?R.reset.x+R.reset.w+60:16)||   // room to stand on the end button without the REWIND tile catching a paw
+     b>(R.exit?R.exit.x-8:R.w-16))return false;
+  const occ=[];
+  if(R.plate)occ.push([R.plate.x-6,R.plate.x+R.plate.w+24]);
+  const cr=st.crate;if(cr.st!=='set')occ.push([cr.x-6,cr.x+cr.w+6]);
+  if(R.gate)occ.push([R.gate.x-14,R.gate.x+R.gate.w+14]);
+  if(R.part&&!st.got)occ.push([R.part.x-30,R.part.x+30]);
+  return !occ.some(([u,v])=>b>u&&a<v);
+}
+function updCart(dt,dir){
+  const k=st.cart;
+  for(const p of k.pads)p.blink=Math.max(0,p.blink-dt*2);
+  // follow: once catbot has stood still a moment, roll to clear floor in view
+  const seen=k.x!=null&&k.x>camX-40&&k.x<camX+W+40;
+  if(mode==='play'&&!dir&&idle>1.2&&k.tx==null&&(!seen||!cartFree(k.x))){
+    const lo=camX+CART_HALF+12,hi=camX+W-CART_HALF-12;
+    // prefer just behind catbot, then ahead, then right where it stands (it rides the back rail)
+    const offs=[];for(let d=140;d<=440;d+=20)offs.push(-rig.facing*d);for(let d=140;d<=440;d+=20)offs.push(rig.facing*d);
+    for(let d=0;d<140;d+=20)offs.push(-rig.facing*d,rig.facing*d);
+    const clear=cx=>PADS.every(p=>Math.abs(cx+p.dx-rig.x)>34);   // first choice: no button right under it
+    for(const pass of [true,false]){for(const o of offs){const cx=rig.x+o;if(cx>=lo&&cx<=hi&&cartFree(cx)&&(!pass||clear(cx))){k.tx=cx;break;}}if(k.tx!=null)break;}
+    if(k.tx!=null&&k.x==null)k.x=k.tx<rig.x?camX-CART_HALF-30:camX+W+CART_HALF+30;
+  }
+  if(k.tx!=null){
+    const d=k.tx-k.x,v=Math.sign(d)*Math.min(300,Math.abs(d)*4+30);
+    k.x+=v*dt;k.wheel+=v*dt/6;
+    if(Math.abs(k.tx-k.x)<1.5){
+      k.x=k.tx;k.tx=null;caption('cart');
+      for(const p of k.pads)if(Math.abs(k.x+p.dx-rig.x)<24)p.armed=false;   // arrived under a cat standing still: no free press
+    }
+    return;
+  }
+  if(k.x==null||mode!=='play'||P.on)return;
+  for(const p of k.pads){
+    const px=k.x+p.dx,on=Math.abs(rig.x-px)<24&&Math.abs(rig.vx)<25&&!rig.air;
+    if(Math.abs(rig.vx)>30||Math.abs(rig.x-px)>=24)p.armed=true;   // any walking re-arms it
+    if(!on){p.charge=Math.max(0,p.charge-dt*3);continue;}
+    if(!p.armed)continue;
+    p.charge+=dt/.7;
+    if(p.charge>=1){
+      p.charge=0;p.armed=false;p.blink=1;
+      if(p.id==='kit')settings.kit=!settings.kit;
+      else if(p.id==='sound')settings.sound=!settings.sound;
+      else settings.calm=!settings.calm;
+      saveSettings();
+      FX.sparks(px,GY-10,4,0,.3);rig.earL.vel-=10;rig.earR.vel-=9;rig.hOy.vel-=25;
+    }
+  }
+}
+/* ---- cart + buttons (world, back of the deck, behind catbot) ---- */
+function iconKit(g,x,y,c){g.fillStyle=c;g.fillRect(x-9,y-4,18,11);g.fillRect(x-5,y-8,10,3);g.fillStyle='rgba(0,0,0,.35)';g.fillRect(x-9,y,18,1.5);}
+function iconSound(g,x,y,c,on){
+  g.fillStyle=c;g.beginPath();g.moveTo(x-9,y-3);g.lineTo(x-5,y-3);g.lineTo(x,y-8);g.lineTo(x,y+8);g.lineTo(x-5,y+3);g.lineTo(x-9,y+3);g.closePath();g.fill();
+  g.strokeStyle=c;g.lineWidth=1.6;
+  if(on){g.beginPath();g.arc(x+1,y,5,-.9,.9);g.stroke();g.beginPath();g.arc(x+1,y,9,-.9,.9);g.stroke();}
+  else{g.beginPath();g.moveTo(x+3,y-4);g.lineTo(x+10,y+4);g.moveTo(x+10,y-4);g.lineTo(x+3,y+4);g.stroke();}
+}
+function iconShake(g,x,y,c,calm){
+  g.strokeStyle=c;g.lineWidth=1.8;g.beginPath();
+  if(calm){g.moveTo(x-9,y);g.lineTo(x+9,y);}else{g.moveTo(x-9,y);for(let i=1;i<=6;i++)g.lineTo(x-9+i*3,y+(i%2?-5:5));}
+  g.stroke();g.beginPath();g.moveTo(x-9,y+8);g.lineTo(x+9,y+8);g.lineWidth=1;g.stroke();
+}
+function padLabel(id){return id==='kit'?(installed.size?'KIT':'TOYS'):id==='sound'?(settings.sound?'SOUND':'MUTE'):(settings.calm?'STEADY':'SHAKE');}
+function drawCart(g,t){
+  const k=st.cart;if(k.x==null)return;
+  const x=k.x,bob=k.tx!=null?Math.sin(t*30)*.6:0;
+  // buttons on the deck
+  for(const p of k.pads){
+    const px=x+p.dx,py=GY-11,lit=p.charge>0||p.blink>0;
+    g.save();g.translate(px,py);g.scale(1,.32);
+    g.beginPath();g.arc(0,0,22,0,TAU);g.fillStyle='#2a2e35';g.fill();g.lineWidth=3;g.strokeStyle='#8c5b22';g.stroke();
+    g.beginPath();g.arc(0,0,16,0,TAU);g.fillStyle=lit?'#ffd27a':'#d29f4a';g.fill();
+    if(p.charge>0){g.beginPath();g.arc(0,0,22,-Math.PI/2,-Math.PI/2+TAU*p.charge);g.lineWidth=5;g.strokeStyle='#7dffb0';g.stroke();}
+    g.restore();
+    if(p.blink>0){g.save();g.globalCompositeOperation='lighter';softEllipse(g,px,py,34,12,.5*p.blink,'255,220,140');g.restore();}
+  }
+  // the trolley: hangs from the wall rail, one icon over each floor button,
+  // up above catbot's ears so whatever it stands on stays readable
+  const top=GY-170+bob;
+  for(const wx of [x-78,x+78]){g.save();g.translate(wx,GY-176);g.rotate(k.wheel);g.beginPath();g.arc(0,0,4.5,0,TAU);g.fillStyle='#3b3f45';g.fill();g.strokeStyle=OL;g.lineWidth=1;g.stroke();g.fillRect(-.6,-4.5,1.2,9);g.restore();
+    g.fillStyle='#3b3f45';g.fillRect(wx-1.5,GY-176,3,8+bob);}
+  const gr=g.createLinearGradient(0,top,0,top+36);gr.addColorStop(0,'#ffe3a0');gr.addColorStop(.4,'#d29f4a');gr.addColorStop(1,'#8c5b22');
+  g.fillStyle=gr;g.beginPath();g.roundRect(x-CART_HALF,top,CART_HALF*2,36,5);g.fill();g.strokeStyle=OL;g.lineWidth=1.4;g.stroke();
+  for(const p of k.pads){
+    const px=x+p.dx, hot=p.charge>0||p.blink>0, c=hot?'#ffe3a0':'#e6b25a';
+    g.fillStyle=hot?'#3a2410':'#2a1a0c';g.beginPath();g.roundRect(px-24,top+4,48,28,3);g.fill();
+    if(p.id==='kit')iconKit(g,px,top+13,c);else if(p.id==='sound')iconSound(g,px,top+13,c,settings.sound);else iconShake(g,px,top+12,c,settings.calm);
+    g.font='600 8px Oswald,sans-serif';g.textAlign='center';g.fillStyle='rgba(239,230,210,.85)';g.fillText(padLabel(p.id),px,top+29);g.textAlign='left';
+    // a faint line down to its button
+    g.strokeStyle=`rgba(214,165,78,${hot?.35:.12})`;g.setLineDash([2,4]);g.beginPath();g.moveTo(px,top+37);g.lineTo(px,GY-16);g.stroke();g.setLineDash([]);
+  }
+}
+/* ---- the toolbox panel (screen space, top right) ---- */
+function fmtTime(s){s=Math.floor(s);return `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;}
+function drawKit(g,dt){
+  if(!['play','pounce','oops','chase','rewind','exit'].includes(mode)){ui.o=0;return;}
+  if(installed.size>ui.lastParts){ui.peek=3.2;if(ui.lastParts===0)ui.flip=1;}
+  ui.lastParts=installed.size;ui.peek=Math.max(0,ui.peek-dt);ui.flip=Math.max(0,ui.flip-dt*1.6);
+  ui.o=damp(ui.o,settings.kit||ui.peek>0?1:0,9,dt);
+  const pw=232,x0=W-pw-12,y0=12,rev=installed.size>0;
+  // tray (slides out below the lid)
+  if(ui.o>.02){
+    const th=124*ui.o;
+    g.save();g.beginPath();g.rect(x0,y0+34,pw,th);g.clip();
+    g.fillStyle='rgba(28,22,14,.92)';g.fillRect(x0+4,y0+34,pw-8,124);g.strokeStyle='#8c5b22';g.lineWidth=1.2;g.strokeRect(x0+4,y0+34,pw-8,124);
+    const lx=x0+14,ty=y0+34;
+    g.font='600 9px Oswald,sans-serif';g.fillStyle='rgba(214,165,78,.75)';g.fillText(rev?'PARTS IN THIS ROOM':'TOYS IN THIS ROOM',lx,ty+15);
+    // this room's parts only: silhouette until found, the real thing after
+    const pts=room.part?[room.part]:[];
+    pts.forEach((pt,i)=>{
+      const sx=lx+18+i*44,sy=ty+40,got=installed.has(pt.id);
+      g.fillStyle='rgba(0,0,0,.35)';g.fillRect(sx-17,sy-17,34,34);g.strokeStyle='rgba(214,165,78,.35)';g.strokeRect(sx-17,sy-17,34,34);
+      if(got){g.save();g.translate(sx,sy);g.scale(1,-1);disc(g,0,0,12,NEAR,T*.4,false);g.restore();}
+      else{g.save();g.translate(sx,sy);g.fillStyle='rgba(0,0,0,.75)';g.beginPath();g.arc(0,0,12,0,TAU);g.fill();g.strokeStyle='rgba(239,230,210,.25)';g.lineWidth=1;g.stroke();gear(g,0,0,6.7,9,0,'rgba(0,0,0,.6)');g.restore();}
+      g.font='600 9px Oswald,sans-serif';g.textAlign='center';g.fillStyle='rgba(239,230,210,.7)';g.fillText(got?(pt.id==='hip'?'HIP GEAR':pt.id.toUpperCase()):'?',sx,sy+28);g.textAlign='left';
+    });
+    // repair status: appears with the reveal, not before
+    const rx=x0+92;
+    if(rev){
+      const f=installed.size/GAME.totalParts;
+      g.font='600 9px Oswald,sans-serif';g.fillStyle='rgba(214,165,78,.75)';g.fillText('REPAIR',rx,ty+15);
+      g.fillStyle='rgba(0,0,0,.45)';g.fillRect(rx,ty+22,124,10);
+      const bg=g.createLinearGradient(rx,0,rx+124,0);bg.addColorStop(0,'#5fd0ff');bg.addColorStop(1,'#7dffb0');g.fillStyle=bg;g.fillRect(rx,ty+22,124*f,10);
+      g.strokeStyle='rgba(214,165,78,.5)';g.strokeRect(rx,ty+22,124,10);
+      g.font='600 12px Oswald,sans-serif';g.fillStyle='#efe6d2';g.fillText(`${Math.round(f*100)}%`,rx,ty+48);
+      g.font='400 10px Inter,sans-serif';g.fillStyle='rgba(239,230,210,.6)';g.fillText(`${installed.size} of ${GAME.totalParts} parts`,rx+34,ty+48);
+    }
+    // stats
+    g.strokeStyle='rgba(214,165,78,.2)';g.beginPath();g.moveTo(lx,ty+78);g.lineTo(x0+pw-14,ty+78);g.stroke();
+    g.font='400 10px Inter,sans-serif';g.fillStyle='rgba(239,230,210,.75)';
+    g.fillText(`Room ${roomI+1} · ${room.name}`,lx,ty+93);
+    g.textAlign='right';g.fillText(`${fmtTime(run.t)}   ·   ${run.rewinds} rewind${run.rewinds===1?'':'s'}`,x0+pw-14,ty+93);g.textAlign='left';
+    g.fillStyle='rgba(239,230,210,.45)';
+    g.fillText(`Sound ${settings.sound?'on':'off'} (none yet) · Shake ${settings.calm?'reduced':'on'}`,lx,ty+112);
+    g.restore();
+  }
+  // lid: label flips from TOYS to REPAIR KIT when the hip goes in
+  const lg=g.createLinearGradient(0,y0,0,y0+34);lg.addColorStop(0,'#ffe3a0');lg.addColorStop(.45,'#d29f4a');lg.addColorStop(1,'#8c5b22');
+  g.fillStyle='#3b3f45';g.fillRect(x0+pw/2-22,y0-2,44,6);
+  g.fillStyle=lg;g.beginPath();g.roundRect(x0,y0+3,pw,31,5);g.fill();g.strokeStyle=OL;g.lineWidth=1.5;g.stroke();
+  g.fillStyle='rgba(74,46,16,.5)';for(const bx of [x0+10,x0+pw-10]){g.beginPath();g.arc(bx,y0+18,2,0,TAU);g.fill();}
+  const fl=ui.flip>0?Math.abs(Math.cos(Math.PI*(1-ui.flip))):1, label=(ui.flip>.5||!rev)?'TOYS':'REPAIR KIT';
+  g.save();g.translate(x0+pw/2,y0+18);g.scale(1,fl);
+  g.fillStyle='#2a1a0c';g.beginPath();g.roundRect(-46,-9,92,18,3);g.fill();
+  g.font='600 12px Oswald,sans-serif';g.textAlign='center';g.fillStyle='#ffe3a0';g.fillText(label,0,4.5);g.restore();g.textAlign='left';
 }
 
 /* =====================================================================
@@ -466,6 +632,8 @@ function drawRoom(g,t){
     g.fillStyle='rgba(255,255,255,.05)';g.fillRect(x,0,2,GY-30);
     g.fillStyle='rgba(0,0,0,.35)';for(let y=20;y<GY-40;y+=26){g.beginPath();g.arc(x+8,y,1.6,0,TAU);g.fill();}
   }
+  // the service trolley's wall rail
+  g.fillStyle='#4b5059';g.fillRect(x0,GY-178,x1-x0,4);g.fillStyle='rgba(0,0,0,.35)';g.fillRect(x0,GY-174,x1-x0,2);
   // stencilled livery: the title lives on the hull
   g.save();g.font='600 72px Oswald,sans-serif';g.fillStyle='rgba(214,165,78,.13)';g.fillText('CATBOT',330,150);
   g.font='600 12px Oswald,sans-serif';g.fillStyle='rgba(214,165,78,.2)';g.fillText('REPAIR UNIT  ·  AFT HOLD  ·  KEEP WOUND',334,172);g.restore();
@@ -504,6 +672,7 @@ function drawRoom(g,t){
   drawExitBack(g);
   drawGateBack(g);
   drawWreck(g,t);
+  drawCart(g,t);
 }
 function drawWreck(g,t){
   const P=NEAR,y=GY-12;
@@ -712,7 +881,8 @@ function drawCard(g){
    LOOP
    ===================================================================== */
 function resize(){
-  const vw=innerWidth,vh=innerHeight,w=Math.min(vw,vh*W/H),dpr=Math.min(2,devicePixelRatio||1);
+  // a hidden or zero-size frame (some embeds load that way) still gets a real canvas
+  const vw=innerWidth||W,vh=innerHeight||H,w=Math.max(W/4,Math.min(vw,vh*W/H)),dpr=Math.min(2,devicePixelRatio||1);
   cv.style.width=w+'px';cv.style.height=(w*H/W)+'px';
   cv.width=Math.round(w*dpr);cv.height=Math.round(w*H/W*dpr);S=cv.width/W;
   for(const c of [catC,silC]){c.width=cv.width;c.height=cv.height;}
@@ -730,7 +900,10 @@ function tick(dt){
   T+=dt;
   if(caps[0]&&(caps[0].t+=dt)>caps[0].max)caps.shift();
   const c=freshCtrl();
+  const din=dirInput();
   control(dt,c);pulse=0;
+  if(st.cart)updCart(dt,din);
+  if(!['intro','asleep','wake','card'].includes(mode))run.t+=dt;
   BL=blockers();
   acc+=dt;let n=0;while(acc>=SUB&&n<40){rig.update(SUB,c);constrain();acc-=SUB;n++;}
   updCrate(dt);updGates(dt);
@@ -743,7 +916,7 @@ function view(g){g.scale(zoom,zoom);g.translate(-camX,-camY);}
 function render(dt){
   const cw=cv.width,ch=cv.height;
   if(mode==='intro'&&OPEN.cine(modeT)){OPEN.render(ctx,modeT);if(fade>0){ctx.fillStyle=`rgba(11,13,17,${fade})`;ctx.fillRect(0,0,W,H);}return;}
-  const sx=(Math.random()-.5)*shake,sy=(Math.random()-.5)*shake;
+  const sx=(Math.random()-.5)*shake*calmK(),sy=(Math.random()-.5)*shake*calmK();
   ctx.setTransform(S,0,0,S,sx*S,sy*S);
   ctx.save();view(ctx);
   drawRoom(ctx,T);
@@ -779,6 +952,7 @@ function render(dt){
   vignette(ctx);
   if(mode==='intro')OPEN.overlay(ctx,modeT,true);
   drawStarLog(ctx,dt);
+  drawKit(ctx,dt);
   drawTitle(ctx);
   drawCaptions(ctx);
   drawCard(ctx);
