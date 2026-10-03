@@ -340,27 +340,44 @@ function chase(dt,c,t){
   if(once('caught',t>2.75&&!rig.air)){rig.tailFlick(5);FX.dust(rig.x,GY,6,.6);shake=Math.max(shake,2);}
   if(t>3.9){mode='play';modeT=0;flags.delete('caught');}
 }
-/* the stars outside spell it out, one at a time, then go back to being stars */
+/* the stars outside spell it out: the title as a dot-matrix of round stars on
+   a fixed grid (sampled at device resolution, letter-spaced so dots never
+   merge), then the signature typed out under it as crisp glowing text */
+const SIG='logged by Claude Opus 5.5 (claude-opus-5-5) in Claude Code';
 let starLog=null;
 function makeStarLog(){
-  const h=64,o=document.createElement('canvas').getContext('2d',{willReadFrequently:true});o.canvas.width=W;o.canvas.height=h;
-  o.textAlign='center';o.fillStyle='#fff';
-  o.font='600 22px Oswald,sans-serif';o.fillText('TAIL CAUGHT',W/2,26);
-  o.font='600 12px Oswald,sans-serif';o.fillText('logged by Claude Opus 5.5 (claude-opus-5-5) in Claude Code',W/2,48);
-  const d=o.getImageData(0,0,W,h).data,dots=[];
-  for(let y=0;y<h;y++)for(let x=0;x<W;x++){
-    const big=y<32,step=big?2:1;if(x%step||y%step)continue;
-    if(d[(y*W+x)*4+3]>120)dots.push({x,y,s:big?1.5:1.1,t0:Math.random(),tw:rnd(2,7),ph:rnd(0,TAU),k:big?.45:.12});   // small line barely twinkles, so it stays legible
+  const h=56,k=Math.max(2,S),pitch=2.8,o=document.createElement('canvas').getContext('2d',{willReadFrequently:true});
+  o.canvas.width=Math.ceil(W*k);o.canvas.height=Math.ceil(h*k);
+  o.scale(k,k);o.textAlign='center';o.fillStyle='#fff';o.font='600 38px Oswald,sans-serif';
+  if('letterSpacing' in o)o.letterSpacing='5px';
+  o.fillText('TAIL CAUGHT',W/2,44);
+  const d=o.getImageData(0,0,o.canvas.width,o.canvas.height).data,cw=o.canvas.width,dots=[];
+  for(let y=pitch/2;y<h;y+=pitch)for(let x=pitch/2;x<W;x+=pitch){
+    if(d[(Math.floor(y*k)*cw+Math.floor(x*k))*4+3]>140)dots.push({x,y,t0:Math.random(),tw:rnd(2,6),ph:rnd(0,TAU)});
   }
-  return {dots,t:0};
+  o.setTransform(1,0,0,1,0,0);
+  ctx.font='500 13px Inter,sans-serif';
+  const xs=[];let acc=0;for(const ch of SIG){xs.push(acc);acc+=ctx.measureText(ch).width;}
+  return {dots,xs,w:acc,t:0};
 }
 function drawStarLog(g,dt){
   if(!starLog)return;
   const L=starLog;L.t+=dt;if(L.t>8.5){starLog=null;return;}
+  const out=clamp((L.t-6.4)/1.2,0,1);
+  g.fillStyle='rgb(215,232,255)';
   for(const p of L.dots){
-    if(L.t<p.t0*1.4||L.t>6.2+p.t0*2)continue;
-    g.fillStyle=`rgba(215,232,255,${1-p.k+p.k*Math.sin(T*p.tw+p.ph)})`;g.fillRect(p.x,p.y+16,p.s,p.s);
+    if(L.t<p.t0*1.2||out>p.t0)continue;
+    g.globalAlpha=.78+.22*Math.sin(T*p.tw+p.ph);
+    g.beginPath();g.arc(p.x,p.y+4,1.05,0,TAU);g.fill();
   }
+  // signature: one character per 30 ms after the title has formed
+  g.font='500 13px Inter,sans-serif';g.save();g.shadowColor='rgba(120,190,255,.8)';g.shadowBlur=6;
+  const x0=W/2-L.w/2,y=76;
+  for(let i=0;i<SIG.length;i++){
+    const a=clamp((L.t-1.3-i*.03)/.2,0,1)*(1-out);if(a<=0)continue;
+    g.globalAlpha=a;g.fillText(SIG[i],x0+L.xs[i],y);
+  }
+  g.restore();g.globalAlpha=1;
 }
 /* the crate fell out from under its paws. it meant to do that. */
 function oops(dt,c,dir,t){
