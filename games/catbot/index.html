@@ -229,6 +229,8 @@ function walk(dt,c,dir){
   if(Math.abs(rig.vx)<8&&!dir){
     lookT-=dt;if(lookT<0){lookT=rnd(.9,2.4);look=rnd(-1,1);}
     c.lookX=look;c.headYaw=.35+look*.22;c.wagAmp=7;c.wagFreq=.6;
+    // standing on a bad hip: now and then the gear train slips and the leg jerks
+    if(c.limp&&idle>1&&Math.random()<dt*.4){rig.forceStep('HN',.3);const h=rig.toWorld(rig.hipJ);FX.sparks(h.x,h.y,2,-rig.facing,.3);rig.earR.vel+=6;}
   }
 }
 /* wound down: the end pose of the rig's wind-down study, held */
@@ -316,6 +318,50 @@ function pounce(dt,c,t){
     if(ht>2.1){mode='play';modeT=0;}
   }
 }
+/* ---------- egg: waggle left-right in place and it chases its own tail ---------- */
+const egg={last:0,rev:[],f0:1};
+function waggle(dir){
+  if(dir&&dir!==egg.last){if(egg.last&&Math.abs(rig.vx)<40&&!P.on&&!rig.air)egg.rev.push(T);egg.last=dir;}
+  egg.rev=egg.rev.filter(t=>T-t<2.4);
+  if(egg.rev.length>=5){egg.rev=[];return true;}
+  return false;
+}
+function chase(dt,c,t){
+  c.limp=rig.hipGear<1?1:0;c.vx=0;c.accel=600;c.earFlick=false;
+  if(t<2.6){
+    // round and round: a pivot every 0.42 s, eyes locked on the tail tip
+    c.face=Math.floor(t/.42)%2?-egg.f0:egg.f0;
+    Object.assign(c,{headYaw:-.7,lookX:-1,lookY:-.3,headFwd:-5,crouch:.25,earL:-10,earR:-8,pupil:1,lid:0,mouth:.4,
+      tailBase:150,tailCurve:-6,wagAmp:12,wagFreq:2.6,wagTip:20,tipFreq:5});
+  }
+  if(once('catch',t>=2.6)){rig.jump(300,0);starLog=makeStarLog();console.log('%cTAIL CAUGHT · logged by Claude Opus 5.5 (claude-opus-5-5) in Claude Code','color:#5fd0ff');}
+  if(t>2.6&&rig.air){c.tuck=.6;c.claws=1;c.headYaw=-.75;c.lookX=-1;}
+  if(t>2.6&&!rig.air){Object.assign(c,{happy:1,mouth:1.2,tailBase:118,tailCurve:-4,tailTip:-12,wagAmp:6,wagFreq:3,crouch:.1});}
+  if(once('caught',t>2.75&&!rig.air)){rig.tailFlick(5);FX.dust(rig.x,GY,6,.6);shake=Math.max(shake,2);}
+  if(t>3.9){mode='play';modeT=0;flags.delete('caught');}
+}
+/* the stars outside spell it out, one at a time, then go back to being stars */
+let starLog=null;
+function makeStarLog(){
+  const h=64,o=document.createElement('canvas').getContext('2d',{willReadFrequently:true});o.canvas.width=W;o.canvas.height=h;
+  o.textAlign='center';o.fillStyle='#fff';
+  o.font='600 22px Oswald,sans-serif';o.fillText('TAIL CAUGHT',W/2,26);
+  o.font='600 12px Oswald,sans-serif';o.fillText('logged by Claude Opus 5.5 (claude-opus-5-5) in Claude Code',W/2,48);
+  const d=o.getImageData(0,0,W,h).data,dots=[];
+  for(let y=0;y<h;y++)for(let x=0;x<W;x++){
+    const big=y<32,step=big?2:1;if(x%step||y%step)continue;
+    if(d[(y*W+x)*4+3]>120)dots.push({x,y,s:big?1.5:1.1,t0:Math.random(),tw:rnd(2,7),ph:rnd(0,TAU),k:big?.45:.12});   // small line barely twinkles, so it stays legible
+  }
+  return {dots,t:0};
+}
+function drawStarLog(g,dt){
+  if(!starLog)return;
+  const L=starLog;L.t+=dt;if(L.t>8.5){starLog=null;return;}
+  for(const p of L.dots){
+    if(L.t<p.t0*1.4||L.t>6.2+p.t0*2)continue;
+    g.fillStyle=`rgba(215,232,255,${1-p.k+p.k*Math.sin(T*p.tw+p.ph)})`;g.fillRect(p.x,p.y+16,p.s,p.s);
+  }
+}
 /* the crate fell out from under its paws. it meant to do that. */
 function oops(dt,c,dir,t){
   if(t>.7&&dir){st.oops=null;return false;}
@@ -341,8 +387,11 @@ function control(dt,c){
     wake(dt,c,modeT);
   }else if(mode==='pounce'){
     pounce(dt,c,modeT);
+  }else if(mode==='chase'){
+    chase(dt,c,modeT);
   }else if(mode==='play'){
     if(st.oops!=null&&oops(dt,c,dir,st.oops+=dt))return;
+    if(waggle(dir)){mode='chase';modeT=0;egg.f0=-rig.facing;flags.delete('catch');return;}
     walk(dt,c,dir);
     if(pounceReady()){mode='pounce';modeT=0;st.pk={};endPush();return;}
     // reset tile: front paws on it, facing it
@@ -370,6 +419,7 @@ function handleRigEvents(){
     else if(e.k==='headthud'){FX.dust(e.x,e.y,6,.7);shake=Math.max(shake,Math.min(4,e.mag/70));}
     else if(e.k==='step'){FX.dust(e.x,e.y,2,.45);}
     else if(e.k==='scuff'){FX.dust(e.x,e.y,1,.3,-rig.facing);}
+    else if(e.k==='grind'){FX.sparks(e.x,e.y,3,-rig.facing,.35);shake=Math.max(shake,.7);}
   }
   rig.events.length=0;
 }
@@ -677,6 +727,7 @@ function render(dt){
   ctx.restore();
   ctx.setTransform(S,0,0,S,0,0);
   vignette(ctx);
+  drawStarLog(ctx,dt);
   drawTitle(ctx);
   drawCaptions(ctx);
   drawCard(ctx);

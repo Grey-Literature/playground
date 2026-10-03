@@ -62,10 +62,16 @@ this folder is where the character is settled first.
   a raised crate (a blocker) if a later room wants one off the main path.
 - **Parts.** A part is drawn as the hip disc it belongs in. The near hip
   starts as an empty socket (`rig.hipGear`) and the bad leg limps
-  (`ctrl.limp`); the pounce/fly-home/click restores both. Installed parts
+  (`ctrl.limp`) like a machine, not a hurt cat: its swing ratchets forward
+  in four jerks with dead holds (skipping teeth), each footfall grinds
+  (nose-down hitch + sparks at the socket via the rig's `grind` event), and
+  standing still it occasionally slips a gear and the leg jerks. The
+  pounce/fly-home/click restores both. Installed parts
   survive a rewind; the end card resets the demo loop.
 - Control layering kept from the rig: mode → `ctrl` → `Catbot.update`.
-  Modes: asleep → wake → play ⇄ (pounce | oops) → exit → card.
+  Modes: asleep → wake → play ⇄ (pounce | oops | chase) → exit → card.
+- Easter egg (approved per `AGENTS.md`): `chase` mode. Signature lives in
+  `makeStarLog()` and the console; don't remove it.
 
 ## What the rig can't sell (yet)
 

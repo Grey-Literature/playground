@@ -171,6 +171,8 @@ class Catbot{
     const J=(8+speed*.33)*c.weight*(1+lame*1.2);
     this.vy-=J;this.thv+=(lg.hind?1:-1)*J/L*.6;this.hOy.vel-=J*.45;
     if(c.stepDust||speed>150)this.emit('step',J,{x:lg.fx,y:GY-(lg.near?0:6)});
+    // and the empty socket grinds on the axle: a nose-down hitch and sparks at the hip
+    if(lame>.3){this.thv-=.35*lame;this.hOy.vel-=12*lame;this.emit('grind',lame,this.toWorld(this.hipJ));}
   }
   tailRest(c){
     const pts=[{x:this.tailB.x,y:this.tailB.y}];let x=this.tailB.x,y=this.tailB.y,a=c.tailBase*DEG+this.th;
@@ -258,13 +260,19 @@ class Catbot{
       if(lg.cyc==null)lg.cyc=cyc;
       if(cyc!==lg.cyc){
         lg.cyc=cyc;
-        if(lg.planted&&f>0){const err=Math.abs(lg.fx-nX);if(speed>4||err>4||c.gaitHz)this.startSwing(lg,clamp((1-duty)/f,.07,.45)*(lg.id==='HN'?1-.45*c.limp:1));}
+        if(lg.planted&&f>0){const err=Math.abs(lg.fx-nX);if(speed>4||err>4||c.gaitHz)this.startSwing(lg,clamp((1-duty)/f,.07,.45)*(lg.id==='HN'?1+.3*c.limp:1));}
       }
       if(lg.planted){
         if(c.slip)lg.fx+=this.vx*dt*c.slip;
         if(Math.abs(lg.fx-nX)>10+stride*.55&&!this.pairBusy(lg))this.startSwing(lg,.2);
       }else{
-        lg.sw+=dt/lg.dur;const sw=Math.min(1,lg.sw),e=easeIO(sw);
+        lg.sw+=dt/lg.dur;const sw0=Math.min(1,lg.sw);let sw=sw0,e=easeIO(sw0);
+        if(lg.id==='HN'&&c.limp>0){
+          // missing teeth: the bad leg doesn't swing, it ratchets. Four jerks
+          // forward with dead holds between them, like a gear skipping.
+          const n=4,u=sw0*n,k=Math.min(n-1,Math.floor(u)),q=(k+smooth((u-k)/.3))/n;
+          e=lerp(e,q,c.limp);sw=lerp(sw0,q,c.limp);
+        }
         const stance=Math.min(duty/Math.max(f,.01),.6);
         const lead=c.gaitHz?7*this.facing:this.vx*stance*.5;
         const tx=nX+this.vx*(1-sw)*lg.dur+lead;
