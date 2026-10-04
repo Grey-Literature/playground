@@ -2,6 +2,7 @@
 /* =====================================================================
    CATBOT · audio.js: the sound layer (plumbing + placeholder sounds).
    Built with Claude Sonnet 5.5 (claude-sonnet-5-5) in Claude Code.
+   Engine bay sounds and loops (hiss, vent, venthit, pulse, spinup, belt, rumble): Claude Opus 5.5 (claude-opus-5-5).
 
    Jam rule still holds: audio is OUTPUT only. Nothing here reads or adds
    an input; mute/unmute is the trolley's SOUND floor button (settings.sound).
@@ -171,9 +172,10 @@ window.AUDIO=(()=>{
      4. PLACEHOLDER SOUNDS (the table)
      What: name -> {ref, gap, fn}. ref = the raw mag that counts as "full
      level" (so call sites pass e.mag untouched); gap = rate limit in ms;
-     fn(v, L, r) builds the voice at the scheduled time: L = level 0..1.3
+     fn(v, L, r, o) builds the voice at the scheduled time: L = level 0..1.3
      from mag/ref, r = pitch multiplier (the caller's `rate` with a few %
-     of random wobble so repeats don't machine-gun).
+     of random wobble so repeats don't machine-gun), o = the caller's
+     options, for a sound with a variant (foot's `tread`).
      Why: these are deliberately ugly stand-ins. Every number you'll want to
      retune is in here, and nothing else needs to change when you do.
      =================================================================== */
@@ -199,8 +201,15 @@ window.AUDIO=(()=>{
       v.burst(0,{type:'lowpass',f0:900,dur:.05,vol:.22*k});
       v.tone(0,{f0:1900*r,f1:1800*r,type:'triangle',dur:.06,vol:.05*k});
     }},
-    foot:{ref:60,gap:55,fn(v,L,r){           // every footfall: a small tick (walking pace included; see the 'foot' event in catbot.js)
+    foot:{ref:60,gap:55,fn(v,L,r,o){         // every footfall: a small tick (walking pace included; see the 'foot' event in catbot.js)
       const k=Math.pow(L,.8);
+      if(o&&o.tread){                        // on a belt (engine bay): rubber slats over rollers, a softer thump and a rattle after it
+        v.burst(0,{type:'bandpass',f0:1100*r,q:2,dur:.03,vol:.16*k});
+        v.tone(0,{f0:170*r,f1:110*r,dur:.06,vol:.2*k});
+        v.burst(.018,{type:'bandpass',f0:3200*r,q:5,dur:.012,vol:.09*k});
+        v.burst(.04,{type:'bandpass',f0:2900*r,q:5,dur:.012,vol:.06*k});
+        return;
+      }
       v.burst(0,{type:'bandpass',f0:1800*r,q:3,dur:.03,vol:.2*k});
       v.tone(0,{f0:140*r,f1:90*r,dur:.05,vol:.22*k});
     }},
@@ -315,6 +324,39 @@ window.AUDIO=(()=>{
     }},
     card:{ref:1,gap:800,fn(v,L,r){           // the part card: a short rising chime
       for(const [dt,f] of [[0,660],[.12,880],[.24,1320]])v.tone(dt,{f0:f*r,dur:.6,vol:.18});
+    }},
+    /* ---- the engine bay (engine.js calls these on the same line as the picture; mag = closeness to catbot, .2..1) ---- */
+    hiss:{ref:1,gap:300,fn(v,L,r){           // a vent's telegraph: pressure building for 0.5 s, a hiss rising in pitch and level, then cut by the blast
+      const k=clamp(L,.2,1);
+      v.burst(0,{type:'bandpass',f0:700*r,f1:3600*r,q:1.6,a:.44,dur:.5,vol:.2*k});
+      v.burst(0,{type:'highpass',f0:4000,f1:6000,q:.7,a:.44,dur:.5,vol:.05*k});
+    }},
+    vent:{ref:1,gap:300,fn(v,L,r){           // the blast. Weight in 150-400 Hz so laptop and phone speakers still hear a whump, then the jet's hiss decays
+      const k=clamp(L,.2,1);
+      v.burst(0,{type:'bandpass',f0:320,f1:170,q:.9,a:.008,dur:.5,end:.04,vol:1.1*k});      // the body: a filtered-noise whump
+      v.tone(0,{f0:240*r,f1:130*r,type:'triangle',dur:.32,end:.03,vol:.38*k});             // a pipe resonance under it
+      v.tone(0,{f0:82*r,f1:48*r,dur:.4,vol:.26*k});                                         // the sub, for speakers that have one
+      v.burst(0,{type:'bandpass',f0:1400,q:1.2,dur:.05,vol:.3*k});                          // the valve slamming open
+      v.burst(.02,{type:'highpass',f0:2600,f1:1400,q:.7,a:.03,dur:.75,vol:.2*k});           // steam pouring out
+    }},
+    venthit:{ref:1,gap:400,fn(v,L,r){        // the jet catches catbot: a hollow brass bonk under the hiss
+      v.tone(0,{f0:330*r,f1:210*r,type:'triangle',dur:.22,vol:.32});
+      v.tone(0,{f0:180*r,f1:120*r,dur:.2,vol:.3});
+      v.tone(0,{f0:1240*r,f1:1180*r,type:'triangle',dur:.18,vol:.05});
+      v.burst(0,{type:'bandpass',f0:900,q:1.5,dur:.08,vol:.22});
+    }},
+    pulse:{ref:1,gap:200,fn(v,L,r){          // the engine's beat, every 0.6 s: very quiet, felt more than heard. mag 1 on the downbeat, less on the others
+      const k=clamp(L,.3,1);
+      v.tone(0,{f0:190*r,f1:110*r,dur:.16,vol:.12*k});
+      v.burst(0,{type:'lowpass',f0:420,dur:.08,vol:.08*k});
+      v.tone(0,{f0:62*r,f1:48*r,dur:.2,vol:.1*k});
+    }},
+    spinup:{ref:1,gap:800,fn(v,L,r){         // the turbine takes the gear: a clunk, then a whine climbing as it spins up, with a body under it
+      v.tone(0,{f0:150*r,f1:80*r,dur:.18,vol:.4});
+      v.burst(0,{type:'lowpass',f0:600,dur:.1,vol:.25});
+      v.tone(.08,{f0:160*r,f1:900*r,type:'sawtooth',a:.4,dur:1.8,end:.2,vol:.06});
+      v.tone(.08,{f0:240*r,f1:1350*r,a:.4,dur:1.8,end:.2,vol:.07});
+      v.tone(.08,{f0:110*r,f1:220*r,type:'triangle',a:.5,dur:1.8,end:.25,vol:.18});
     }},
     /* ---- the opening (opening.js calls these at its cue marks): heard through the hull, then inside the cabin, then the quiet ---- */
     cough:{ref:1,gap:120,fn(v,L,r){          // engine A sputters: two dull puffs
@@ -457,7 +499,7 @@ window.AUDIO=(()=>{
       note({name,mag:+mag.toFixed(2),pan:+pan.toFixed(2),ok});
       if(!ok)return;
       const t=ac.currentTime+(o.delay||0)+.004;
-      d.fn(voice(t,out(pan,sfxBus)),clamp(Math.abs(mag)/(d.ref||1),0,1.3),(o.rate||1)*(1+rnd(-.04,.04)));
+      d.fn(voice(t,out(pan,sfxBus)),clamp(Math.abs(mag)/(d.ref||1),0,1.3),(o.rate||1)*(1+rnd(-.04,.04)),o);
     }catch(e){warn(e);}
   }
 
@@ -576,6 +618,41 @@ window.AUDIO=(()=>{
       const srcs=[o1,o2,o3,n];for(const s of srcs){if(s.buffer)s.start(0,rnd(0,.9));else s.start();}
       return{g,srcs,p:{},set(p){const a=clamp(p.amt||0,0,1);g.gain.setTargetAtTime(Math.pow(a,1.5)*.12,ac.currentTime,.012);this.p={amt:+a.toFixed(3)};}};
     }},
+    /* ---- the engine bay (engine.js feeds these from ENG.audio) ---- */
+    belt:{make(){                             // a belt motor: a low motor tone and the clatter of slats over the rollers. speed px/s, near 0..1, x for pan
+      const g=ac.createGain();g.gain.value=0;
+      const pn=ac.createStereoPanner?ac.createStereoPanner():null;if(pn){g.connect(pn);pn.connect(sfxBus);}else g.connect(sfxBus);
+      const o=ac.createOscillator(),olp=ac.createBiquadFilter(),og=ac.createGain();
+      o.type='sawtooth';o.frequency.value=50;olp.type='lowpass';olp.frequency.value=380;olp.Q.value=.7;og.gain.value=.5;o.connect(olp);olp.connect(og);og.connect(g);
+      const n=ac.createBufferSource(),nbp=ac.createBiquadFilter(),ng=ac.createGain(),ngm=ac.createGain();
+      n.buffer=noise;n.loop=true;nbp.type='bandpass';nbp.frequency.value=1100;nbp.Q.value=1.4;ng.gain.value=.55;
+      n.connect(nbp);nbp.connect(ng);ng.connect(g);
+      const lfo=ac.createOscillator();lfo.type='square';lfo.frequency.value=4;ngm.gain.value=.35;lfo.connect(ngm);ngm.connect(ng.gain);   // slats: the clatter pulses at slat rate
+      const srcs=[o,n,lfo];for(const s of srcs){if(s.buffer)s.start(0,rnd(0,.9));else s.start();}
+      return{g,srcs,p:{},set(p){
+        const sp=clamp(Math.abs(p.speed||0)/80,0,1.5),nr=clamp(p.near||0,0,1),t=ac.currentTime;
+        o.frequency.setTargetAtTime(38+28*sp,t,.1);lfo.frequency.setTargetAtTime(Math.abs(p.speed||0)/16,t,.1);
+        g.gain.setTargetAtTime(.16*nr*Math.min(1,sp),t,.12);
+        if(pn)pn.pan.setTargetAtTime(panOf(p.x),t,.1);
+        this.p={speed:Math.round(p.speed||0),near:+nr.toFixed(2)};
+      }};
+    }},
+    rumble:{make(){                           // the far machinery: low and muffled (its own low-pass, so it sits back while the near cues stay dry). alive 0..1 once the turbine runs
+      const g=ac.createGain();g.gain.value=0;g.connect(ambBus);
+      const lpf=ac.createBiquadFilter();lpf.type='lowpass';lpf.frequency.value=180;lpf.Q.value=.5;lpf.connect(g);
+      const srcs=[],hum=[];
+      for(const [f,a] of [[36,.35],[54.5,.22],[73,.1]]){const o=ac.createOscillator(),og=ac.createGain();o.frequency.value=f;og.gain.value=a;o.connect(og);og.connect(lpf);srcs.push(o);}
+      for(const f of [110,165]){const o=ac.createOscillator(),og=ac.createGain();o.type='triangle';o.frequency.value=f;og.gain.value=0;o.connect(og);og.connect(g);srcs.push(o);hum.push(og);}   // the turbine's hum, once it runs
+      const n=ac.createBufferSource(),nlp=ac.createBiquadFilter(),ng=ac.createGain();
+      n.buffer=noise;n.loop=true;nlp.type='lowpass';nlp.frequency.value=260;ng.gain.value=1;n.connect(nlp);nlp.connect(ng);ng.connect(lpf);srcs.push(n);
+      for(const s of srcs){if(s.buffer)s.start(0,rnd(0,.9));else s.start();}
+      return{g,srcs,p:{},set(p){
+        const a=clamp(p.alive||0,0,1),t=ac.currentTime;
+        g.gain.setTargetAtTime(.18,t,.4);lpf.frequency.setTargetAtTime(240+120*a,t,.6);   // a bed under everything: measured at .5 it had the crate's whole RMS and kept the limiter busy
+        hum[0].gain.setTargetAtTime(.025*a,t,.8);hum[1].gain.setTargetAtTime(.012*a,t,.8);
+        this.p={alive:+a.toFixed(2)};
+      }};
+    }},
     tick:{make(){                             // ambient clockwork: rate = lerp(0.7, 3.4 Hz, energy); the slower it gets, the less even
       return{srcs:[],p:{},E:1,ph:.9,n:0,set(p){this.E=clamp(p.energy??1,0,1);this.p={energy:+this.E.toFixed(3)};},
         pump(dt){
@@ -587,7 +664,7 @@ window.AUDIO=(()=>{
   function start(name,p){
     try{
       if(dead||!ac||!enabled||!running())return;
-      const def=LOOPS[name];if(!def)return;
+      const def=LOOPS[name]||LOOPS[name.replace(/\d+$/,'')];if(!def)return;   // belt0, belt1 ...: one definition, one live loop per name
       let L=loops[name];
       if(!L){L=loops[name]=def.make();note({name:'+'+name});}
       L.set(p||{});

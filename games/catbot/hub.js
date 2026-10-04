@@ -4,6 +4,7 @@
    plan IS the shuttle blueprint, one socket per compartment, and each
    socket lights as its part goes in.
    Built with Claude Sonnet 5.5 (claude-sonnet-5-5) in Claude Code.
+   The unlock chain (needs/lock) and the built-rooms cockpit rule: Claude Opus 5.5 (claude-opus-5-5).
    Same shape as opening.js: an IIFE that reads the game's globals
    (W, H, S, mode, installed, ROOMS, caps, fadeTo, loadRoom ...).
    Layout is plain data (DECK). A slot with no ROOMS[] entry of the same
@@ -30,16 +31,25 @@ const DECK={
   pillars:[[240,160],[240,246],[480,160],[480,246]],
   slots:[
     {id:'aft-hold',    part:'hip',          label:'AFT HOLD',      hint:'Where it woke up.',                        rect:rc(18,96,104,214),  door:{side:'r',at:203}},
-    {id:'engine',                           label:'ENGINE BAY',    hint:'The floors drift. Steam keeps time.',      rect:rc(122,26,150,92),  door:{side:'b',at:197}},
-    {id:'galley',                           label:'GALLEY / MESS', hint:'Slidey trays. Something green.',           rect:rc(272,26,160,92),  door:{side:'b',at:352}},
-    {id:'observation',                      label:'OBSERVATION',   hint:'Low gravity. Long jumps.',                 rect:rc(432,26,164,92),  door:{side:'b',at:514}},
-    {id:'berthing',                         label:'BERTHING',      hint:'Dark. A light sweeps the floor.',          rect:rc(122,288,150,92), door:{side:'t',at:197}},
-    {id:'hydroponics',                      label:'HYDROPONICS',   hint:'Something in here is catnip.',             rect:rc(272,288,160,92), door:{side:'t',at:352}},
-    {id:'sanitation',                       label:'SANITATION',    hint:'Sand. It remembers where you walked.',     rect:rc(432,288,164,92), door:{side:'t',at:514}, scrawl:'LITTER BOX'},
+    {id:'engine',                           label:'ENGINE BAY',    hint:'The floors drift. Steam keeps time.',      rect:rc(122,26,150,92),  door:{side:'b',at:197}, needs:['aft-hold'],
+      lock:'Breaker tripped. Power stops at the Aft Hold.'},
+    {id:'galley',                           label:'GALLEY / MESS', hint:'Slidey trays. Something green.',           rect:rc(272,26,160,92),  door:{side:'b',at:352}, needs:['engine'],
+      lock:'Breaker tripped. Power stops at the Engine Bay.'},
+    {id:'observation',                      label:'OBSERVATION',   hint:'Low gravity. Long jumps.',                 rect:rc(432,26,164,92),  door:{side:'b',at:514}, needs:['galley'],
+      lock:'Breaker tripped. Power stops at the Galley.'},
+    {id:'berthing',                         label:'BERTHING',      hint:'Dark. A light sweeps the floor.',          rect:rc(122,288,150,92), door:{side:'t',at:197}, needs:['hydroponics'],
+      lock:'Breaker tripped. Power stops at Hydroponics.'},
+    {id:'hydroponics',                      label:'HYDROPONICS',   hint:'Something in here is catnip.',             rect:rc(272,288,160,92), door:{side:'t',at:352}, needs:['sanitation'],
+      lock:'Breaker tripped. Power stops at Sanitation.'},
+    {id:'sanitation',                       label:'SANITATION',    hint:'Sand. It remembers where you walked.',     rect:rc(432,288,164,92), door:{side:'t',at:514}, needs:['observation'], scrawl:'LITTER BOX',
+      lock:'Breaker tripped. Power stops at Observation.'},
     {id:'cockpit',     part:'yarn',         label:'COCKPIT',       hint:'Needs every other socket lit.',            rect:rc(596,96,106,214), door:{side:'l',at:203}, req:'others',
       poly:[[596,96],[650,96],[702,150],[702,256],[650,310],[596,310]], sock:{x:652,y:203,r:22}}
   ]
 };
+/* needs: the power chain the conduits already draw. Aft Hold feeds the top bus west to east (engine, galley,
+   observation), then it comes back along the bottom bus east to west (sanitation, hydroponics, berthing). A slot
+   whose needs aren't all in place stays sealed even if its room is built, and says why with its own lock line. */
 for(const s of DECK.slots){s.part=s.part||s.id;s.room=s.room||s.id;}
 GAME.totalParts=DECK.slots.length;           // the goal is one socket per compartment; the toolbox in the rooms reads the same number
 const rt={};                                 // runtime state per slot id
@@ -73,8 +83,13 @@ function edgeOf(s){
   return s._e=-1;
 }
 const built=s=>ROOMS.some(r=>r.id===s.room);
-const gated=s=>s.req==='others'&&!DECK.slots.every(o=>o.req||installed.has(o.part));
-const sealed=s=>!built(s)||gated(s);
+const slotById=id=>DECK.slots.find(o=>o.id===id);
+const unmet=s=>(s.needs||[]).some(id=>{const o=slotById(id);return o&&!installed.has(o.part);});
+/* the cockpit waits on every other slot whose room exists, not all eight: if fewer rooms ship, the ending still opens.
+   (The ending's minimum scope is an open question; see CLAUDE.md.) */
+const others=()=>DECK.slots.filter(o=>!o.req&&built(o));
+const gated=s=>s.req==='others'&&!(others().length&&others().every(o=>installed.has(o.part)));
+const sealed=s=>!built(s)||gated(s)||unmet(s);
 const done=s=>installed.has(s.part);
 const doorState=s=>sealed(s)?'sealed':done(s)?'done':'open';
 const DOOR_COL={sealed:'#ff5a4a',open:'#ffd27a',done:'#7dffb0'};
@@ -111,7 +126,7 @@ for(const s of DECK.slots)for(const q of carve(s.rect,pocketRect(s)))SOL.push(q)
 const CK=DECK.slots.find(s=>s.req==='others');
 /* how "repaired" a compartment looks: its own socket, or (cockpit) a partial glow once it has power */
 const lv=s=>{const o=rt[s.id];return s===CK?Math.max(o.lit,.45*o.pow):o.lit;};
-const allOthersShown=()=>DECK.slots.every(o=>o===CK||shown.has(o.part));
+const allOthersShown=()=>others().length>0&&others().every(o=>shown.has(o.part));   // same rule as gated(): built rooms only
 function buildWires(){
   const cd=doorPos(CK);
   for(const s of DECK.slots){
@@ -217,10 +232,11 @@ function bump(s,x,y,nx,ny){
   const o=rt[s.id];if(o.bumpT>0)return;
   o.bumpT=.7;o.blink=1;sparks(x,y,6,nx,ny);tok.wob.vel+=8;tok.earL.vel-=6;tok.earR.vel-=6;
   sfx('nuh',{x});                                                  // "nu-uh": once per bump (bumpT above is the debounce), panned to the door
-  const why=gated(s)?'gated':s.req?'ckunbuilt':'sealed';
-  if(!seenCaps.has('hub-'+why)){
-    seenCaps.add('hub-'+why);
-    caps.push({text:{gated:'The cockpit needs every other socket lit first.',ckunbuilt:'The cockpit has power. The way in is not built yet.',sealed:'Breaker tripped. No power on this one yet.'}[why],t:0,max:4.2});
+  const why=gated(s)?'gated':s.req?'ckunbuilt':built(s)&&unmet(s)?'needs':'sealed';
+  const key=why==='needs'?'hub-needs-'+s.id:'hub-'+why;   // each chained door explains itself once
+  if(!seenCaps.has(key)){
+    seenCaps.add(key);
+    caps.push({text:why==='needs'&&s.lock?s.lock:{gated:'The cockpit needs every other socket lit first.',ckunbuilt:'The cockpit has power. The way in is not built yet.',needs:'Breaker tripped. No power on this one yet.',sealed:'Breaker tripped. No power on this one yet.'}[why],t:0,max:4.2});
   }
 }
 
@@ -438,7 +454,7 @@ function drawWires(g){
   if(pulseT>=0){
     const u=clamp(pulseT/1.4,0,1);
     g.save();g.globalCompositeOperation='lighter';
-    for(const s of DECK.slots)if(s!==CK){const p=wirePoint(s,s.wireTotal*u);softEllipse(g,p[0],p[1],15,15,.9,'190,255,255');}
+    for(const s of others())if(shown.has(s.part)){const p=wirePoint(s,s.wireTotal*u);softEllipse(g,p[0],p[1],15,15,.9,'190,255,255');}   // only the conduits that carry power
     g.restore();
   }
   g.lineCap='butt';
@@ -720,7 +736,7 @@ function update(dt){
   for(let i=pend.length-1;i>=0;i--)if(arrive>=pend[i].at){lightUp(pend[i].s);pend.splice(i,1);}
   if(pulseT>=0){
     pulseT+=dt;
-    if(pulseT>=1.4&&!pulseDone){pulseDone=true;rt[CK.id].flash=1;caps.push({text:'Every other socket is lit. The cockpit has power.',t:0,max:4.8});}
+    if(pulseT>=1.4&&!pulseDone){pulseDone=true;rt[CK.id].flash=1;caps.push({text:others().length===DECK.slots.length-1?'Every other socket is lit. The cockpit has power.':'Every working room is back on line. The cockpit has power.',t:0,max:4.8});}
     if(pulseT>2.4)pulseT=-1;
   }
   // egg: 8 s of sitting on the plot table files a footnote; it lingers while catbot stays, fades ~6 s after it leaves

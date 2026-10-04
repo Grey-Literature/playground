@@ -7,6 +7,7 @@
    World units: px, y-down on screen; the rig itself thinks in a y-up
    local frame whose origin is the root on the ground under the body.
    Pages supply W, H, the canvases and the loop; this file only needs GY.
+   GY is the main deck. A cat standing on something higher has rig.fl = its height above GY (setFloor).
    ===================================================================== */
 const TAU=Math.PI*2, DEG=Math.PI/180;
 const clamp=(v,a,b)=>v<a?a:v>b?b:v;
@@ -95,7 +96,7 @@ const DEF={
   earL:0,earR:0,earFlick:true,squint:0,lid:.14,lidTilt:.35,happy:0,pupil:.45,lookX:.2,lookY:0,mouth:0,blink:true,
   tailBase:162,tailCurve:-9,tailTip:-16,tailStiff:1,wagAmp:3,wagFreq:1.1,wagTip:0,tipFreq:2.5,
   energy:1,flicker:0,keySpin:null,claws:0,strain:0,
-  gaitRate:1,gaitHz:0,duty:0,lift:1,weight:1,slip:0,hindReach:0,frontReach:0,stepDust:0,
+  gaitRate:1,gaitHz:0,duty:0,lift:1,weight:1,slip:0,belt:0,hindReach:0,frontReach:0,stepDust:0,
   bodyFreq:3.2,tuck:0,limp:0,pawFront:0,manual:null
 };
 function freshCtrl(){const c=Object.assign({},DEF);c.manual={};return c;}
@@ -126,7 +127,7 @@ class Catbot{
   }
   leg(id){return this.legs.find(l=>l.id===id);}
   reset(x){
-    Object.assign(this,{x,vx:0,ax:0,facing:1,y:(HIPH+SHH)/2,vy:0,th:Math.asin((SHH-HIPH)/L),thv:0,air:false,phase:0,turnT:-1,t:0,
+    Object.assign(this,{x,vx:0,bv:0,fl:0,ax:0,facing:1,y:(HIPH+SHH)/2,vy:0,th:Math.asin((SHH-HIPH)/L),thv:0,air:false,phase:0,turnT:-1,t:0,
       E:1,key:0,keyV:1,gear:0,blinkT:2.5,blinkP:-1,flk:1,coreI:1,lid:.14,lidTilt:.35,happy:0,pupil:.45,lookX:.2,lookY:0,yaw:.35,mouth:0,
       claws:0,strain:0,squint:0,meta:0,ts:1,trx:0,try:0,hyPrev:0,headDown:false});
     for(const s of [this.earL,this.earR,this.hOx,this.hOy,this.tilt]){s.v=0;s.vel=0;}
@@ -149,7 +150,19 @@ class Catbot{
   nLocal(lg){const c=this.c;return lg.hind?this.hipJ.x-3+c.hindReach:this.shJ.x+3+c.frontReach;}
   nX(lg){return this.x+this.facing*this.nLocal(lg);}
   footErr(lg){return (lg.fx-this.nX(lg))*this.facing;}
-  toWorld(p){return {x:this.x+this.facing*this.ts*(p.x+this.trx),y:GY-(p.y+this.try)};}
+  toWorld(p){return {x:this.x+this.facing*this.ts*(p.x+this.trx),y:GY-this.fl-(p.y+this.try)};}
+  /* the floor under it changes height (a platform, or walking off one). Everything the rig keeps is measured up from
+     its own floor, so shift it all by the difference: the cat stays exactly where it is in the world. fall=true also
+     lets go of the ground (walked off an edge). */
+  setFloor(nf,fall){
+    const dy=this.fl-nf;if(!dy)return;
+    this.fl=nf;this.y+=dy;this.hyPrev+=dy;
+    for(const lg of this.legs){lg.fy+=dy;if(lg.sy!=null)lg.sy+=dy;}
+    for(const p of this.tail){p.y+=dy;p.py+=dy;}
+    if(fall&&!this.air){this.air=true;this.vy=Math.min(this.vy,0);for(const lg of this.legs)if(!lg.manualOn)lg.planted=false;}
+  }
+  /* the muzzle, in world px: where a carried thing sits (there's no jaw, so it's held in front of the chin) */
+  mouthP(){const fx=4+10*this.yaw,[mx,my]=rot(fx+3,-14,this.hA.v+this.tilt.v);return this.toWorld({x:this.hx+mx,y:this.hy+my});}
   emit(k,mag,p){this.events.push({k,mag,x:p.x,y:p.y});}
   startSwing(lg,dur){lg.planted=false;lg.sw=0;lg.dur=dur;lg.sx=lg.fx;lg.sy=lg.fy;}
   forceStep(id,dur=.2){const lg=this.leg(id);if(lg.planted&&!lg.manualOn)this.startSwing(lg,dur);}
@@ -164,14 +177,14 @@ class Catbot{
     this.air=false;
     for(const lg of this.legs)if(!lg.manualOn){lg.planted=true;lg.fy=0;lg.sw=0;lg.pang=0;}
     this.hOy.vel+=this.vy*.35;
-    this.emit('land',-this.vy,{x:this.x,y:GY});
+    this.emit('land',-this.vy,{x:this.x,y:GY-this.fl});
   }
   footfall(lg,speed,c){
     const lame=lg.id==='HN'?c.limp:0;    // the bad leg lands hard: a hitch you can see in the body
     const J=(8+speed*.33)*c.weight*(1+lame*1.2);
     this.vy-=J;this.thv+=(lg.hind?1:-1)*J/L*.6;this.hOy.vel-=J*.45;
-    this.emit('foot',J,{x:lg.fx,y:GY-(lg.near?0:6)});     // every plant, at any speed: the sound layer's footstep ('step' below is the dust cue and only fires at trot or with stepDust)
-    if(c.stepDust||speed>150)this.emit('step',J,{x:lg.fx,y:GY-(lg.near?0:6)});
+    this.emit('foot',J,{x:lg.fx,y:GY-this.fl-(lg.near?0:6)});     // every plant, at any speed: the sound layer's footstep ('step' below is the dust cue and only fires at trot or with stepDust)
+    if(c.stepDust||speed>150)this.emit('step',J,{x:lg.fx,y:GY-this.fl-(lg.near?0:6)});
     // and the empty socket grinds on the axle: a nose-down hitch and sparks at the hip
     if(lame>.3){this.thv-=.35*lame;this.hOy.vel-=12*lame;this.emit('grind',lame,this.toWorld(this.hipJ));}
   }
@@ -212,9 +225,12 @@ class Catbot{
       if(c.kin!=null)this.vx=c.kin;
       else{const tv=this.turnT>=0?0:c.vx,a=c.accel*dt;this.vx+=clamp(tv-this.vx,-a,a);}
     }
-    this.x+=this.vx*dt;
+    /* a moving floor (c.belt, px/s): vx stays catbot's own pace over the floor, the floor adds to it.
+       So gait, trot and idle all read the cat's own effort, and standing still on a belt is being carried. */
+    const pbv=this.bv||0;this.bv=this.air?0:c.belt||0;
+    this.x+=(this.vx+this.bv)*dt;
     this.ax=damp(this.ax,(this.vx-pvx)/dt,8,dt);
-    this.hOx.vel-=(this.vx-pvx)*this.facing*.22;
+    this.hOx.vel-=(this.vx-pvx+this.bv-pbv)*this.facing*.22;   // stepping on or off a belt lurches the head like a change of pace
 
     /* --- body: hip & shoulder targets -> root height + pitch springs --- */
     let hipT=HIPH*c.height-c.crouch*24+c.hipLift, shT=SHH*c.height-c.crouch*18;
@@ -265,6 +281,7 @@ class Catbot{
       }
       if(lg.planted){
         if(c.slip)lg.fx+=this.vx*dt*c.slip;
+        if(this.bv)lg.fx+=this.bv*dt;     // planted on a belt: the foot rides it (walk against one and it's a treadmill)
         if(Math.abs(lg.fx-nX)>10+stride*.55&&!this.pairBusy(lg))this.startSwing(lg,.2);
       }else{
         lg.sw+=dt/lg.dur;const sw0=Math.min(1,lg.sw);let sw=sw0,e=easeIO(sw0);
@@ -276,12 +293,12 @@ class Catbot{
         }
         const stance=Math.min(duty/Math.max(f,.01),.6);
         const lead=c.gaitHz?7*this.facing:this.vx*stance*.5;
-        const tx=nX+this.vx*(1-sw)*lg.dur+lead;
+        const tx=nX+(this.vx+(this.bv||0))*(1-sw)*lg.dur+lead;
         lg.fx=lerp(lg.sx,tx,e);
         const lift=(5+Math.min(speed,170)*.07)*c.lift*(lg.id==='HN'?1-.8*c.limp:1)+(c.gaitHz?2:0);
         lg.fy=lg.sy*(1-e)+lift*Math.sin(Math.PI*Math.pow(sw,.85));
         lg.pang=-.6*Math.sin(Math.PI*sw)*Math.min(1,lift/6);
-        if((c.lift<.5||(lg.id==='HN'&&c.limp>.3))&&lg.fy<2.5&&Math.random()<dt*25)this.emit('scuff',1,{x:lg.fx,y:GY-(lg.near?0:6)});
+        if((c.lift<.5||(lg.id==='HN'&&c.limp>.3))&&lg.fy<2.5&&Math.random()<dt*25)this.emit('scuff',1,{x:lg.fx,y:GY-this.fl-(lg.near?0:6)});
         if(lg.sw>=1){lg.planted=true;lg.fy=0;lg.fx=tx;lg.pang=0;this.footfall(lg,speed,c);}
       }
     }
@@ -546,7 +563,7 @@ function drawHead(c,r){
 }
 function drawCat(c,r){
   c.save();
-  c.translate(r.x+r.facing*r.ts*r.trx,GY-r.try);c.scale(r.facing*r.ts,-1);
+  c.translate(r.x+r.facing*r.ts*r.trx,GY-r.fl-r.try);c.scale(r.facing*r.ts,-1);
   const L_=id=>r.leg(id);
   c.save();c.translate(5,6);drawLeg(c,L_('HF'),FARP,r);drawLeg(c,L_('FF'),FARP,r);c.restore();
   drawTail(c,r);
@@ -589,12 +606,12 @@ function contactAO(g,r){
     // a straining cat drives through its hind feet
     const L=load*(lg.hind?1+.6*r.strain:1-.25*r.strain);
     const a=Math.min(.72,.44*up*(far?.8:1)*(.7+.35*L))*(1-.3*sl);
-    const x=lg.fx+r.facing*(3+(far?5:0)), y=GY-(far?6:0)+1;
+    const x=lg.fx+r.facing*(3+(far?5:0)), y=GY-r.fl-(far?6:0)+1;
     softEllipse(g,x,y,10*(.9+.18*L),3*(.85+.3*L),a);
     if(lg.planted&&sl>.02){const len=Math.abs(vs)*.14;softEllipse(g,x-dir*len*.5,y,10+len*.5,2.6,a*.55*sl);}
   }
   const body=.26*clamp(1-(r.y-17)/110,0,1)*(.85+.3*load);
-  softEllipse(g,r.x-dir*Math.abs(vs)*.06,GY-2,64*(.95+.1*Math.max(0,comp))+Math.abs(vs)*.08,8,Math.min(.5,body));
+  softEllipse(g,r.x-dir*Math.abs(vs)*.06,GY-r.fl-2,64*(.95+.1*Math.max(0,comp))+Math.abs(vs)*.08,8,Math.min(.5,body));
 }
 
 /* =====================================================================
