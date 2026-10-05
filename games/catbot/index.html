@@ -139,6 +139,7 @@ function resetRoom(){
   rig.hipGear=installed.has('hip')?1:0;
   idle=0;walkT=0;
   ENG.reset();                                // engine.js: belts, vents, turbine (a no-op in rooms without them)
+  BERTH.reset();                              // berthing.js: beam and covers
 }
 function caption(on){
   if(seenCaps.has(on))return;seenCaps.add(on);
@@ -510,6 +511,7 @@ if(typeof AUDIO==='undefined'){window.AUDIO={sfx(){},start(){},stop(){},enable()
 AUDIO.enable(settings.sound);                 // sound follows the trolley's SOUND / MUTE floor button
 /* engine.js (room 2) replaces this stub when it loads; until then (room 1 boots first), or if it fails to load, every hook is a no-op */
 window.ENG={reset(){},update(){},seat(){},tread(){return false;},audio(){},wall(){return false;},deck(){},front(){},on(){return false;},blocks(){return [];},camY(){return 0;},pickUp(){}};
+window.BERTH={reset(){},update(){},audio(){},deck(){},front(){}};
 // lets sfx({x}) pan against whatever camera is showing: the deck plan's own (HUB.cam, centre + zoom), else the room's (zoom is 1 outside the opening's close-up)
 AUDIO.view=()=>inHub()?({x:HUB.cam.x-W/(2*HUB.cam.z),w:W/HUB.cam.z}):({x:camX,w:W/zoom});
 {const f=FX.flash;FX.flash=(x,y,p,rgb)=>f(x,y,p*(settings.calm?.35:1),rgb);}
@@ -708,6 +710,7 @@ function audioFrame(dt){
   const quiet=mode==='cover'||mode==='card'||(mode==='intro'&&!OPEN.ticking());
   if(!quiet)AUDIO.start('tick',{energy:rig.E});else AUDIO.stop('tick');
   ENG.audio(dt);                              // engine.js: belt motors and the far rumble (stops itself outside the bay)
+  BERTH.audio(dt);                              // berthing.js: lamp hum loop
   AUDIO.frame(dt);
 }
 
@@ -767,6 +770,7 @@ function drawRoom(g,t){
   for(let x=Math.floor(x0/90)*90;x<x1;x+=90){g.beginPath();g.moveTo(x,GY+14);g.lineTo(x+90,H);g.moveTo(x+90,GY+14);g.lineTo(x,H);g.stroke();}
   g.fillStyle='rgba(0,0,0,.45)';for(let x=Math.floor(x0/30)*30+15;x<x1;x+=30){g.beginPath();g.arc(x,GY+6.5,1.3,0,TAU);g.fill();}
   ENG.deck(g,t);                              // engine.js: belts, vent grates, the steam behind catbot
+  BERTH.deck(g,t);                              // berthing.js: bunks and set dressing
   drawReset(g,t);
   drawPit(g,t);
   drawCable(g,t);
@@ -1010,6 +1014,7 @@ function tick(dt){
   else{
     if(st.cart)updCart(dt,din);
     ENG.update(dt,c);                         // engine.js: the beat, belt drift into c.belt, vent blasts and shoves
+    BERTH.update(dt,c);                       // berthing.js: beam sweep, spotted logic
     BL=blockers();
     acc+=dt;let n=0;while(acc>=SUB&&n<40){rig.update(SUB,c);constrain();acc-=SUB;n++;}
     updCrate(dt);updGates(dt);
@@ -1065,6 +1070,7 @@ function render(dt){
   drawExitFront(ctx,T);
   drawParts(ctx);
   ENG.front(ctx,T);                           // engine.js: steam in front of catbot, then the blurred foreground layer
+  BERTH.front(ctx,T);                          // berthing.js: darkness overlay and beam
   ctx.restore();
   ctx.setTransform(S,0,0,S,0,0);
   vignette(ctx);
@@ -1163,5 +1169,6 @@ requestAnimationFrame(frame);
 <script src="opening.js"></script>
 <script src="hub.js"></script>
 <script src="engine.js"></script>
+<script src="berthing.js"></script>
 </body>
 </html>

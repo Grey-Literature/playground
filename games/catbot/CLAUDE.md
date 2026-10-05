@@ -36,6 +36,7 @@ this folder is where the character is settled first.
 | `engine.js` | Room 2, the engine bay: its `ROOMS[]` entry, belts, vents (lifts and jets), platforms, the carry, the turbine, its depth layers and sound feeds. Loaded after `hub.js`; see **The engine bay** below. Replaces a no-op `window.ENG` stub in `index.html`, so if it fails to load room 2 just doesn't exist. Dev entry: `index.html#room=engine` (assumes the hip unless `&parts=` is given; `#room=aft-hold&parts=none` works too) |
 | `opening.js` | Opening cinematic (premise): space → cabin → impact → the real hold, close in, with its sound cue sheet and a muted-caption fallback. Boots the game on the **cover page** (`mode='cover'`, in `index.html`); PLAY or the first step calls `OPEN.begin()`. Delete the script tag and the game starts at the title |
 | `audio.js` | Sound layer: Web Audio, all synthesized, placeholder sounds. Loaded after `catbot.js`, before the game script; see **Audio** below. Optional: if it fails to load the game runs silent |
+| `berthing.js` | Room 3, berthing: two patrol lamps, bunks to hide under, creaky plates, the alert, and the bot test (`BERTH.simulate`, `BERTH.selfTest`). Loaded after `engine.js`; see **Berthing** below. Replaces the no-op `window.BERTH` stub. Dev entry: `index.html#room=berthing` (assumes hip + engine; add `&test` to run the self-test) |
 | `hub.js` | The deck plan: the top-down hub that doubles as the goal screen. Loaded after `opening.js`; see **The hub** below. Dev entry: `index.html#hub&parts=hip,engine` (skips the opening, lands in the hub with those parts shown) |
 | `catbot.js` | Shared rig: `Catbot` physics, drawing, shadows, particles, crate/lamp props |
 | `catbot-rig.html` | Dev pose picker (not part of the game): the 8 rig studies, loads `catbot.js` |
@@ -237,6 +238,149 @@ hops from its mouth into the turbine on the main deck.
   still the hub's, so `ENG.reset()` checks the room, not the mode (it used to
   skip itself there and the first frame threw).
 
+## Berthing (`berthing.js`)
+
+Room 3. Pass 1 (room, hooks, sounds) by Mistral Vibe from `HANDOFF-berthing.md`;
+pass 2 (the room as it plays now) by Claude Opus 5.5 from
+`HANDOFF-berthing-pass2.md`. Hub hint "Dark. A light sweeps the floor."
+
+- **The rule:** catbot is seen when at least 12 px of its body (`rig.x ± 45`)
+  is inside a lamp's floor spot (`beam.half` 110) and not under a bunk, it is
+  moving (`|rig.vx|>25`), on its feet, in `play`, not fleeing or hunkering,
+  and the 1.5 s cooldown has passed. Standing still in the light is safe. The
+  light is top-down and stops at a bunk's top (`BUNK_H` 150), so under a bunk
+  is dark in the rule and in the drawing alike (the same columns clip both).
+- **One rule set, two consumers.** `stepWorld(W,R,dt,cat)` advances the lamps
+  and decides creaks, spots, the dot and the teaching moment from a plain
+  `{x,vx,air,play,face}`. `update()` feeds it the rig and turns its events
+  into FX, sound and the flee; `simulate()` feeds it a virtual cat. Change a
+  rule there and the bot test plays the change.
+- **Lamps (`beam.lamps[]`):** each has a `rail`, a `tint`, a start phase
+  `ph0`, and a looping `path:[{x,dwell}]`. They travel at `beam.speed` 120 with
+  a trapezoid ramp (`accel` 260), never faster, and sway ±12.5 px while parked.
+  `patrolX(L,ph,B)` is a pure function of patrol time; the live lamp keeps its
+  own phase so the alert can speed it up. A long dwell (≥1.5 s) brightens the
+  housing: the lamp is looking. Lamp A (warm) watches gap 2 but every lap
+  swings back over bunk 2 and parks in gap 1: you see it pass overhead and go
+  behind it (at 120 vs 105 it can't catch a cat from behind), and if it finds
+  you in gap 1 that is where you learn to freeze. Lamp B (cool) **never leaves
+  gap 3** (a sweep out of it is a light you can follow across), so gap 3 is the
+  one you must freeze in: step out while B looks at the far end, hold still as
+  it passes over, go behind it. The first version kept A inside gap 2 too; the
+  bots could cross it but a person waiting under bunk 2 for it to leave never
+  got a moment (Tasha, 2026-10-04), hence the swing. Rails overlap at
+  x 1200-1560 (the hand-over).
+- **Layout:** w 3400, start 230 (lit by a flickering strip light, steady under
+  STEADY), bunks at 380/900/1520/2420 (w 240/200/300/220), so gaps of 280 (lamp
+  A swings in once a lap: where you first meet the light), 420 (lamp A, with a
+  clean window each lap) and 600 (lamp B, the longest, right before the last
+  bunk: needs a freeze); the breaker gear at 2980, hatch at
+  3120. `noCart=[[380,3400]]`.
+- **What's broken, and the fix:** the room is dark because its main breaker
+  lost its gear, which is why the search lamps are on emergency patrol. The
+  panel (`MAIN · BERTHING`, at `room.socket`) shows a scorched empty socket
+  with a sheared axle that arcs now and then (sparks + `arc`), tripped
+  switches and a blinking red lamp; the gear lies on the floor beneath it; a
+  conduit runs up to a row of dead ceiling lights (`room.lights`). Install:
+  the gear flies into the socket (not catbot's hip; `ENG.seat` is wrapped to
+  do nothing here) and spins, the switches go up, the lamp goes green, power
+  climbs the conduit and runs along the ceiling at 900 px/s, and each light
+  flickers on as it arrives (`lightsOn`). Darkness lifts (.68 to .28 over
+  2.5 s), the lamps stand down (`mode:'park'`: roll to the end of their rails,
+  cones fade, hum fades) and nothing can see you, creak or tempt you on the way
+  to the hatch. Caption "The breaker catches. The lights come back, and the
+  lamps stand down." Coming back to a finished room, it is already lit
+  (`reset()` checks `installed`). `breaker()`, `lightLevel()`.
+- **Spotted:** the lamp flares, `beamLock` + `beamSpot`, a startle hop, then
+  catbot **bolts on its own** at 165 px/s to just inside the right end of the
+  nearest bunk behind it (or the start), immune while it runs, then hunkers for
+  0.8 s and the player has it back. No reset, no rewind count. Caption on the
+  first spot "It saw you move."; the rule itself ("Hold still. It only sees
+  what moves.") is taught the first time catbot holds still in a spot for 1 s,
+  or on the second spot if that hasn't happened yet.
+- **Alert (`alert` 0-2):** +1 per spot, -1 per 15 s without one. Reaching 2
+  sets 12 s of rage: both lamps' clocks run 25% faster and tint red (cone,
+  spot, housing; the housing glow is the alert's visual twin and also rises
+  with `alert`). STEADY drops the red flicker, not the speed.
+- **Creaky plates (`plates:[{x,w}]`):** gratings at 1200 (gap 2), 2040 (the
+  long gap) and 2660 (just before the part), lit faintly from below. Over
+  130 px/s on one (trot; walk is 105) it creaks: a ripple ring, `plateCreak`,
+  and the nearest lamp that can reach is pulled to the creak at `beam.seek`
+  340 px/s (`lampRetarget` whir), stares for `beam.hold` 3 s (a fresh creak
+  restarts it), then returns to where it left its patrol. Caption once.
+- **The laser dot (the brief's stretch, 2026-10-04 as a laser):** each lamp
+  housing carries a red targeting laser whose dot dances 16 px inside the edge
+  of its spot (`DOT_IN`), on the side facing catbot, never under a bunk
+  (`laserDot`); a faint red line runs up to the housing. A frozen cat facing a
+  parked lamp's dot 0-170 px ahead can't help it. The tell is the tail: tip
+  twitching faster, ears up, eyes on the dot, then the rump wiggle; at 2.5 s it
+  pounces on the dot, which is in the light, so it lands moving and is seen.
+  Stepping back or turning away resets it. Lamp A's 2.2 s stop at bunk 2's end
+  only teases; lamp B's 2.6 and 2.8 s stops, or a pulled lamp's 3 s stare, can
+  fire it (waiting at bunk 3's far end facing B is the classic).
+- **Set dressing:** bunks with a sleeper's blanket breathing (about 5 s a
+  breath), a pillow, a bunched privacy curtain, the dark under them, a rim light
+  and a glowing berth number so the layout reads in the dark. Under each raised
+  bunk a two-drawer cabinet against the wall (`STORE[]`, `drawStorage`): drawers
+  left hanging open with a sleeve, a sock or a folded shirt showing, boots, a
+  duffel, a folded stack, coveralls on an end post. Lockers; the
+  breaker panel (its lamp goes green with `st.got`); lamp rails on the ceiling.
+  Darkness is one offscreen layer (a .68) with light cut out of it
+  (`destination-out`: cones, spots, the strip light, catbot's own glow, the
+  gratings, the panel, the hatch lamp), then a little additive tint. No
+  per-frame blur, no `ctx.filter`.
+- **Easter egg (placed by Mistral Vibe as two ovals, made into eyes by Claude
+  Sonnet 5.5, made lurkier 2026-10-04 at Tasha's request):** something lives in bunk 2's half-open right drawer. Small, dim
+  eyes in catbot's own eye grammar watch from the crack once catbot has been
+  past bunk 2 and follow it; they shut when a lamp comes near, withdraw when
+  catbot comes within 150 px, are now and then simply not there, and sometimes
+  only one is open. Wait still under bunk 2 for 4 s and a single eye opens in
+  the other drawer, the one away from catbot. The signature "Mistral Medium 3.5
+  via Vibe Code" is a 5 px scratch on the cabinet's plinth that catbot's glow
+  only reads when it stands close and still (2.5 s). Console line when catbot
+  first nears bunk 2. State in `S.lurk`; `lurk()`, `drawEyes()`.
+- **Easter egg #2, the laser doodle (approved per `AGENTS.md`, 2026-10-04;
+  Claude Opus 5.5):** resist the laser dot three times in one visit (the tail
+  was going for over a second, then you walked or turned away) and that lamp's
+  laser gets bored: it leaves the floor and draws a cat face on the back wall,
+  signs it "Claude Opus 5.5 · hi, Vibe" in a laser scrawl, adds an arrow back
+  toward bunk 2's drawer, then fades (9.5 s). Console:
+  `LASER DOODLE · Claude Opus 5.5 (claude-opus-5-5) in Claude Code · hi, Vibe`.
+  The signature is short on purpose (Tasha: shorthand is fine in favour of
+  calling out Vibe). `W.resist`, `W.doodle`, `drawDoodle()`. Don't remove it.
+- **The bot test.** `BERTH.simulate(strategy)`: fixed 1/60 step, no drawing,
+  the real `stepWorld`. The virtual cat accelerates at 260 px/s², flees as the
+  game does (165 px/s, immune, then the 0.8 s hunker), is immune through the
+  pounce (4.5 s, ends at `part.x-64`), and finishes past the hatch; 400 s cap.
+  Strategies: `frozen` (never moves: 0 spots), `naive` (walks right at 105:
+  ≥4 spots), `trotter` (165: ≥3 spots, ≥1 while a lamp is pulled by a creak),
+  `smart` (knows the lamps: from cover it goes only if the walk to the next
+  safe place is clean, unless the gap can never be crossed clean, then edges
+  forward and freezes when a lamp comes; steps back when the tail starts):
+  must finish with 0 spots in 60-150 s, and at least one gap must need a
+  freeze. `human` (plays by sight: sees the lamps 0.25 s late, judges their
+  direction, knows nothing of the paths; freezes when a light is on it or
+  coming, waits under a bunk while a light ahead is close and not leaving):
+  must finish in 150 s with at most 3 spots. `BERTH.selfTest()` also checks (a) light never reaches under a bunk,
+  sampled over a full cycle of each lamp, in the rule (`litLen`), the drawing
+  (`isPointInPath` on the clip path `front()` uses) and the cover geometry, and a
+  cat tucked under a bunk is never seen; (b) the part and the hatch each get a
+  lamp-free window ≥4 s in every cycle-long stretch; (c) `reset()` after a
+  spotted, alerted, pulled, fleeing state equals a fresh `loadRoom`, compared as
+  the whole state object. Run it: `index.html#room=berthing&test` (logs PASS /
+  FAIL per line, result in `window.__berthTest`), or in node by loading
+  `catbot.js` then `berthing.js` with `ROOMS`/`W`/`H` stubbed. Last run:
+  frozen 0 spots; naive 82 and trotter 81 (49 pulled), neither finishes; smart
+  69.6 s, 0 spots, 10 stops in the open, gap 3 needs a freeze; human 68.9 s,
+  0 spots.
+- **Smart's time depends on when you reach each gap.** Over a grid of lamp
+  start phases it ranges about 48-82 s (median about 62; the human bot about
+  59 median, 74 worst, half a spot on average); `ph0` A 12 / B 12 is a middling
+  start (69.6 s), not the luckiest. (b) passes trivially: no lamp
+  patrols the part or the hatch; only a creak on the last plate pulls B there.
+- **Hooks:** `index.html` calls `BERTH.reset/update/audio/deck/front` beside the
+  matching `ENG.*` lines (7 lines, all from pass 1); pass 2 added none.
+
 ## Audio (`audio.js`)
 
 Plumbing plus ugly placeholder sounds, not a mix. No music yet. All
@@ -283,6 +427,16 @@ header; no easter eggs in it.
   blasts, a hit, a heavy landing, the spin-up) peaks at 0.62. When measuring,
   park the game on the card first: the live loop otherwise feeds its loops
   into whatever context is current, offline ones included.
+- **Berthing sounds.** `beamLock` (lock-on) and `beamSpot` (the brass bonk)
+  from pass 1 (Mistral Vibe); pass 2 (Claude Opus 5.5) added `plateCreak`,
+  `lampRetarget` and the `beamHum` loop (`beamHum0`, `beamHum1`: mains hum whose
+  pitch follows the lamp along its rail plus a servo whine that follows its
+  speed, so a parked lamp's sway is heard; fed by `BERTH.audio`). Pass 1's
+  `beamHum` was a one-shot entry fed through `AUDIO.start`, which only knows
+  `LOOPS`, so it never played. Measured offline (peak / energy above 150 Hz /
+  in 150-400 Hz): `plateCreak` 0.145 / 99.9% / 96.5%, `lampRetarget` 0.093 /
+  99.2% / 95.1%. The hum next to a lamp: RMS 0.0195 (0.033 at first, louder
+  than the engine bay's beds, so its gain was cut to .07). Not heard by ear.
 - **Chain:** voices -> sfx/ambient bus -> master (0.35, 0 when muted) ->
   DynamicsCompressor (soft limiter) -> out. Peak measured under a 480-voice
   barrage: 0.78. Per-name rate limit plus a 28-voice cap keep bursts (trot,
@@ -363,8 +517,14 @@ header; no easter eggs in it.
 
 ## Open questions
 
-- Rooms 3+ (ice `floorSlip`, cucumbers, knocking things off shelves,
+- Berthing: the eyes egg was never formally approved per `AGENTS.md`, but
+  Tasha asked for it to be lurkier (2026-10-04), so it stays; the smart bot's
+  time spread (48-82 s by start phase, see **Berthing**); no person has
+  played gap 3's freeze yet; whether
+  the breaker going in should bring the room's lights up (not built).
+- Rooms 4+ (ice `floorSlip`, cucumbers, knocking things off shelves,
   idle director, yarn-as-main-coil) — designed in the Sonnet chat, not built.
+  Room 3 (berthing) is built.
 - The ending's minimum scope: how many rooms must exist before the cockpit
   is the ending, and what the cockpit room is (see **The hub**).
 - Hip gear is catbot's own socket, but the deck plan shows it as slot 1 of
@@ -393,5 +553,14 @@ From the signatures in the file headers; add a line whenever a model touches a f
   for room 2, the floor-height and belt support in `catbot.js`, the unlock
   chain and cockpit rule in `hub.js`, the engine bay sounds in `audio.js`, and
   the double-tap trot.
-- Claude Sonnet 5.5 (Claude Code): the deck plan hub (`hub.js`), the sound
+- Claude Sonnet 5.5 (Claude Code): the eyes of berthing's egg under bunk 2
+  (Vibe's ovals turned into eyes), the deck plan hub (`hub.js`), the sound
   layer (`audio.js`), and the gameplay design chat for rooms 2+.
+- Claude Opus 5.5 (Claude Code), berthing pass 2: the two-lamp patrol, alert,
+  creaky plates, flee, the dot, set dressing and lighting, the bot test and
+  self-test in `berthing.js`; `plateCreak`, `lampRetarget` and the `beamHum`
+  loop in `audio.js`; then the laser dot, the lurkier eyes, the under-bunk
+  storage and the laser-doodle egg.
+- Mistral Vibe (Mistral AI): room 3 berthing (`berthing.js`), its hook lines and
+  dev entry in `index.html`, the berthing slot unlock in `hub.js`, and the
+  berthing sounds in `audio.js`.

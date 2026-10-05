@@ -3,6 +3,7 @@
    CATBOT · audio.js: the sound layer (plumbing + placeholder sounds).
    Built with Claude Sonnet 5.5 (claude-sonnet-5-5) in Claude Code.
    Engine bay sounds and loops (hiss, vent, venthit, pulse, spinup, belt, rumble): Claude Opus 5.5 (claude-opus-5-5).
+   Berthing: beamLock, beamSpot by Mistral Vibe; plateCreak, lampRetarget, arc, lightsOn and the beamHum loop by Claude Opus 5.5.
 
    Jam rule still holds: audio is OUTPUT only. Nothing here reads or adds
    an input; mute/unmute is the trolley's SOUND floor button (settings.sound).
@@ -358,6 +359,44 @@ window.AUDIO=(()=>{
       v.tone(.08,{f0:240*r,f1:1350*r,a:.4,dur:1.8,end:.2,vol:.07});
       v.tone(.08,{f0:110*r,f1:220*r,type:'triangle',a:.5,dur:1.8,end:.25,vol:.18});
     }},
+    /* ---- berthing (berthing.js calls these): lock-on, spot, creak, retarget. The lamp hum is a loop (beamHum, in LOOPS) ---- */
+    beamLock:{ref:1,gap:400,fn(v,L,r){        // lamp locks on: rising tone as it flares
+      const k=clamp(L,.4,1);
+      v.tone(0,{f0:400*r,f1:900*r,type:'sawtooth',a:.03,dur:.25,vol:.2*k});
+      v.tone(0,{f0:600*r,f1:1300*r,a:.03,dur:.25,vol:.1*k});
+      v.burst(0,{type:'bandpass',f0:2000,q:1.5,dur:.06,vol:.12*k});
+    }},
+    beamSpot:{ref:1,gap:500,fn(v,L,r){        // lamp spots catbot: brass bonk with 150-400 Hz body
+      const k=clamp(L,.4,1.3);
+      v.tone(0,{f0:280*r,f1:140*r,dur:.22,end:.04,vol:.5*k});              // 150-400 Hz body: the weight
+      v.tone(0,{f0:200*r,f1:100*r,type:'triangle',dur:.22,end:.03,vol:.4*k}); // rounder layer
+      v.tone(0,{f0:350*r,f1:200*r,type:'triangle',dur:.18,vol:.18*k});     // bright chime
+      v.burst(0,{type:'bandpass',f0:1200,q:1.1,dur:.08,vol:.3*k});           // the edge
+      v.burst(0,{type:'lowpass',f0:400,q:.7,dur:.14,vol:.25*k});           // dull thud under
+    }},
+    plateCreak:{ref:1,gap:120,fn(v,L,r){      // a trotting paw flexes the grating: a short metal groan with a 150-400 Hz body, and the slats ticking
+      v.tone(0,{f0:340*r,f1:220*r,type:'sawtooth',a:.008,dur:.2,end:.04,vol:.16});
+      v.tone(0,{f0:190*r,f1:160*r,type:'triangle',a:.004,dur:.24,end:.06,vol:.42});
+      v.burst(0,{type:'bandpass',f0:280,q:1.4,dur:.14,vol:.5});
+      v.burst(0,{type:'bandpass',f0:2600,q:5,dur:.035,vol:.16});
+      v.burst(.045,{type:'bandpass',f0:1900,q:6,dur:.03,vol:.1});
+    }},
+    lampRetarget:{ref:1,gap:300,fn(v,L,r){    // a lamp swings onto a creak: a soft servo whir, about 0.4 s, rising as it gets going
+      v.tone(0,{f0:300*r,f1:520*r,type:'sawtooth',a:.06,dur:.4,end:.08,vol:.05});
+      v.tone(0,{f0:150*r,f1:260*r,type:'triangle',a:.06,dur:.4,end:.1,vol:.16});
+      v.burst(0,{type:'bandpass',f0:900*r,f1:1500*r,q:3,a:.05,dur:.38,vol:.06});
+    }},
+    arc:{ref:1,gap:600,fn(v,L,r){             // the empty breaker socket arcs: a dry electric crackle and a snap (twin: the sparks)
+      v.burst(0,{type:'highpass',f0:2500,dur:.05,vol:.22});
+      v.burst(.04,{type:'bandpass',f0:1800*r,q:2,dur:.09,vol:.16});
+      v.burst(.1,{type:'highpass',f0:3500,dur:.03,vol:.14});
+      v.tone(0,{f0:240*r,f1:180*r,type:'sawtooth',dur:.12,vol:.05});
+    }},
+    lightsOn:{ref:1,gap:90,fn(v,L,r){         // a ceiling tube catches: starter click, a glassy tink, a short buzz (twin: the tube flickering on)
+      v.burst(0,{type:'bandpass',f0:3200,q:4,dur:.02,vol:.25});
+      v.tone(.03,{f0:1900*r,f1:1750*r,dur:.09,vol:.05});
+      v.tone(.05,{f0:200*r,type:'triangle',dur:.3,end:.15,vol:.08});
+    }},
     /* ---- the opening (opening.js calls these at its cue marks): heard through the hull, then inside the cabin, then the quiet ---- */
     cough:{ref:1,gap:120,fn(v,L,r){          // engine A sputters: two dull puffs
       v.burst(0,{type:'lowpass',f0:240*r,f1:90,dur:.2,vol:.34});
@@ -651,6 +690,28 @@ window.AUDIO=(()=>{
         g.gain.setTargetAtTime(.18,t,.4);lpf.frequency.setTargetAtTime(240+120*a,t,.6);   // a bed under everything: measured at .5 it had the crate's whole RMS and kept the limiter busy
         hum[0].gain.setTargetAtTime(.025*a,t,.8);hum[1].gain.setTargetAtTime(.012*a,t,.8);
         this.p={alive:+a.toFixed(2)};
+      }};
+    }},
+    /* ---- berthing (berthing.js feeds these from BERTH.audio: beamHum0, beamHum1, one per lamp) ---- */
+    beamHum:{make(){                          // a patrol lamp: mains hum through its housing plus a servo whine that follows how fast it moves.
+                                              // pos 0..1 along its rail (pitch), v px/s (whine, so a parked lamp's sway is heard), near 0..1, x pan, alert 0/1, cool 0/1 (lamp B sits a little higher)
+      const g=ac.createGain();g.gain.value=0;
+      const pn=ac.createStereoPanner?ac.createStereoPanner():null;if(pn){g.connect(pn);pn.connect(sfxBus);}else g.connect(sfxBus);
+      const lpf=ac.createBiquadFilter();lpf.type='lowpass';lpf.frequency.value=700;lpf.Q.value=.8;lpf.connect(g);
+      const o1=ac.createOscillator(),o2=ac.createOscillator(),g2=ac.createGain();
+      o1.type='sawtooth';o1.frequency.value=110;o2.type='triangle';o2.frequency.value=220;g2.gain.value=.4;
+      o1.connect(lpf);o2.connect(g2);g2.connect(lpf);
+      const sv=ac.createOscillator(),svG=ac.createGain();sv.type='triangle';sv.frequency.value=300;svG.gain.value=0;sv.connect(svG);svG.connect(g);
+      const srcs=[o1,o2,sv];for(const s of srcs)s.start();
+      return{g,srcs,p:{},set(p){
+        const pos=clamp(p.pos||0,0,1),v=clamp(p.v||0,0,400),nr=clamp(p.near||0,0,1),al=p.alert?1:0,t=ac.currentTime;
+        const f=(p.cool?118:104)*(1+.18*pos+.05*al)+v*.12;
+        o1.frequency.setTargetAtTime(f,t,.08);o2.frequency.setTargetAtTime(f*2.01,t,.08);
+        sv.frequency.setTargetAtTime(240+v*2.2,t,.06);svG.gain.setTargetAtTime(Math.min(.12,v/900),t,.06);
+        lpf.frequency.setTargetAtTime(600+500*al,t,.2);
+        g.gain.setTargetAtTime(.07*nr,t,.12);                    // measured at .12: RMS .033 next to the lamp, louder than the engine bay's beds
+        if(pn)pn.pan.setTargetAtTime(panOf(p.x),t,.1);
+        this.p={hz:Math.round(f),v:Math.round(v),near:+nr.toFixed(2)};
       }};
     }},
     tick:{make(){                             // ambient clockwork: rate = lerp(0.7, 3.4 Hz, energy); the slower it gets, the less even
