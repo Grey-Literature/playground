@@ -6,7 +6,7 @@ import { create } from 'zustand';
 import type { PhysEvent } from '../../engine/types';
 import type { ThemeRules } from '../../engine/theme';
 import { useGame } from '../../engine/store';
-import { gameRef, flash, addShake, spinnerOf } from '../../engine/runtime';
+import { gameRef, flash, addShake, spinnerOf, later } from '../../engine/runtime';
 import { TABLE } from '../../engine/table';
 import { sound } from '../../engine/audio';
 
@@ -47,8 +47,8 @@ let lastShotT = 0;
 let lastRampAt = -99;
 
 function noteCombo(shot: string) {
-  const now = Date.now();
-  if (lastShot && lastShot !== shot && now - lastShotT < 7000) {
+  const now = gameRef.time; // game time, so a pause (or an agent's lockstep) doesn't eat the window
+  if (lastShot && lastShot !== shot && now - lastShotT < 7) {
     const combo = get().combo + 1;
     set({ combo });
     core().addScore(1800 * combo, `COMBO x${combo}`);
@@ -226,10 +226,10 @@ function onDrop(id: string) {
     set({ kickbackLit: true, rampLit: true });
     flash('jackpot');
     addShake(0.4);
-    setTimeout(() => {
+    later(2.2, () => {
       gameRef.dropDown = {};
       set({ dropTargets: [false, false, false] });
-    }, 2200);
+    });
   } else {
     g.setMessage(`DOOR ${idx + 1}/3 DOWN`);
   }
@@ -294,7 +294,7 @@ export const rules: ThemeRules = {
   reset() {
     set(fresh());
     lastShot = '';
-    lastShotT = 0;
+    lastShotT = -99;
     lastRampAt = -99;
   },
 

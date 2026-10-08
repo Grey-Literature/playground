@@ -11,12 +11,11 @@ import { EffectComposer, Bloom, Vignette } from '@react-three/postprocessing';
 import type { WallSeg } from '../../engine/types';
 import { ACTIVE, samplePath, kinematicSpeed } from '../../engine/table';
 import { gameRef, isTilted, flashOf, spinnerOf } from '../../engine/runtime';
-import { useGame } from '../../engine/store';
 import { PX, PZ, makeTrackTube, makeTrackRibbon, makeTrackSurface, type TrackPoint } from '../../engine/scene/track';
 import {
   Walls, Slings, Bumpers, Posts, Kickers, Flippers, Balls, Plunger, RideTrail, useTier,
 } from '../../engine/scene/parts';
-import { DMD } from '../../engine/scene/dmd';
+import { Cabinet, DISCO_CABINET } from '../../engine/scene/cabinet';
 import {
   table, sensors as SENSORS, RAMP_PATH, TUNNEL_PATH, RETURN_GUIDE_LEFT, RETURN_GUIDE_RIGHT,
   SLING_LEFT, SLING_RIGHT, UPPER_DECK_HEIGHT, heightAt as boardHeightAt,
@@ -833,7 +832,7 @@ function Wrecker() {
   });
   if (!W) return null;
   const WRECKER = W;
-  const len = WRECKER.half * 2 + WRECKER.r * 2;
+  const len = (WRECKER.half ?? 0) * 2 + WRECKER.r * 2;
   return (
     <group position={[PX(WRECKER.cx), 0.7, PZ(WRECKER.cy)]}>
       <group ref={bar}>
@@ -869,152 +868,6 @@ function Wrecker() {
     </group>
   );
 }
-
-// ---------------- Cabinet ----------------
-function Cabinet({ sideArt }: { sideArt: THREE.CanvasTexture }) {
-  const topperMat = useRef<THREE.MeshStandardMaterial>(null!);
-  const topperLight = useRef<THREE.PointLight>(null!);
-  const jackpotMat = useRef<THREE.MeshStandardMaterial>(null!);
-  useFrame((state) => {
-    const t = state.clock.elapsedTime;
-    const st = useGame.getState();
-    const mb = st.multiball;
-    const jp = flashOf('jackpot');
-    if (topperMat.current) {
-      const hue = mb ? (t * 2) % 1 : 0.55 + Math.sin(t * 1.5) * 0.08;
-      topperMat.current.emissive.setHSL(mb ? hue : 0.52, 0.9, 0.55);
-      topperMat.current.emissiveIntensity = (mb ? 3 : 1.6) + jp * 4;
-    }
-    if (topperLight.current) {
-      topperLight.current.intensity = (mb ? 30 : 12) + jp * 60 + Math.sin(t * 6) * 4;
-      if (mb) topperLight.current.color.setHSL((t * 2) % 1, 0.9, 0.6);
-      else topperLight.current.color.set('#22d3ee');
-    }
-    if (jackpotMat.current) {
-      jackpotMat.current.emissiveIntensity = useDisco.getState().jackpotLit ? 2.5 + Math.sin(t * 8) * 1.5 : 0.3;
-    }
-  });
-  return (
-    <group>
-      {/* side rails */}
-      {[-1, 1].map((s) => (
-        <group key={s}>
-          <mesh position={[s * 25.2, 2, 1]} castShadow receiveShadow>
-            <boxGeometry args={[3, 6.5, 87]} />
-            <meshStandardMaterial map={sideArt} roughness={0.5} metalness={0.3} />
-          </mesh>
-          {/* neon trim */}
-          <mesh position={[s * 23.6, 4.4, 1]}>
-            <boxGeometry args={[0.35, 0.35, 86]} />
-            <meshStandardMaterial color="#000" emissive={s < 0 ? '#22d3ee' : '#e879f9'} emissiveIntensity={2.4} toneMapped={false} />
-          </mesh>
-        </group>
-      ))}
-      {/* lockdown bar */}
-      <mesh position={[0, 2.2, 45.2]} castShadow>
-        <boxGeometry args={[54, 1.6, 4.5]} />
-        <meshStandardMaterial color="#9aa5b5" metalness={0.95} roughness={0.25} />
-      </mesh>
-      {/* front body */}
-      <mesh position={[0, -11.5, 1]} rotation={[0.115, 0, 0]} castShadow receiveShadow>
-        <boxGeometry args={[53.5, 18, 86]} />
-        <meshStandardMaterial color="#141126" roughness={0.6} metalness={0.3} />
-      </mesh>
-      {/* coin door */}
-      <mesh position={[0, -8, 44.5]}>
-        <boxGeometry args={[10, 12, 0.6]} />
-        <meshStandardMaterial color="#0b0b12" roughness={0.4} metalness={0.7} />
-      </mesh>
-      {[[-2.2], [2.2]].map(([ox], i) => (
-        <mesh key={i} position={[ox, -8, 44.9]}>
-          <boxGeometry args={[2.6, 4, 0.3]} />
-          <meshStandardMaterial color="#1f2937" emissive={i ? '#e879f9' : '#22d3ee'} emissiveIntensity={0.7} metalness={0.6} roughness={0.3} />
-        </mesh>
-      ))}
-      {/* legs */}
-      {[[-24, 38], [24, 38], [-24, -30], [24, -30]].map(([x, z], i) => (
-        <group key={i} position={[x, -21, z]}>
-          <mesh castShadow>
-            <cylinderGeometry args={[1.4, 1.1, 20, 14]} />
-            <meshStandardMaterial color="#1f2937" metalness={0.85} roughness={0.35} />
-          </mesh>
-          <mesh position={[0, -10.2, 0]}>
-            <cylinderGeometry args={[1.7, 1.9, 1, 14]} />
-            <meshStandardMaterial color="#000" roughness={0.8} />
-          </mesh>
-        </group>
-      ))}
-      {/* backbox */}
-      <mesh position={[0, 14, -41.5]} castShadow>
-        <boxGeometry args={[54, 34, 9]} />
-        <meshStandardMaterial color="#141126" roughness={0.55} metalness={0.3} />
-      </mesh>
-      {/* backglass art frame */}
-      <mesh position={[0, 24.5, -36.9]}>
-        <planeGeometry args={[50, 13]} />
-        <meshStandardMaterial color="#050816" roughness={0.4} emissive="#1e1b4b" emissiveIntensity={0.5} />
-      </mesh>
-      {/* backglass neon title (emissive bars simulating art) */}
-      <mesh position={[0, 25.5, -36.7]}>
-        <boxGeometry args={[30, 0.7, 0.2]} />
-        <meshStandardMaterial color="#000" emissive="#22d3ee" emissiveIntensity={3} toneMapped={false} />
-      </mesh>
-      <mesh position={[0, 22.8, -36.7]}>
-        <boxGeometry args={[30, 0.7, 0.2]} />
-        <meshStandardMaterial color="#000" emissive="#e879f9" emissiveIntensity={3} toneMapped={false} />
-      </mesh>
-      <mesh position={[-20, 24.2, -36.7]}>
-        <boxGeometry args={[0.7, 4, 0.2]} />
-        <meshStandardMaterial color="#000" emissive="#fbbf24" emissiveIntensity={2.5} toneMapped={false} />
-      </mesh>
-      <mesh position={[20, 24.2, -36.7]}>
-        <boxGeometry args={[0.7, 4, 0.2]} />
-        <meshStandardMaterial color="#000" emissive="#fbbf24" emissiveIntensity={2.5} toneMapped={false} />
-      </mesh>
-      {/* jackpot beacon on backbox */}
-      <mesh position={[0, 32.6, -40]}>
-        <cylinderGeometry args={[2.2, 2.6, 1.2, 20]} />
-        <meshStandardMaterial color="#111" roughness={0.5} />
-      </mesh>
-      <mesh position={[0, 34, -40]}>
-        <sphereGeometry args={[1.7, 20, 20]} />
-        <meshStandardMaterial ref={jackpotMat} color="#3f2d06" emissive="#fbbf24" emissiveIntensity={0.3} roughness={0.3} />
-      </mesh>
-      {/* DMD housing */}
-      <mesh position={[0, 16.5, -36.85]}>
-        <boxGeometry args={[37, 13, 1.4]} />
-        <meshStandardMaterial color="#000000" roughness={0.6} />
-      </mesh>
-      <DMD />
-      {/* speakers */}
-      {[[-22], [22]].map(([x], i) => (
-        <group key={i} position={[x, 16.5, -36.9]}>
-          <mesh>
-            <circleGeometry args={[3.4, 24]} />
-            <meshStandardMaterial color="#020617" roughness={0.8} />
-          </mesh>
-          {[2.4, 1.5, 0.6].map((r, j) => (
-            <mesh key={j} position={[0, 0, 0.08]}>
-              <ringGeometry args={[r - 0.18, r, 24]} />
-              <meshStandardMaterial color="#334155" emissive="#475569" emissiveIntensity={0.4} />
-            </mesh>
-          ))}
-        </group>
-      ))}
-      {/* topper dome */}
-      <mesh position={[0, 32.2, -41.5]}>
-        <cylinderGeometry args={[3.4, 4, 1.6, 20]} />
-        <meshStandardMaterial color="#0f172a" metalness={0.7} roughness={0.3} />
-      </mesh>
-      <mesh position={[0, 34.2, -41.5]}>
-        <sphereGeometry args={[2.4, 24, 24, 0, Math.PI * 2, 0, Math.PI / 2]} />
-        <meshStandardMaterial ref={topperMat} color="#0b1220" emissive="#22d3ee" emissiveIntensity={1.6} roughness={0.2} transparent opacity={0.95} />
-      </mesh>
-      <pointLight ref={topperLight} position={[0, 36, -38]} color="#22d3ee" intensity={12} distance={60} />
-    </group>
-  );
-}
-
 
 // ---------------- Theme entry points ----------------
 const SLING_TRIS = [
@@ -1063,6 +916,8 @@ export function Playfield() {
   );
 }
 
+const CABINET = { ...DISCO_CABINET, beacon: { ...DISCO_CABINET.beacon, isLit: () => useDisco.getState().jackpotLit } };
+
 /** Cabinet, room lighting, environment and post-processing. */
 export function Surroundings() {
   const sideArt = useMemo(() => makeSideArt(), []);
@@ -1088,7 +943,7 @@ export function Surroundings() {
       <pointLight position={[0, 26, 30]} intensity={40} distance={110} color="#c4b5fd" decay={1.9} />
       <pointLight position={[0, 20, -34]} intensity={60} distance={90} color="#7c3aed" decay={1.9} />
 
-      <Cabinet sideArt={sideArt} />
+      <Cabinet sideArt={sideArt} look={CABINET} />
 
       {/* floor */}
       <mesh position={[0, -31.2, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>

@@ -1,10 +1,14 @@
+import { useState } from 'react';
 import { useGame } from '../store';
+import { AgentConsole } from './AgentConsole';
+import { scores, cleanInitials, AGENT_MODES, type AgentMode } from '../scores';
+import { SCRIPT_GAME_S } from '../script';
 import { DIFF_ORDER, DIFF, diffFor } from '../difficulty';
 import { obstacleCount } from '../table';
-import { activeTheme, allThemes, themeById } from '../theme';
+import { activeTheme, hallThemes, themeById } from '../theme';
 import {
   Volume2, VolumeX, Camera, Vibrate, VibrateOff, CircleHelp,
-  Play, Pause, RotateCcw, Trophy, Zap, TriangleAlert, LifeBuoy, Ghost,
+  Play, Pause, RotateCcw, Trophy, Zap, TriangleAlert, LifeBuoy, Ghost, Bot,
 } from 'lucide-react';
 
 export function fmt(n: number) {
@@ -110,6 +114,7 @@ function TopBar() {
             <span className="tabular-nums">{fmt(highScore)}</span>
             {isHigh && <span className="ml-1 animate-pulse rounded bg-yellow-400/20 px-1.5 py-px text-[10px] font-black text-yellow-300">NEW BEST!</span>}
           </div>
+          <RunBadge />
         </div>
       </div>
 
@@ -144,6 +149,33 @@ function TopBar() {
   );
 }
 
+const MODE_TAG: Record<AgentMode, string> = { realtime: 'REAL-TIME', lockstep: 'LOCKSTEP', script: 'SCRIPT' };
+
+/** Who this game counts for: an agent (Agent Board) or a ?debug page (nowhere). */
+function RunBadge() {
+  const phase = useGame((s) => s.phase);
+  const run = useGame((s) => s.run);
+  const agent = useGame((s) => s.agent);
+  const agentMode = useGame((s) => s.agentMode);
+  const unranked = useGame((s) => s.unranked);
+  const who = phase === 'playing' ? run.agent : agent;
+  const mode = phase === 'playing' ? run.mode : agentMode;
+  if ((phase === 'playing' ? run.unranked : unranked)) {
+    return <div className="mt-1 text-[10px] font-black tracking-[0.2em] text-red-300">DEBUG — NOT RANKED</div>;
+  }
+  if (phase === 'playing' && run.flagged) {
+    return <div className="mt-1 max-w-[16rem] text-[10px] font-black tracking-[0.15em] text-red-300">SCRIPT-PACED — NOT RANKED</div>;
+  }
+  if (!who) return null;
+  return (
+    <div className="mt-1 flex max-w-[16rem] items-center gap-1 text-[10px] font-black tracking-[0.15em] text-emerald-300">
+      <Bot className="h-3 w-3 shrink-0" />
+      <span className="truncate">AGENT: {who.name}</span>
+      <span className="shrink-0 text-slate-400">· {MODE_TAG[mode]}</span>
+    </div>
+  );
+}
+
 function BallsDots() {
   const ball = useGame((s) => s.ball);
   const totalBalls = useGame((s) => s.totalBalls);
@@ -168,7 +200,7 @@ function MessageBar() {
   if (phase !== 'playing') return null;
   return (
     <div className="pointer-events-none absolute bottom-3 left-0 right-0 z-20 flex justify-center px-4">
-      <div key={messageT} className="msg-pop max-w-[46vw] truncate rounded-full border border-slate-600/60 bg-slate-950/75 px-4 py-1 text-center text-xs font-bold tracking-wide text-slate-100 backdrop-blur-md">
+      <div key={messageT} className="msg-pop max-w-[46vw] lg:max-w-[38vw] truncate rounded-full border border-slate-600/60 bg-slate-950/75 px-4 py-1 text-center text-xs font-bold tracking-wide text-slate-100 backdrop-blur-md">
         {message}
       </div>
     </div>
@@ -211,7 +243,7 @@ function PlungerMeter() {
   const phase = useGame((s) => s.phase);
   if (phase !== 'playing' || ballPhase !== 'plunger') return null;
   return (
-    <div className="pointer-events-none absolute bottom-40 right-4 sm:right-8 lg:right-44 z-20 flex flex-col items-center gap-2">
+    <div className="pointer-events-none absolute bottom-40 right-4 sm:right-8 lg:bottom-20 lg:right-44 z-20 flex flex-col items-center gap-2">
       <div className="text-[10px] font-black tracking-[0.25em] text-slate-300">POWER</div>
       <div className="relative h-44 w-5 overflow-hidden rounded-full border border-slate-600 bg-slate-900/90">
         {/* skill zone */}
@@ -242,7 +274,11 @@ function ControlsBar() {
   const phase = useGame((s) => s.phase);
   void st;
   return (
-    <div className="absolute top-24 sm:top-28 right-3 sm:right-4 z-30 flex flex-col gap-2">
+    // Small screens: a column on the right edge (no side panels there).
+    // Large screens: the theme's side panels own the right edge, so the
+    // buttons move to the bottom-right corner, mirroring the key legend: a
+    // two-row block under the panel column on narrower desktops, one row at xl.
+    <div className="absolute top-24 sm:top-28 right-3 sm:right-4 z-30 flex flex-col gap-2 lg:top-auto lg:bottom-3 lg:right-3 lg:w-36 lg:flex-row lg:flex-wrap lg:items-center lg:justify-center lg:gap-1.5 lg:rounded-xl lg:border lg:border-slate-700/50 lg:bg-slate-950/75 lg:p-1.5 lg:backdrop-blur-md xl:w-auto xl:flex-nowrap">
       {[
         { icon: muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />, fn: toggleMute, label: muted ? 'Unmute' : 'Mute', active: !muted },
         { icon: <Camera className="h-4 w-4" />, fn: cycleCamera, label: `Cam: ${cameraMode}`, active: true },
@@ -253,7 +289,7 @@ function ControlsBar() {
           key={i}
           onClick={b.fn}
           title={b.label}
-          className={`pointer-events-auto flex h-9 w-9 items-center justify-center rounded-lg border backdrop-blur-md transition-all hover:scale-105 active:scale-95 ${
+          className={`pointer-events-auto flex h-9 w-9 lg:h-8 lg:w-8 items-center justify-center rounded-lg border backdrop-blur-md transition-all hover:scale-105 active:scale-95 ${
             b.active ? 'border-pa-400/40 bg-slate-900/80 text-pa-300' : 'border-slate-700/60 bg-slate-900/80 text-slate-400'
           }`}
         >
@@ -262,24 +298,25 @@ function ControlsBar() {
       ))}
       {phase === 'playing' && (
         <>
+          <span className="hidden h-6 w-px bg-slate-700 xl:block" aria-hidden="true" />
           <button
             onClick={() => useGame.getState().reserveBall()}
             title="Ball reset (B) — frees a stuck ball, no ball lost"
-            className="pointer-events-auto flex h-9 w-9 items-center justify-center rounded-lg border border-amber-400/50 bg-slate-900/80 text-amber-300 backdrop-blur-md transition-all hover:scale-105 active:scale-95"
+            className="pointer-events-auto flex h-9 w-9 lg:h-8 lg:w-8 items-center justify-center rounded-lg border border-amber-400/50 bg-slate-900/80 text-amber-300 backdrop-blur-md transition-all hover:scale-105 active:scale-95"
           >
             <LifeBuoy className="h-4 w-4" />
           </button>
           <button
             onClick={() => setPaused(!paused)}
             title={paused ? 'Resume' : 'Pause'}
-            className="pointer-events-auto flex h-9 w-9 items-center justify-center rounded-lg border border-slate-700/60 bg-slate-900/80 text-slate-300 backdrop-blur-md transition-all hover:scale-105 active:scale-95"
+            className="pointer-events-auto flex h-9 w-9 lg:h-8 lg:w-8 items-center justify-center rounded-lg border border-slate-700/60 bg-slate-900/80 text-slate-300 backdrop-blur-md transition-all hover:scale-105 active:scale-95"
           >
             {paused ? <Play className="h-4 w-4" /> : <Pause className="h-4 w-4" />}
           </button>
           <button
             onClick={() => useGame.getState().startGame()}
             title="Restart"
-            className="pointer-events-auto flex h-9 w-9 items-center justify-center rounded-lg border border-slate-700/60 bg-slate-900/80 text-slate-300 backdrop-blur-md transition-all hover:scale-105 active:scale-95"
+            className="pointer-events-auto flex h-9 w-9 lg:h-8 lg:w-8 items-center justify-center rounded-lg border border-slate-700/60 bg-slate-900/80 text-slate-300 backdrop-blur-md transition-all hover:scale-105 active:scale-95"
           >
             <RotateCcw className="h-4 w-4" />
           </button>
@@ -297,7 +334,9 @@ function KeyHints() {
   const plungerCharging = useGame((s) => s.plungerCharging);
   const phase = useGame((s) => s.phase);
   const ballPhase = useGame((s) => s.ballPhase);
+  const agentPage = useGame((s) => s.agentPage);
   const live = phase === 'playing' && ballPhase === 'active';
+  if (agentPage) return null; // the Agent Console has its own key legend there
   // During play on large-but-short screens the theme's side panels fill the
   // left column; the legend steps aside (keys stay in the help modal / attract card).
   const rows: { keys: React.ReactNode; label: string }[] = [
@@ -326,7 +365,8 @@ function KeyHints() {
 function TouchControls() {
   const phase = useGame((s) => s.phase);
   const ballPhase = useGame((s) => s.ballPhase);
-  if (phase !== 'playing') return null;
+  const scripted = useGame((s) => s.phase === 'playing' && !!s.run.agent && s.run.mode === 'script');
+  if (phase !== 'playing' || scripted) return null; // a Script game is played by its strategy alone
   const setFlipper = useGame.getState().setFlipper;
   const press = (side: 'left' | 'right', v: boolean) => (e: React.PointerEvent) => {
     e.preventDefault();
@@ -385,7 +425,6 @@ function TouchControls() {
 
 function AttractScreen() {
   const phase = useGame((s) => s.phase);
-  const highScore = useGame((s) => s.highScore);
   const selected = useGame((s) => s.difficulty);
   const themeId = useGame((s) => s.themeId);
   const theme = themeById(themeId);
@@ -393,7 +432,7 @@ function AttractScreen() {
   const { Title } = theme;
   return (
     <div className="absolute inset-0 z-40 flex items-center justify-center bg-gradient-to-b from-slate-950/60 via-slate-950/40 to-slate-950/80 p-4">
-      <div className="attract-in max-h-[calc(100dvh-2rem)] w-full max-w-2xl overflow-y-auto rounded-3xl border border-pa-400/25 bg-slate-950/85 p-6 sm:p-10 text-center shadow-[0_0_80px_color-mix(in_srgb,var(--color-pa-400)_25%,transparent)] backdrop-blur-xl">
+      <div className="attract-in max-h-[calc(100dvh-2rem)] w-full max-w-2xl overflow-y-auto rounded-3xl border border-pa-400/25 bg-[color-mix(in_srgb,var(--pb-bg,#020617)_85%,transparent)] p-6 sm:p-10 text-center shadow-[0_0_80px_color-mix(in_srgb,var(--color-pa-400)_25%,transparent)] backdrop-blur-xl">
         <div className="mb-3 inline-flex items-center gap-1.5 rounded-full border border-amber-400/40 bg-amber-950/40 px-3 py-0.5 text-[10px] font-black tracking-[0.3em] text-amber-300">
           WORK IN PROGRESS · MORE TABLES BEING SUMMONED
         </div>
@@ -401,10 +440,8 @@ function AttractScreen() {
         <div className="mb-1 mt-5 text-[11px] font-black tracking-[0.5em] text-pa-400">INSERT COIN • 3 BALLS</div>
         <Title />
 
-        <div className="mx-auto mt-5 flex max-w-md items-center justify-center gap-3 rounded-xl border border-amber-300/30 bg-amber-950/30 px-4 py-2">
-          <Trophy className="h-4 w-4 text-amber-300" />
-          <span className="text-xs font-bold tracking-widest text-amber-200/80">HIGH SCORE</span>
-          <span className="font-display text-xl font-black text-amber-300 tabular-nums">{fmt(highScore)}</span>
+        <div className="mx-auto mt-5 max-w-md">
+          <Boards limit={5} />
         </div>
 
         <div className="mx-auto mt-5 max-w-xl text-left">
@@ -455,14 +492,13 @@ function AttractScreen() {
 function GameOverScreen() {
   const phase = useGame((s) => s.phase);
   const score = useGame((s) => s.score);
-  const highScore = useGame((s) => s.highScore);
   const difficulty = useGame((s) => s.difficulty);
+  const entry = useGame((s) => s.initialsEntry);
   if (phase !== 'gameover') return null;
-  const isBest = score >= highScore && score > 0;
   const cfg = diffFor(difficulty);
   return (
     <div className="absolute inset-0 z-40 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-[2px]">
-      <div className="attract-in w-full max-w-md rounded-3xl border border-pb-400/30 bg-slate-950/90 p-8 text-center shadow-[0_0_60px_color-mix(in_srgb,var(--color-pb-400)_30%,transparent)] backdrop-blur-xl">
+      <div className="attract-in max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-3xl border border-pb-400/30 bg-[color-mix(in_srgb,var(--pb-bg,#020617)_90%,transparent)] p-8 text-center shadow-[0_0_60px_color-mix(in_srgb,var(--color-pb-400)_30%,transparent)] backdrop-blur-xl">
         <div className="flex items-center justify-center gap-2 text-[11px] font-black tracking-[0.4em] text-pb-400">
           GAME OVER
           <span className="rounded-full px-2 py-0.5 text-[10px] tracking-[0.2em]" style={{ color: cfg.accent, background: `${cfg.accent}1a`, border: `1px solid ${cfg.accent}55` }}>
@@ -470,15 +506,10 @@ function GameOverScreen() {
           </span>
         </div>
         <div className="font-display mt-2 text-5xl font-black text-white tabular-nums drop-shadow-[0_0_20px_color-mix(in_srgb,var(--color-pb-400)_60%,transparent)]">{fmt(score)}</div>
-        {isBest ? (
-          <div className="mx-auto mt-3 inline-flex animate-pulse items-center gap-2 rounded-full border border-yellow-300/50 bg-yellow-400/10 px-4 py-1.5 text-sm font-black text-yellow-300">
-            <Trophy className="h-4 w-4" /> NEW HIGH SCORE!
-          </div>
-        ) : (
-          <div className="mt-3 flex items-center justify-center gap-2 text-sm font-bold text-slate-400">
-            <Trophy className="h-4 w-4 text-amber-400/70" /> Best: <span className="tabular-nums text-slate-200">{fmt(highScore)}</span>
-          </div>
+        {entry ? <InitialsEntry rank={entry.rank} /> : (
+          <div className="mt-4 text-left"><Boards limit={10} /></div>
         )}
+        {!entry && <>
         <div className="mt-5 text-left">
           <div className="mb-1.5 text-[10px] font-black tracking-[0.3em] text-slate-500">RETRY ON A DIFFERENT TIER?</div>
           <DifficultyPicker compact />
@@ -489,6 +520,7 @@ function GameOverScreen() {
         >
           <RotateCcw className="h-4 w-4" /> PLAY AGAIN (ENTER)
         </button>
+        </>}
       </div>
     </div>
   );
@@ -570,6 +602,8 @@ function HelpModal() {
           {theme.help}
           <p><b className="text-amber-300">Stuck ball:</b> press <Kbd>B</Kbd> to re-serve the ball to the plunger. You keep your score and <i>don't</i> lose a ball. The machine also auto-kicks a resting ball after ~3s.</p>
           <p><b className="text-pa-300">Difficulty</b> (<Kbd>1</Kbd>–<Kbd>5</Kbd> on the title screen): Super Easy → Impossible. Each tier scales gravity, launch power, bounciness and flipper snap{sets.length ? <>, adds obstacles ({sets.join(' → ')})</> : null}, and multiplies all points earned. Best scores are kept per table and per tier — Impossible pays 1.5x.</p>
+          <p><b className="text-amber-300">Spirit Board:</b> the top 10 for each table and difficulty, with initials. It lives in <i>this browser only</i> — another device keeps its own board. <ClearBoardButton /></p>
+          <p><b className="text-emerald-300">Agent Board:</b> AI agents can play too — through an API instead of the keyboard. Add <code>?agent</code> to the page address and call <code>flipperSeance.help()</code>. An agent declares its name first, and its games are ranked on their own board (real-time and lockstep separately), never on the Spirit Board. Agents that can't run scripts can use the <b>Agent Console</b> on that page instead — a form to declare, keys to play (<code>.</code> steps a lockstep game), and the game state printed as text — and browsers with WebMCP get the same controls as page tools.</p>
           <p><b className="text-pb-300">Tables:</b> <Kbd>T</Kbd> on the title screen summons the next table. <b className="text-pa-300">Extra balls</b> at 120K / 300K / 600K. <b className="text-pa-300">Camera:</b> <Kbd>C</Kbd> cycles Auto / Broadcast / Top / Cinematic.</p>
         </div>
         <button onClick={toggle} className="pointer-events-auto mt-5 w-full rounded-xl bg-gradient-to-r from-pa-500 to-pb-500 py-2.5 font-black text-white">GOT IT</button>
@@ -582,7 +616,9 @@ function HelpModal() {
 function ThemePicker() {
   const themeId = useGame((s) => s.themeId);
   const setTheme = useGame((s) => s.setTheme);
-  const themes = allThemes();
+  const current = themeById(themeId);
+  // a hidden fixture table shows itself in the picker only while it's active
+  const themes = current?.hidden ? [...hallThemes(), current] : hallThemes();
   return (
     <div className="mx-auto max-w-xl text-left">
       <div className="mb-2 flex items-center justify-between">
@@ -611,6 +647,186 @@ function ThemePicker() {
         })}
       </div>
     </div>
+  );
+}
+
+// ---------------- Spirit Board (local arcade leaderboard) ----------------
+export function SpiritBoard({ limit = 10 }: { limit?: number }) {
+  const board = useGame((s) => s.board);
+  const lastRank = useGame((s) => s.lastEntryRank);
+  const difficulty = useGame((s) => s.difficulty);
+  const cfg = diffFor(difficulty);
+  const rows = board.slice(0, limit);
+  return (
+    <div className="rounded-xl border border-amber-300/30 bg-amber-950/25 px-4 py-2.5 text-left">
+      <div className="mb-1.5 flex items-center justify-between">
+        <span className="flex items-center gap-1.5 text-[10px] font-black tracking-[0.35em] text-amber-300">
+          <Trophy className="h-3 w-3" /> SPIRIT BOARD
+        </span>
+        <span className="text-[10px] font-black tracking-[0.2em]" style={{ color: cfg.accent }}>{cfg.label}</span>
+      </div>
+      {rows.length === 0 ? (
+        <div className="py-1 text-center text-[11px] font-semibold italic text-slate-400">The board is silent. Be the first spirit.</div>
+      ) : (
+        <ol className="space-y-0.5">
+          {rows.map((e, i) => {
+            const mine = lastRank === i + 1;
+            return (
+              <li key={i} className={`flex items-center gap-3 rounded px-1.5 font-display text-sm tabular-nums ${mine ? 'animate-pulse bg-amber-300/20 text-amber-200' : i === 0 ? 'text-amber-300' : 'text-slate-200'}`}>
+                <span className="w-5 text-right text-[11px] font-bold text-slate-500">{i + 1}</span>
+                <span className="w-10 font-black tracking-[0.2em] whitespace-pre">{e.initials}</span>
+                <span className="flex-1 text-right font-black">{fmt(e.score)}</span>
+                <span className="hidden w-20 text-right text-[10px] font-semibold text-slate-500 sm:inline">{e.day}</span>
+              </li>
+            );
+          })}
+        </ol>
+      )}
+    </div>
+  );
+}
+
+/** Spirit Board (humans) and Agent Board (declared AI agents), as tabs. */
+export function Boards({ limit = 10 }: { limit?: number }) {
+  const agentPage = useGame((s) => !!s.agent || !!s.run.agent);
+  const [tab, setTab] = useState<'spirits' | 'agents'>(agentPage ? 'agents' : 'spirits');
+  const tabBtn = (id: 'spirits' | 'agents', label: string) => (
+    <button
+      onClick={() => setTab(id)}
+      className={`pointer-events-auto rounded-t-lg px-3 py-1 text-[10px] font-black tracking-[0.25em] ${tab === id ? (id === 'spirits' ? 'bg-amber-950/40 text-amber-300' : 'bg-emerald-950/40 text-emerald-300') : 'text-slate-500 hover:text-slate-300'}`}
+    >
+      {label}
+    </button>
+  );
+  return (
+    <div>
+      <div className="flex gap-1">{tabBtn('spirits', 'SPIRITS')}{tabBtn('agents', 'AGENTS')}</div>
+      {tab === 'spirits' ? <SpiritBoard limit={limit} /> : <AgentBoard limit={limit} />}
+    </div>
+  );
+}
+
+/** Top scores by AI agents that declared themselves via the ?agent API; real-time and lockstep ranked apart. */
+export function AgentBoard({ limit = 10 }: { limit?: number }) {
+  const boards = useGame((s) => s.agentBoards);
+  const last = useGame((s) => s.lastAgentRank);
+  const runMode = useGame((s) => s.run.mode);
+  const difficulty = useGame((s) => s.difficulty);
+  const [mode, setMode] = useState<AgentMode>(last?.mode ?? runMode);
+  const cfg = diffFor(difficulty);
+  const rows = boards[mode].slice(0, limit);
+  return (
+    <div className="rounded-xl border border-emerald-300/30 bg-emerald-950/25 px-4 py-2.5 text-left">
+      <div className="mb-1.5 flex items-center justify-between gap-2">
+        <span className="flex items-center gap-1.5 text-[10px] font-black tracking-[0.35em] text-emerald-300">
+          <Bot className="h-3 w-3" /> AGENT BOARD
+        </span>
+        <span className="flex items-center gap-1">
+          {AGENT_MODES.map((m) => (
+            <button
+              key={m}
+              onClick={() => setMode(m)}
+              className={`pointer-events-auto rounded px-1.5 text-[9px] font-black tracking-[0.15em] ${mode === m ? 'bg-emerald-400/20 text-emerald-200' : 'text-slate-500 hover:text-slate-300'}`}
+            >
+              {MODE_TAG[m]}
+            </button>
+          ))}
+          <span className="ml-1 text-[10px] font-black tracking-[0.2em]" style={{ color: cfg.accent }}>{cfg.label}</span>
+        </span>
+      </div>
+      {mode === 'script' && (
+        <div className="mb-1 text-[10px] font-semibold text-slate-400">
+          Bots: a strategy submitted once, run every frame. {SCRIPT_GAME_S / 60}-minute games · reacts in {cfg.agentReactionMs} ms.
+        </div>
+      )}
+      {rows.length === 0 ? (
+        <div className="py-1 text-center text-[11px] font-semibold italic text-slate-400">
+          No agent has played {mode === 'lockstep' ? 'lockstep' : mode === 'script' ? 'a Script game' : 'real-time'} here yet. Agents: add <code>?agent</code> to the URL.
+        </div>
+      ) : (
+        <ol className="space-y-0.5">
+          {rows.map((e, i) => {
+            const mine = last?.mode === mode && last.rank === i + 1;
+            return (
+              <li key={i} className={`flex items-center gap-3 rounded px-1.5 font-display text-sm tabular-nums ${mine ? 'animate-pulse bg-emerald-300/20 text-emerald-200' : i === 0 ? 'text-emerald-300' : 'text-slate-200'}`}>
+                <span className="w-5 text-right text-[11px] font-bold text-slate-500">{i + 1}</span>
+                <span className="min-w-0 flex-1 truncate font-black" title={e.model || undefined}>
+                  {e.name}{e.model && <span className="ml-1.5 text-[10px] font-semibold text-slate-500">{e.model}</span>}
+                </span>
+                {e.latencyMs !== undefined && (
+                  <span className="shrink-0 text-[10px] font-semibold text-emerald-500/80" title="Measured harness latency (added to the lockstep hold budget)">
+                    {e.latencyMs < 100 ? '<0.1 s' : `~${(e.latencyMs / 1000).toFixed(1)} s`}
+                  </span>
+                )}
+                <span className="text-right font-black">{fmt(e.score)}</span>
+                <span className="hidden w-20 text-right text-[10px] font-semibold text-slate-500 sm:inline">{e.day}</span>
+              </li>
+            );
+          })}
+        </ol>
+      )}
+      {rows.length > 0 && (
+        <div className="mt-1.5 text-right">
+          <ClearBoardButton label={`${MODE_TAG[mode]} · ${cfg.label}`} onClear={() => useGame.getState().clearAgentBoard(mode)} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Arcade-style initials: three big slots over a real <input> so phone keyboards work. */
+function InitialsEntry({ rank }: { rank: number }) {
+  const submit = useGame((s) => s.submitInitials);
+  const skip = useGame((s) => s.skipInitials);
+  const [text, setText] = useState(() => scores.lastInitials());
+  const slots = text.padEnd(3, ' ').slice(0, 3).split('');
+  return (
+    <div className="mt-4">
+      <div className="text-[11px] font-black tracking-[0.35em] text-amber-300">A NEW SPIRIT — RANK #{rank}</div>
+      <label className="relative mx-auto mt-3 flex w-fit cursor-text gap-2">
+        {slots.map((c, i) => (
+          <span key={i} className={`flex h-14 w-12 items-center justify-center rounded-lg border-2 font-display text-3xl font-black ${i === Math.min(text.length, 2) ? 'border-amber-300 text-amber-200 shadow-[0_0_14px_rgba(252,211,77,0.5)]' : 'border-slate-600 text-white'}`}>
+            {c.trim() || '_'}
+          </span>
+        ))}
+        <input
+          autoFocus
+          aria-label="Your initials"
+          value={text}
+          maxLength={3}
+          autoCapitalize="characters"
+          autoComplete="off"
+          spellCheck={false}
+          className="absolute inset-0 opacity-0"
+          onChange={(e) => setText(cleanInitials(e.target.value))}
+          onKeyDown={(e) => {
+            e.stopPropagation();
+            if (e.key === 'Enter') { e.preventDefault(); submit(text); }
+            if (e.key === 'Escape') { e.preventDefault(); skip(); }
+          }}
+        />
+      </label>
+      <div className="mt-3 flex justify-center gap-2">
+        <button onClick={() => submit(text)} className="pointer-events-auto rounded-xl bg-amber-400 px-5 py-2 text-sm font-black text-slate-950 hover:bg-amber-300">CARVE IT (ENTER)</button>
+        <button onClick={skip} className="pointer-events-auto rounded-xl border border-slate-600 px-4 py-2 text-xs font-bold text-slate-300 hover:border-slate-400">SKIP (ESC)</button>
+      </div>
+    </div>
+  );
+}
+
+/** Two-tap "clear this board" for grown-ups. Spirit Board by default. */
+function ClearBoardButton({ onClear = () => useGame.getState().clearBoard(), label = 'this board' }: { onClear?: () => void; label?: string }) {
+  const [armed, setArmed] = useState(false);
+  const phase = useGame((s) => s.phase);
+  if (phase === 'playing') return null;
+  return (
+    <button
+      onClick={() => { if (armed) { onClear(); setArmed(false); } else setArmed(true); }}
+      onBlur={() => setArmed(false)}
+      className={`pointer-events-auto ml-1 rounded border px-1.5 text-[11px] font-bold ${armed ? 'border-red-400 text-red-300' : 'border-slate-600 text-slate-400 hover:text-slate-200'}`}
+    >
+      {armed ? `Tap again to clear ${label}` : `Clear ${label}`}
+    </button>
   );
 }
 
@@ -673,6 +889,7 @@ export function HUD() {
       <GameOverScreen />
       <PausedOverlay />
       <HelpModal />
+      <AgentConsole />
     </>
   );
 }

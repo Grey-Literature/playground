@@ -26,6 +26,12 @@ for (const entry of TABLES) {
     ['ball on wire ramp', [{ x: -6, y: 31, h: 7.8 }]],
     ['multiball top+bottom', [{ x: 0, y: e.topY - 2, h: 0 }, { x: 5, y: -29, h: 0 }]],
   ];
+  // layered tables: a ball riding each deck, at the deck's height
+  for (const d of entry.table.layers ?? []) {
+    const cx = d.outline.reduce((a, p) => a + p[0], 0) / d.outline.length;
+    const top = Math.max(...d.outline.map((p) => p[1]));
+    SCENES.push([`ball on deck '${d.id}'`, [{ x: cx, y: top - 3, h: d.height }]]);
+  }
   console.log(`\n[${entry.id}] auto camera — dist = % of whole-table distance; top = NDC y of the arch top (≤1.00 visible)`);
   for (const [label, w, h] of SCREENS) {
     const framer = new Framer();

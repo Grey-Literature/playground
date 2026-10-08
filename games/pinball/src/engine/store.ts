@@ -8,9 +8,10 @@ import { sound } from './audio';
 import { DIFF, DIFFS, DIFF_ORDER, diffFor, applyDifficultyCfg, setDiffOverrides, type DiffId } from './difficulty';
 import { TABLE, setTable, refreshActive } from './table';
 import {
-  gameRef, resetMutable, spawnBallInLane, spawnBallAt, isTilted, flash, addShake,
+  gameRef, resetMutable, spawnBallInLane, spawnBallAt, isTilted, flash, addShake, later,
 } from './runtime';
-import { activeTheme, setActiveTheme, themeById, allThemes, type ThemeDef } from './theme';
+import { scores, agentBoard, cleanInitials, padInitials, today, type ScoreEntry, type AgentEntry, type AgentMode } from './scores';
+import { activeTheme, setActiveTheme, themeById, hallThemes, type ThemeDef } from './theme';
 
 // ---------- persistence (per theme × per tier) ----------
 const NS = 'flipper-seance';
@@ -22,9 +23,29 @@ const ls = {
     try { localStorage.setItem(`${NS}:${k}`, v); } catch { /* private mode etc. */ }
   },
 };
-const bestKey = (theme: string, tier: DiffId) => `${theme}:best:${tier}`;
-const loadBest = (theme: string, tier: DiffId) => Number(ls.get(bestKey(theme, tier)) || 0);
-const saveBest = (theme: string, tier: DiffId, v: number) => ls.set(bestKey(theme, tier), String(v));
+// Bests live on the Spirit Board (scores.ts): top 10 per theme × tier.
+const topScore = (board: ScoreEntry[]) => board[0]?.score ?? 0;
+/** Where `score` would land on `board` (1-based); equal older scores stay ahead. */
+const rankFor = (board: ScoreEntry[], score: number) => {
+  const i = board.findIndex((e) => score > e.score);
+  return (i < 0 ? board.length : i) + 1;
+};
+/** Measured harness latency of the current lockstep agent run (engine/agent.ts registers it). */
+let runLatency: () => number | null = () => null;
+export function setRunLatencyProvider(fn: () => number | null) { runLatency = fn; }
+
+/** A Script-mode agent game is in play: its strategy drives, and nobody else may
+ *  press anything (engine/script.ts; App.tsx and TouchControls check this). */
+export function scriptRunActive(): boolean {
+  const s = useGame.getState();
+  return s.phase === 'playing' && !!s.run.agent && s.run.mode === 'script';
+}
+
+const agentBoardsFor =(theme: string, tier: DiffId) => ({
+  realtime: agentBoard.list(theme, 'realtime', tier),
+  lockstep: agentBoard.list(theme, 'lockstep', tier),
+  script: agentBoard.list(theme, 'script', tier),
+});
 const loadTier = (theme: string): DiffId => {
   const t = ls.get(`${theme}:diff`) as DiffId | null;
   return t && DIFFS[t] ? t : 'medium';
@@ -61,6 +82,8 @@ export interface GameStore {
   bigMessageT: number;
   multiball: boolean;
   multiballT: number;
+  /** Times the running multiball has been extended (capped at MAX_MB_EXTENSIONS). */
+  mbExtensions: number;
   tiltWarnings: number;
   tilted: boolean;
   plungerPower: number;
@@ -80,8 +103,42 @@ export interface GameStore {
   ballsInPlay: number;
   stuckHint: boolean;
   difficulty: DiffId;
+  /** Spirit Board for the current theme × tier. */
+  board: ScoreEntry[];
+  /** Open while a qualifying game-over score waits for initials. */
+  initialsEntry: { rank: number; score: number } | null;
+  /** Rank of the entry just filed (highlighted on the board), until the next game. */
+  lastEntryRank: number | null;
+  /** Agent Board for the current theme × tier, one list per timing mode. */
+  agentBoards: Record<AgentMode, AgentEntry[]>;
+  /** The agent declared on this page (engine/agent.ts), or null for a human. */
+  agent: { name: string; model: string } | null;
+  /** Timing mode for the agent's next game (locked while one is in play). */
+  agentMode: AgentMode;
+  /** ?debug page: ball spawning is exposed, so nothing it scores is ever filed. */
+  unranked: boolean;
+  /** ?agent page: show the Agent Console (hud/AgentConsole.tsx). */
+  agentPage: boolean;
+  /** Who is playing the current / last game — captured at start, decides the board. */
+  run: {
+    agent: { name: string; model: string } | null; mode: AgentMode; unranked: boolean;
+    /** Real-time / lockstep run whose calls came faster than any model can think
+     *  (engine/agent.ts pace check): it plays on, but files nowhere. */
+    flagged?: { callsPerS: number };
+  };
+  /** Where the last agent game landed on the Agent Board. */
+  lastAgentRank: { mode: AgentMode; rank: number } | null;
 
   setTheme: (id: string) => void;
+  /** Agent API: register this page's agent (see engine/agent.ts). */
+  declareAgent: (agent: { name: string; model: string }) => void;
+  /** Agent API: real-time or lockstep, between games only. Returns false if locked. */
+  setAgentMode: (mode: AgentMode) => boolean;
+  clearAgentBoard: (mode: AgentMode) => void;
+  /** Agent API: this run is script-paced (see run.flagged). */
+  flagRun: (callsPerS: number) => void;
+  /** Script mode: the game clock ran out — end the game as if the last ball drained. */
+  timeUp: () => void;
   cycleTheme: (dir: 1 | -1) => void;
   setDifficulty: (id: DiffId) => void;
   cycleDifficulty: (dir: 1 | -1) => void;
@@ -111,11 +168,25 @@ export interface GameStore {
   toggleShake: () => void;
   toggleHelp: () => void;
   setPaused: (p: boolean) => void;
+  submitInitials: (text: string) => void;
+  skipInitials: () => void;
+  clearBoard: () => void;
 }
+
+/** Shortest flipper stroke, s (a tap is never shorter than this). */
+export const MIN_FLIP_PULSE = 0.08;
+/** A plunger released below this power was a tap … */
+export const TAP_THRESHOLD = 0.05;
+/** … and launches at this power instead. */
+export const TAP_PLUNGE_POWER = 0.6;
 
 let bonusInterval: ReturnType<typeof setInterval> | null = null;
 
 const EXTRA_BALL_AT = [120000, 300000, 600000];
+/** A running multiball refills its timer at most this many times; after that
+ *  a multiball start only pays a jackpot. Without it, a player who kept
+ *  completing Dead Star Disco's banks held 2X scoring forever (Sonnet's 109M). */
+export const MAX_MB_EXTENSIONS = 2;
 
 export const useGame = create<GameStore>()((set, get) => ({
   themeId: '',
@@ -133,6 +204,7 @@ export const useGame = create<GameStore>()((set, get) => ({
   bigMessageT: 0,
   multiball: false,
   multiballT: 0,
+  mbExtensions: 0,
   tiltWarnings: 0,
   tilted: false,
   plungerPower: 0,
@@ -152,6 +224,44 @@ export const useGame = create<GameStore>()((set, get) => ({
   ballsInPlay: 0,
   stuckHint: false,
   difficulty: 'medium',
+  board: [],
+  initialsEntry: null,
+  lastEntryRank: null,
+  agentBoards: { realtime: [], lockstep: [], script: [] },
+  agent: null,
+  agentMode: 'realtime',
+  unranked: false,
+  agentPage: false,
+  run: { agent: null, mode: 'realtime', unranked: false },
+  lastAgentRank: null,
+
+  declareAgent: (agent) => set({ agent }),
+
+  setAgentMode: (mode) => {
+    if (get().phase === 'playing') return false;
+    set({ agentMode: mode });
+    return true;
+  },
+
+  flagRun: (callsPerS) => {
+    const s = get();
+    if (s.phase !== 'playing' || !s.run.agent || s.run.flagged) return;
+    set({ run: { ...s.run, flagged: { callsPerS } }, message: 'SCRIPT-PACED — THIS GAME WON\'T BE RANKED' });
+  },
+
+  timeUp: () => {
+    const s = get();
+    if (s.phase !== 'playing' || s.ballPhase === 'bonus') return;
+    for (const b of gameRef.balls) b.active = false;
+    set({ totalBalls: s.ball, bigMessage: 'TIME!', bigMessageT: Date.now() });
+    get().onDrain();
+  },
+
+  clearAgentBoard: (mode) => {
+    const { themeId, difficulty } = get();
+    agentBoard.clear(themeId, mode, difficulty);
+    set({ agentBoards: agentBoardsFor(themeId, difficulty), lastAgentRank: null });
+  },
 
   // Summon a table. Only between games — a live game keeps its table.
   setTheme: (id) => {
@@ -161,12 +271,16 @@ export const useGame = create<GameStore>()((set, get) => ({
     const tier = loadTier(def.id);
     activateRuntime(def, tier);
     def.rules.reset();
-    ls.set('theme', def.id);
+    if (!def.hidden) ls.set('theme', def.id);
     spawnBallAt(0, 10, 30, 0);
     set({
       themeId: def.id,
       difficulty: tier,
-      highScore: loadBest(def.id, tier),
+      ...(() => { const board = scores.list(def.id, tier); return { board, highScore: topScore(board) }; })(),
+      agentBoards: agentBoardsFor(def.id, tier),
+      lastAgentRank: null,
+      initialsEntry: null,
+      lastEntryRank: null,
       phase: 'attract',
       bigMessage: '',
       score: 0,
@@ -176,9 +290,10 @@ export const useGame = create<GameStore>()((set, get) => ({
   },
 
   cycleTheme: (dir) => {
-    const ids = allThemes().map((t) => t.id);
-    if (ids.length < 2) return;
-    const i = ids.indexOf(get().themeId);
+    const ids = hallThemes().map((t) => t.id);
+    if (!ids.length) return;
+    const i = ids.indexOf(get().themeId); // a hidden table cycles back into the hall
+    if (ids.length < 2 && i >= 0) return;
     get().setTheme(ids[(i + dir + ids.length) % ids.length]);
   },
 
@@ -192,7 +307,10 @@ export const useGame = create<GameStore>()((set, get) => ({
     const cfg = diffFor(id);
     set({
       difficulty: id,
-      highScore: loadBest(theme, id),
+      ...(() => { const board = scores.list(theme, id); return { board, highScore: topScore(board) }; })(),
+      agentBoards: agentBoardsFor(theme, id),
+      lastAgentRank: null,
+      lastEntryRank: null,
       message: `MODE ${cfg.label} — ${cfg.blurb}`,
       messageT: Date.now(),
     });
@@ -237,6 +355,7 @@ export const useGame = create<GameStore>()((set, get) => ({
       ballsInPlay: 1,
       multiball: false,
       multiballT: 0,
+      mbExtensions: 0,
       stuckHint: false,
       message: 'BALL RE-SERVED — NO BALL LOST',
       messageT: Date.now(),
@@ -249,6 +368,8 @@ export const useGame = create<GameStore>()((set, get) => ({
   },
 
   startGame: () => {
+    // initials first — the Enter that confirms them must not also start a game
+    if (get().initialsEntry) return;
     sound.ensure();
     sound.start();
     // a restart mid-bonus must not let the old count-up finish into the new game
@@ -259,10 +380,11 @@ export const useGame = create<GameStore>()((set, get) => ({
     set({
       phase: 'playing', ballPhase: 'plunger', score: 0, ball: 1, totalBalls: 3,
       multiplier: 1, bonus: 0,
-      multiball: false, multiballT: 0, tiltWarnings: 0, tilted: false,
+      multiball: false, multiballT: 0, mbExtensions: 0, tiltWarnings: 0, tilted: false,
       plungerPower: 0, plungerCharging: false, popups: [], bonusCounting: false,
       bonusDisplay: 0, extraBallsAwarded: [], ballsInPlay: 1, stuckHint: false,
-      paused: false,
+      paused: false, lastEntryRank: null, lastAgentRank: null,
+      run: { agent: get().agent, mode: get().agentMode, unranked: get().unranked },
       message: `${DIFF.label} MODE — BALL 1 — HOLD SPACE TO PLUNGE`, messageT: Date.now(),
       bigMessage: 'BALL 1', bigMessageT: Date.now(),
     });
@@ -276,6 +398,22 @@ export const useGame = create<GameStore>()((set, get) => ({
   },
 
   setFlipper: (side, pressed) => {
+    // A tap is a full stroke: a release within MIN_FLIP_PULSE of the press is
+    // held back until the pulse has run (instant key taps — and agents driving
+    // the keyboard — otherwise release before a single physics step).
+    if (pressed) {
+      gameRef.flipPressedAt[side] = gameRef.time;
+    } else {
+      const pressedAt = gameRef.flipPressedAt[side];
+      const held = gameRef.time - pressedAt;
+      if (held < MIN_FLIP_PULSE) {
+        later(MIN_FLIP_PULSE - held, () => {
+          // only if nobody pressed it again in the meantime
+          if (gameRef.flipPressedAt[side] === pressedAt) get().setFlipper(side, false);
+        });
+        return;
+      }
+    }
     if (side === 'left') {
       gameRef.left.pressed = pressed;
       set({ leftPressed: pressed });
@@ -300,7 +438,9 @@ export const useGame = create<GameStore>()((set, get) => ({
   releasePlunger: () => {
     const s = get();
     if (s.phase !== 'playing' || s.ballPhase !== 'plunger') return;
-    const power = gameRef.plungerPower;
+    // a tap (no real hold) is a standard auto-plunge, not a dead-weak dribble
+    const tapped = gameRef.plungerPower < TAP_THRESHOLD;
+    const power = tapped ? TAP_PLUNGE_POWER : gameRef.plungerPower;
     const ball = gameRef.balls.find(b => b.active && b.inLane && b.autoLaunch === undefined);
     if (!ball) return;
     const P = TABLE.plunger;
@@ -315,6 +455,7 @@ export const useGame = create<GameStore>()((set, get) => ({
     addShake(0.12 + power * 0.15);
     set({ plungerCharging: false, plungerPower: 0, ballPhase: 'active', ballsInPlay: gameRef.balls.filter(b => b.active).length });
     activeTheme().rules.onLaunch?.(power);
+    if (tapped) get().setMessage('AUTO PLUNGE — HOLD SPACE FOR POWER');
   },
 
   nudge: (dir) => {
@@ -354,10 +495,8 @@ export const useGame = create<GameStore>()((set, get) => ({
     const gain = Math.round(pts * mult * DIFF.score);
     const score = s.score + gain;
     const patch: Partial<GameStore> = { score, bonus: s.bonus + Math.round(pts * 0.1 * DIFF.score) };
-    if (score > s.highScore) {
-      patch.highScore = score;
-      saveBest(s.themeId, s.difficulty, score);
-    }
+    // live "NEW BEST!" (human games only; filed on the board at game over)
+    if (score > s.highScore && !s.run.agent && !s.run.unranked) patch.highScore = score;
     EXTRA_BALL_AT.map((t) => Math.round(t * DIFF.score)).forEach((th, i) => {
       if (score >= th && !s.extraBallsAwarded.includes(i)) {
         patch.extraBallsAwarded = [...(patch.extraBallsAwarded ?? s.extraBallsAwarded), i];
@@ -406,7 +545,7 @@ export const useGame = create<GameStore>()((set, get) => ({
     }
     addShake(0.4);
     if (get().ballPhase === 'bonus') return;
-    set({ ballPhase: 'bonus', bonusCounting: true, multiball: false, multiballT: 0 });
+    set({ ballPhase: 'bonus', bonusCounting: true, multiball: false, multiballT: 0, mbExtensions: 0 });
     get().endBall();
   },
 
@@ -445,17 +584,40 @@ export const useGame = create<GameStore>()((set, get) => ({
     if (s.phase !== 'playing' || !s.bonusCounting) return;
     const bonus = Math.round(s.bonus * s.multiplier);
     const score = s.score + bonus;
-    let highScore = s.highScore;
-    if (score > highScore) {
-      highScore = score;
-      saveBest(s.themeId, s.difficulty, score);
-    }
+    const highScore = Math.max(s.highScore, score);
     if (s.ball >= s.totalBalls) {
       sound.gameOver();
+      const board = scores.list(s.themeId, s.difficulty);
+      const { run } = s;
+      if (run.unranked || run.agent) {
+        // never the human Spirit Board: a ?debug game files nowhere, an agent's
+        // game files straight to the Agent Board under its declared name
+        let lastAgentRank: GameStore['lastAgentRank'] = null;
+        if (run.agent && !run.unranked && !run.flagged) {
+          const latencyMs = run.mode === 'lockstep' ? runLatency() : null;
+          const rank = agentBoard.submit(s.themeId, run.mode, s.difficulty, {
+            ...run.agent, score, day: today(), ...(latencyMs !== null ? { latencyMs } : {}),
+          });
+          if (rank) lastAgentRank = { mode: run.mode, rank };
+        }
+        set({
+          phase: 'gameover', score, bonusCounting: false, board, initialsEntry: null,
+          agentBoards: agentBoardsFor(s.themeId, s.difficulty), lastAgentRank,
+          bigMessage: 'GAME OVER', bigMessageT: Date.now(),
+          message: run.unranked ? 'DEBUG GAME — NOT RANKED'
+            : run.flagged ? 'NOT RANKED — SCRIPT-PACED (BOTS RANK IN SCRIPT MODE)'
+            : lastAgentRank ? `AGENT BOARD #${lastAgentRank.rank} (${run.mode.toUpperCase()})` : 'AGENT GAME OVER',
+        });
+        resetMutable();
+        spawnBallAt(0, 12, 40, 10);
+        return;
+      }
+      const qualifies = scores.qualifies(s.themeId, s.difficulty, score);
       set({
-        phase: 'gameover', score, highScore, bonusCounting: false,
+        phase: 'gameover', score, highScore, bonusCounting: false, board,
+        initialsEntry: qualifies ? { rank: rankFor(board, score), score } : null,
         bigMessage: 'GAME OVER', bigMessageT: Date.now(),
-        message: score >= highScore && score > 0 ? 'NEW HIGH SCORE!' : 'PRESS ENTER TO PLAY AGAIN',
+        message: qualifies ? 'A NEW SPIRIT — ENTER YOUR INITIALS' : 'PRESS ENTER TO PLAY AGAIN',
       });
       resetMutable();
       spawnBallAt(0, 12, 40, 10);
@@ -466,7 +628,7 @@ export const useGame = create<GameStore>()((set, get) => ({
       spawnBallInLane();
       sound.start();
       set({
-        ball: nb, score, highScore, bonus: 0, multiplier: 1, multiball: false,
+        ball: nb, score, highScore, bonus: 0, multiplier: 1, multiball: false, mbExtensions: 0,
         ballPhase: 'plunger', bonusCounting: false, bonusDisplay: 0, tiltWarnings: 0, tilted: false,
         ballsInPlay: 1,
         bigMessage: `BALL ${nb}`, bigMessageT: Date.now(),
@@ -486,19 +648,25 @@ export const useGame = create<GameStore>()((set, get) => ({
       tilted: true, tiltWarnings: 0, leftPressed: false, rightPressed: false,
       bigMessage: 'TILT!', bigMessageT: Date.now(), message: 'TILT — FLIPPERS DEAD FOR 5s',
     });
-    setTimeout(() => {
+    later(5, () => {
       set({ tilted: false, message: 'RECOVERED — EASY ON THE NUDGE' });
-    }, 5000);
+    });
   },
 
   startMultiball: () => {
     const s = get();
     if (s.multiball) {
-      get().addScore(5000, 'MULTIBALL EXTENDED');
-      set({ multiballT: DIFF.mbTime });
+      if (s.mbExtensions < MAX_MB_EXTENSIONS) {
+        get().addScore(5000, 'MULTIBALL EXTENDED');
+        set({ multiballT: DIFF.mbTime, mbExtensions: s.mbExtensions + 1 });
+      } else {
+        // maxed out: still worth shooting for, but the clock keeps running
+        get().addScore(5000, 'MULTIBALL JACKPOT');
+        get().setMessage('MULTIBALL MAXED — RIDE IT OUT');
+      }
       return;
     }
-    set({ multiball: true, multiballT: DIFF.mbTime });
+    set({ multiball: true, multiballT: DIFF.mbTime, mbExtensions: 0 });
     get().setBigMessage('MULTIBALL!');
     get().setMessage('MULTIBALL — ALL SCORES 2X!');
     sound.multiball();
@@ -512,7 +680,7 @@ export const useGame = create<GameStore>()((set, get) => ({
     const s = get();
     if (!s.multiball) return;
     const t = s.multiballT - dt;
-    if (t <= 0) set({ multiball: false, multiballT: 0, message: 'MULTIBALL OVER' });
+    if (t <= 0) set({ multiball: false, multiballT: 0, mbExtensions: 0, message: 'MULTIBALL OVER' });
     else set({ multiballT: t });
   },
 
@@ -532,12 +700,32 @@ export const useGame = create<GameStore>()((set, get) => ({
     gameRef.paused = p;
     set({ paused: p });
   },
+
+  submitInitials: (text) => {
+    const s = get();
+    if (!s.initialsEntry) return;
+    const initials = padInitials(cleanInitials(text) || scores.lastInitials() || '???');
+    const rank = scores.submit(s.themeId, s.difficulty, { initials, score: s.initialsEntry.score, day: today() });
+    const board = scores.list(s.themeId, s.difficulty);
+    set({ initialsEntry: null, lastEntryRank: rank, board, highScore: topScore(board), message: 'PRESS ENTER TO PLAY AGAIN' });
+  },
+
+  skipInitials: () => get().submitInitials(''),
+
+  clearBoard: () => {
+    const s = get();
+    if (s.phase === 'playing') return;
+    scores.clear(s.themeId, s.difficulty);
+    set({ board: [], highScore: 0, lastEntryRank: null });
+  },
 }));
 
 /** Pick the starting theme: ?theme= deep link, else last played, else the first registered. */
 export function bootTheme() {
   let wanted: string | null = null;
   try { wanted = new URLSearchParams(window.location.search).get('theme'); } catch { /* no window */ }
-  const def = themeById(wanted) ?? themeById(ls.get('theme')) ?? allThemes()[0];
+  // a hidden fixture table is only ever entered by explicit link, never remembered
+  const remembered = themeById(ls.get('theme'));
+  const def = themeById(wanted) ?? (remembered && !remembered.hidden ? remembered : undefined) ?? hallThemes()[0];
   useGame.getState().setTheme(def.id);
 }

@@ -3,11 +3,13 @@
 // rebuilt only when the table or tier changes, never per step.
 
 import type {
-  TableDef, WallSeg, CircleBody, Sensor, RideDef, CaptureDef, KinematicDef, PathPt,
+  TableDef, WallSeg, CircleBody, Sensor, RideDef, CaptureDef, KinematicDef, PathPt, LayerDef,
 } from './types';
+import { FIELD } from './types';
 import { DIFF, tierAllows } from './difficulty';
 
 const EMPTY_TABLE: TableDef = {
+  layers: [],
   id: 'none',
   drainY: -41,
   bounds: { minX: -24, maxX: 24, maxY: 40 },
@@ -44,10 +46,16 @@ export interface ActiveSet {
   circles: CircleBody[];
 }
 
-export const ACTIVE: ActiveSet = {
+const emptySet = (): ActiveSet => ({
   walls: [], bumpers: [], posts: [], kickers: [], targets: [], drops: [],
   sensors: [], rides: [], captures: [], kinematics: [], circles: [],
-};
+});
+
+/**
+ * Everything live at this tier on ALL layers (the scene renders this), plus
+ * `byLayer[id]` — the same split per layer, which is what physics iterates.
+ */
+export const ACTIVE: ActiveSet & { byLayer: Record<string, ActiveSet> } = { ...emptySet(), byLayer: {} };
 
 let version = 0;
 /** Bumps whenever the active set changes — scene components key off it. */
@@ -68,11 +76,52 @@ export function refreshActive() {
   ACTIVE.rides = ok(TABLE.rides);
   ACTIVE.captures = ok(TABLE.captures);
   ACTIVE.kinematics = ok(TABLE.kinematics);
+  const ids = [FIELD, ...(TABLE.layers ?? []).map((l) => l.id)];
+  const on = <T extends { layer?: string }>(list: T[], id: string) => list.filter((b) => (b.layer ?? FIELD) === id);
+  ACTIVE.byLayer = {};
+  for (const id of ids) {
+    const set = emptySet();
+    for (const k of Object.keys(set) as (keyof ActiveSet)[]) {
+      (set[k] as { layer?: string }[]) = on(ACTIVE[k] as { layer?: string }[], id);
+    }
+    ACTIVE.byLayer[id] = set;
+  }
   version++;
 }
 
+/** Physics view of one layer (unknown ids fall back to the field). */
+export function layerSet(id: string | undefined) {
+  return ACTIVE.byLayer[id ?? FIELD] ?? ACTIVE.byLayer[FIELD];
+}
+
+export function layerById(id: string | undefined): LayerDef | undefined {
+  return id && id !== FIELD ? TABLE.layers?.find((l) => l.id === id) : undefined;
+}
+
+/** Render height of a layer's surface (field = 0). */
+export function layerHeight(id: string | undefined) {
+  return layerById(id)?.height ?? 0;
+}
+
+/** Even-odd point-in-polygon. */
+export function insidePolygon(x: number, y: number, poly: [number, number][]) {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [xi, yi] = poly[i], [xj, yj] = poly[j];
+    if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+
+/** The deck a field point lies UNDER, if any. */
+export function deckAbove(x: number, y: number): LayerDef | undefined {
+  return TABLE.layers?.find((l) => insidePolygon(x, y, l.outline));
+}
+
 export function setTable(def: TableDef) {
-  Object.assign(TABLE, def);
+  // reset first so optional fields (layers, flashDecay…) never leak between themes
+  for (const k of Object.keys(TABLE)) delete (TABLE as unknown as Record<string, unknown>)[k];
+  Object.assign(TABLE, EMPTY_TABLE, def);
   refreshActive();
 }
 
@@ -86,6 +135,29 @@ export function captureById(id: string) {
 
 export function kinematicSpeed(k: KinematicDef) {
   return k.speed[DIFF.id] ?? k.speed.default;
+}
+
+export interface BarPose { kind: 'bar'; ax: number; ay: number; bx: number; by: number; angle: number; angVel: number }
+export interface OrbiterPose { kind: 'orbiter'; x: number; y: number; vx: number; vy: number }
+
+/**
+ * Where a kinematic obstacle is right now. `phi` is its accumulated phase
+ * (gameRef.kin[id] = ∫ speed dt), so pose is a pure function of it.
+ */
+export function kinematicPose(k: KinematicDef, phi: number): BarPose | OrbiterPose {
+  const w = kinematicSpeed(k);
+  if (k.kind === 'orbiter') {
+    const R = k.orbit ?? 0, a = (k.phase ?? 0) + phi;
+    return { kind: 'orbiter', x: k.cx + Math.cos(a) * R, y: k.cy + Math.sin(a) * R, vx: -Math.sin(a) * R * w, vy: Math.cos(a) * R * w };
+  }
+  let angle = phi, angVel = w;
+  if (k.motion === 'swing') {
+    const amp = k.amp ?? 0.5;
+    angle = (k.base ?? 0) + amp * Math.sin(phi);
+    angVel = amp * w * Math.cos(phi);
+  }
+  const half = k.half ?? 0, dx = Math.cos(angle) * half, dy = Math.sin(angle) * half;
+  return { kind: 'bar', ax: k.cx - dx, ay: k.cy - dy, bx: k.cx + dx, by: k.cy + dy, angle, angVel };
 }
 
 // ---------- geometry helpers for theme authors ----------
@@ -104,6 +176,48 @@ export function samplePath(pts: PathPt[], t: number): PathPt {
   const cr = (a: number, b: number, c: number, d: number) =>
     0.5 * ((2 * b) + (-a + c) * f + (2 * a - 5 * b + 4 * c - d) * f2 + (-a + 3 * b - 3 * c + d) * f3);
   return { x: cr(p0.x, p1.x, p2.x, p3.x), y: cr(p0.y, p1.y, p2.y, p3.y), h: cr(p0.h, p1.h, p2.h, p3.h) };
+}
+
+/** Half-spacing of a wire ramp's two rails (u). */
+export const WIRE_RAIL_OFFSET = 1.6;
+
+/** Rides drawn as railed wire ramps (see RideDef.art). */
+export function isWireRide(r: RideDef): boolean {
+  return r.art ? r.art === 'wire' : !r.hideBall;
+}
+
+const lengths = new WeakMap<PathPt[], number>();
+/** Arc length of a ride path (sampled, cached per path array). */
+export function pathLength(pts: PathPt[]): number {
+  let L = lengths.get(pts);
+  if (L === undefined) {
+    L = 0;
+    let prev = samplePath(pts, 0);
+    for (let i = 1; i <= 64; i++) {
+      const p = samplePath(pts, i / 64);
+      L += Math.hypot(p.x - prev.x, p.y - prev.y, p.h - prev.h);
+      prev = p;
+    }
+    L = Math.max(L, 1e-3);
+    lengths.set(pts, L);
+  }
+  return L;
+}
+
+/** Unit direction of travel (x, y) along a ride path at t (0..1). */
+export function pathTangent(pts: PathPt[], t: number): { x: number; y: number } {
+  const a = samplePath(pts, Math.max(0, Math.min(1, t) - 0.01));
+  const b = samplePath(pts, Math.min(1, Math.max(0, t) + 0.01));
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const d = Math.hypot(dx, dy) || 1;
+  return { x: dx / d, y: dy / d };
+}
+
+/** Ride speed (u/s along the path) for a ball entering at `entrySpeed`. */
+export function rideSpeed(ride: RideDef, entrySpeed: number): number {
+  const c = ride.carry;
+  if (!c) return pathLength(ride.path) / ride.dur;
+  return Math.max(c.min, Math.min(c.max, entrySpeed * c.keep));
 }
 
 export function arcWalls(cx: number, cy: number, radius: number, a0: number, a1: number, n: number, prefix = 'arc', rest = 0.42): WallSeg[] {

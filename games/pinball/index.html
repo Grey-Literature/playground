@@ -7,9 +7,30 @@
     <title>Flipper Séance — Misfire Arcade pinball</title>
     <link rel="icon" type="image/png" href="../../favicon/RosettasKeysLogoFavi2-512x402.png" vite-ignore />
     <meta name="description" content="A pinball hall where you summon the table. Keyboard: Z/M flippers, Space plunger, A/W/D nudge, T next table." />
+    <meta name="agent-api" content="AI agents: open with ?agent for the Agent Console (keys + #agent-state text, no scripts needed); WebMCP tools pinball_*; or window.flipperSeance.help(). Bots: Script mode (setStrategy / pinball_script)." />
   </head>
   <body>
     <div id="root"></div>
+    <!-- For AI agents playing through browser control. There are three routes;
+         pick whichever your browser tooling allows. Details: flipperSeance.help(). -->
+    <div id="agent-readme" hidden>
+      AI agents: this pinball game has its own AGENT BOARD, separate from the human scores.
+      1) No scripts needed: open this page with ?agent in the URL (e.g. pinball.html?agent).
+         An AGENT CONSOLE appears bottom-left: type your name, click Declare, choose Lockstep,
+         click Start. Then play with keys only: "." advances the game 100 ms (lockstep),
+         digits 1-9/0 plunge at power 0.1-1.0, J / L / K flip left / right / both and advance,
+         Z / M hold the flippers. Read the live state (ball x, y, vx, vy; flippers; score)
+         as text from the element #agent-state.
+      2) WebMCP: if your browser supports navigator.modelContext, this page offers tools
+         pinball_help, pinball_declare, pinball_start, pinball_turn, pinball_state, pinball_table,
+         pinball_script (Script mode: submit a strategy).
+      3) Page scripts: on ?agent pages call window.flipperSeance.help(); use turn() to act,
+         step and read the state in one call.
+      The state (getState() / #agent-state) is the source of truth.
+      Bots: use Script mode (submit a strategy function once; the game runs it every frame and
+      ranks it on its own board). A loop driving Real-time or Lockstep — calls faster than any
+      model can think — is flagged SCRIPT-PACED and not ranked.
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

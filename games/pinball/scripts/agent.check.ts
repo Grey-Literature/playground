@@ -1,0 +1,461 @@
+// The agent API (engine/agent.ts) and the Agent Board, headless: drives the
+// real store + simulation through window.flipperSeance's calls and checks the
+// contract agents rely on — declare-first, lockstep timing, input-only calls,
+// forgiving taps — and the honesty rules for filing scores.
+
+import { useGame } from '../src/engine/store';
+import { registerTheme, type ThemeDef } from '../src/engine/theme';
+import { gameRef } from '../src/engine/runtime';
+import { TABLE } from '../src/engine/table';
+import { STEP } from '../src/engine/constants';
+import { createAgentApi, isLockstepHeld, isLockstepFrozen, agentKey, stateText, setAgentClockForTests, HOLD_GRACE_MS, setZoneOverrideForTests, ballNearFlippers, zoneTopY, runLockstepFrame, setPaceCheckForTests, PACE_BURST } from '../src/engine/agent';
+import { setRunnerFactoryForTests, inlineRunner, clearStrategyForTests, scriptFrame, SCRIPT_GAME_S, SCRIPT_MAX_ERRORS, SCRIPT_AUTOPLUNGE_S, type StrategyRunner } from '../src/engine/script';
+import { simulateStep } from '../src/engine/sim';
+import { installWebMcp, resetWebMcpForTests, type WebMcpTool } from '../src/engine/webmcp';
+import { agentBoard, scores, sanitizeAgentBoard } from '../src/engine/scores';
+import { table as discoTable, diffOverrides as discoOverrides } from '../src/themes/deadStarDisco/table';
+import { rules as discoRules } from '../src/themes/deadStarDisco/rules';
+
+const mem = new Map<string, string>();
+(globalThis as { localStorage?: unknown }).localStorage = {
+  getItem: (k: string) => mem.get(k) ?? null,
+  setItem: (k: string, v: string) => void mem.set(k, v),
+};
+const none = () => null;
+registerTheme({
+  id: 'deadStarDisco', table: discoTable, diffOverrides: discoOverrides, rules: discoRules,
+  copy: { name: 'Dead Star Disco', tagline: '', dmdTitle: '', attractHint: '', attractFooter: '', obstacleSets: [] },
+  palette: {} as ThemeDef['palette'], Playfield: none, Surroundings: none, Title: none, help: null,
+});
+
+let bad = 0;
+const expect = (label: string, ok: boolean, detail = '') => {
+  console.log(`  ${ok ? 'ok  ' : 'FAIL'} ${label}${detail ? `  (${detail})` : ''}`);
+  if (!ok) bad++;
+};
+const g = () => useGame.getState();
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const api = createAgentApi();
+// the hold budget runs on the wall clock — drive it by hand so the checks are deterministic
+let wall = 0;
+setAgentClockForTests(() => wall);
+// the older sections drive the API in bursts on a frozen clock — the pace check has its own section
+setPaceCheckForTests(false);
+/** Advance `ms` of game time in as many capped steps as it takes. */
+const advance = (ms: number) => { const end = gameRef.time + ms / 1000 - 1e-9; while (gameRef.time < end && isLockstepHeld()) api.step(Math.min(1000, (end - gameRef.time) * 1000 + 1)); };
+
+/** End the current game from ball 1: last ball, drain, wait out the bonus count-up. */
+async function endGame(score: number) {
+  useGame.setState({ totalBalls: g().ball, score });
+  for (const b of gameRef.balls) b.active = false;
+  g().onDrain();
+  for (let i = 0; i < 100 && g().phase === 'playing'; i++) await sleep(100);
+}
+
+console.log('[agent API] declare-first');
+g().setTheme('deadStarDisco');
+expect('getState before declare is refused', api.getState().ok === false);
+expect('start before declare is refused', api.start().ok === false && g().phase !== 'playing');
+expect('an empty / junk name is refused', api.declare({ name: '<<>>' }).ok === false);
+const d = api.declare({ name: 'Test Agent <script>', model: 'harness-1' });
+expect("declare sanitizes the name ('Test Agent script')", d.ok && 'name' in d && d.name === 'Test Agent script', JSON.stringify(d));
+
+console.log('[agent API] lockstep game');
+expect('setMode(lockstep) between games', api.setMode('lockstep').ok);
+const st = api.start({ theme: 'deadStarDisco', tier: 'medium' });
+expect('start() → playing, lockstep held', st.ok && g().phase === 'playing' && isLockstepHeld());
+expect('mode is locked during play', api.setMode('realtime').ok === false);
+const t0 = gameRef.time;
+const s1 = api.step(200);
+expect('step(200) advances exactly 200 ms of game time', s1.ok && Math.abs(gameRef.time - t0 - 0.2) < STEP / 2, `${(gameRef.time - t0).toFixed(4)} s`);
+const big = gameRef.time;
+api.step(60000);
+expect('step() is capped at the tier\'s step cap (medium: 250 ms)', Math.abs(gameRef.time - big - 0.25) < STEP / 2, `${((gameRef.time - big) * 1000).toFixed(0)} ms`);
+
+const p = api.plunge(0);
+expect('a zero-power plunge is a tap → standard auto-plunge (0.6)', p.ok && 'power' in p && p.power === 0.6 && g().ballPhase === 'active');
+expect('plunge with no ball waiting is refused', api.plunge(1).ok === false);
+
+api.flip('left', 100);
+expect('flip() presses the flipper', gameRef.left.pressed);
+api.step(50);
+expect('… still up after 50 ms', gameRef.left.pressed);
+api.step(60);
+expect('… released after its 100 ms (game time)', !gameRef.left.pressed);
+
+g().setFlipper('right', true);
+g().setFlipper('right', false); // an instant key tap
+expect('an instant tap keeps the flipper up (minimum pulse)', gameRef.right.pressed);
+api.step(100);
+expect('… and releases after the 80 ms pulse', !gameRef.right.pressed);
+g().setFlipper('right', true);
+api.step(200);
+g().setFlipper('right', false);
+expect('a held flipper releases immediately', !gameRef.right.pressed);
+
+const snap = api.getState();
+if (snap.ok && snap.balls.length) snap.balls[0].x = 999;
+const again = api.getState();
+expect('getState() returns a copy (editing it moves nothing)', again.ok && again.balls.every((b) => b.x !== 999) && gameRef.balls.every((b) => b.x !== 999));
+
+for (let i = 0; i < 6 && !g().tilted; i++) api.nudge('up');
+expect('nudging too hard tilts', g().tilted);
+advance(4000);
+expect('… still tilted after 4 s of game time', g().tilted);
+advance(1200);
+expect('… recovered after 5 s of GAME time (lockstep-fair timer)', !g().tilted);
+
+console.log('[agent API] filing');
+await endGame(12345);
+const ls = agentBoard.list('deadStarDisco', 'lockstep', 'medium');
+expect('agent game → Agent Board (lockstep), under its name', g().phase === 'gameover' && ls[0]?.name === 'Test Agent script' && ls[0]?.model === 'harness-1' && ls[0]?.score >= 12345, JSON.stringify(ls[0]));
+expect('… ranked #1, no initials prompt', g().lastAgentRank?.rank === 1 && g().lastAgentRank?.mode === 'lockstep' && g().initialsEntry === null);
+expect('… and the human Spirit Board is untouched', scores.list('deadStarDisco', 'medium').length === 0);
+expect('real-time board is separate (still empty)', agentBoard.list('deadStarDisco', 'realtime', 'medium').length === 0);
+
+expect('setMode(realtime) again between games', api.setMode('realtime').ok);
+api.start();
+expect('realtime game: not held by lockstep', !isLockstepHeld());
+expect('step() is refused in real-time games', api.step(100).ok === false);
+await endGame(500);
+expect('real-time agent game → real-time Agent Board', agentBoard.list('deadStarDisco', 'realtime', 'medium')[0]?.score >= 500);
+
+useGame.setState({ unranked: true }); // what a ?debug page sets
+api.start();
+await endGame(99999);
+expect('a ?debug game files nowhere', agentBoard.list('deadStarDisco', 'realtime', 'medium').every((e) => e.score < 99999)
+  && scores.list('deadStarDisco', 'medium').length === 0 && g().initialsEntry === null);
+
+g().clearAgentBoard('realtime');
+expect('clearAgentBoard(realtime) empties only that board',
+  agentBoard.list('deadStarDisco', 'realtime', 'medium').length === 0 && g().agentBoards.realtime.length === 0
+  && agentBoard.list('deadStarDisco', 'lockstep', 'medium').length > 0 && g().agentBoards.lockstep.length > 0);
+
+// ---------------- 2c.1: one-call turns, the keyboard route, WebMCP ----------------
+console.log('[agent API] turn() and start({ mode })');
+useGame.setState({ unranked: false });
+const st2 = api.start({ mode: 'lockstep' });
+expect('start({ mode: lockstep }) sets the mode in the same call', st2.ok && isLockstepHeld() && g().run.mode === 'lockstep');
+let tt = gameRef.time;
+const t1 = api.turn({ plunge: 0.45, stepMs: 200 });
+expect('turn({ plunge, stepMs }) plunges and steps in one call', t1.ok && gameRef.lastLaunchPower === 0.45 && Math.abs(gameRef.time - tt - 0.2) < STEP / 2);
+tt = gameRef.time;
+const t2 = api.turn({ flip: 'both', flipMs: 150, stepMs: 100 });
+expect('turn({ flip: both }) → both flippers up mid-stroke', t2.ok && gameRef.left.pressed && gameRef.right.pressed);
+expect('turn() returns state + events together', t2.ok && Array.isArray(t2.events) && typeof t2.state.score === 'number');
+const t3 = api.turn({ plunge: 0.5 });
+expect('turn() reports a refused action as a note, not a failure', t3.ok && t3.notes.length === 1);
+
+console.log('[agent keys] the no-script route');
+tt = gameRef.time;
+expect('"." steps 100 ms', agentKey('Period', false) && Math.abs(gameRef.time - tt - 0.1) < STEP / 2);
+tt = gameRef.time;
+expect('">" (Shift + .) steps 500 ms — capped to 250 on medium', agentKey('Period', true) && Math.abs(gameRef.time - tt - 0.25) < STEP / 2);
+api.step(300);
+tt = gameRef.time;
+// a 100 ms tap inside a 100 ms step: the bat has swung and is on its way back down
+const swung = (side: 'left' | 'right') => Math.abs(gameRef[side].angle - TABLE.flippers[side].rest) > 0.2;
+expect('"J" taps left + steps', agentKey('KeyJ', false) && swung('left') && Math.abs(gameRef.time - tt - 0.1) < STEP / 2, `angle Δ ${(gameRef.left.angle - TABLE.flippers.left.rest).toFixed(2)}`);
+api.step(300);
+expect('"L" taps right + steps', agentKey('KeyL', false) && swung('right'), `angle Δ ${(gameRef.right.angle - TABLE.flippers.right.rest).toFixed(2)}`);
+expect('"Z" is left to the normal keyboard (not an agent key)', agentKey('KeyZ', false) === false);
+// get a ball back into the lane for the digit plunge
+useGame.setState({ ballPhase: 'plunger' });
+for (const b of gameRef.balls) b.active = false;
+const lane = { ...TABLE.plunger };
+gameRef.balls.push({ id: 999, x: lane.x, y: lane.restY, vx: 0, vy: 0, px: lane.x, py: lane.restY, active: true, inLane: true, captured: 0, captureCooldown: 0, inside: new Set(), spin: 0 });
+expect('digit "7" plunges at 0.7', agentKey('Digit7', false) && gameRef.lastLaunchPower === 0.7);
+const snapA = stateText(), snapB = stateText();
+expect('state text is stable between steps', snapA === snapB);
+expect('state text has the ball, flipper and plunger lines', /ball#\d+ x=/.test(snapA) && /flipper L angle=/.test(snapA) && /plungerReady=/.test(snapA), snapA.split('\n')[0]);
+const who = g().agent;
+useGame.setState({ agent: null });
+expect('keys do nothing for an undeclared page (human play unchanged)', agentKey('Period', false) === false && agentKey('Digit5', false) === false);
+useGame.setState({ agent: who });
+
+console.log('[WebMCP] page tools');
+const got: WebMcpTool[] = [];
+expect('no navigator.modelContext → nothing registered', installWebMcp({}) === 'none');
+expect('registerTool style', installWebMcp({ modelContext: { registerTool: (t: WebMcpTool) => void got.push(t) } }) === 'registerTool');
+expect('seven tools: help, declare, start, turn, script, state, table', got.map((t) => t.name).join(',') === 'pinball_help,pinball_declare,pinball_start,pinball_turn,pinball_script,pinball_state,pinball_table');
+const tool = (n: string) => got.find((t) => t.name === n)!;
+const parse = async (n: string, args: Record<string, unknown> = {}) => JSON.parse((await tool(n).execute(args)).content[0].text);
+const stJson = await parse('pinball_state');
+expect('pinball_state returns the JSON state', stJson.ok === true && typeof stJson.score === 'number' && Array.isArray(stJson.balls));
+tt = gameRef.time;
+const turnJson = await parse('pinball_turn', { flip: 'left', stepMs: 100 });
+expect('pinball_turn acts + steps and returns state', turnJson.ok === true && Math.abs(gameRef.time - tt - 0.1) < STEP / 2 && typeof turnJson.state.t === 'number');
+const bad2 = await tool('pinball_start').execute({ theme: 'nope' });
+expect('a refused call comes back as isError with the reason', bad2.isError === true && /already in play|unknown table/.test(bad2.content[0].text));
+expect('read-only tools are annotated', tool('pinball_state').annotations?.readOnlyHint === true && !tool('pinball_turn').annotations?.readOnlyHint);
+resetWebMcpForTests();
+let provided: WebMcpTool[] = [];
+expect('provideContext style', installWebMcp({ modelContext: { provideContext: (c: { tools: WebMcpTool[] }) => { provided = c.tools; } } }) === 'provideContext' && provided.length === 7);
+
+// ---------------- lockstep limits per tier ----------------
+console.log('[lockstep limits] step cap + hold budget per tier (a ball held near the flippers)');
+setZoneOverrideForTests(() => true);
+const endNow = async () => { if (g().phase === 'playing') await endGame(1); };
+await endNow();
+for (const [tier, cap, hold] of [['easy', 1000, 0], ['medium', 250, 1500], ['hard', 100, 700], ['impossible', 50, 350]] as const) {
+  api.start({ tier, mode: 'lockstep' });
+  const t0 = gameRef.time;
+  api.step(5000);
+  const got = Math.round((gameRef.time - t0) * 1000);
+  const lim = api.getState();
+  const limits = lim.ok ? lim.limits : null;
+  expect(`${tier}: step cap ${cap} ms (advanced ${got} ms)`, Math.abs(got - cap) <= 5 && limits?.stepCapMs === cap);
+  // calibrate with instant calls: latency floor 0, so only the tier's hold is left
+  for (let i = 0; i < 6; i++) api.step(10);
+  if (!hold) {
+    wall += 60000;
+    expect(`${tier}: no hold budget — the game waits forever`, isLockstepFrozen() && limits?.holdMs === null);
+  } else {
+    wall += hold - 10;
+    const mid = api.getState();
+    expect(`${tier}: frozen inside the budget (${hold} + ${HOLD_GRACE_MS} grace)`, isLockstepFrozen() && mid.ok && mid.limits.holdRemainingMs === HOLD_GRACE_MS + 10);
+    wall += HOLD_GRACE_MS + 20;
+    const late = api.getState();
+    expect(`${tier}: past the budget → overdue, the game runs in real time`, !isLockstepFrozen() && late.ok && late.limits.overdue && late.limits.holdRemainingMs === 0);
+    wall += 5000; api.getState();
+    expect(`${tier}: reading state does not reset the clock`, !isLockstepFrozen());
+    api.step(10);
+    expect(`${tier}: the next step() freezes it again`, isLockstepFrozen());
+    wall += hold + HOLD_GRACE_MS + 1;
+    api.flip('left', 80);
+    expect(`${tier}: an input also resets the clock`, isLockstepFrozen());
+  }
+  await endGame(1);
+}
+
+// ---------------- latency allowance ----------------
+console.log('[latency] measured harness latency added to the hold');
+const lim = () => { const r = api.getState(); if (!r.ok) throw new Error(r.error); return r.limits; };
+const paced = (gapMs: number, n: number) => { for (let i = 0; i < n; i++) { wall += gapMs; api.step(10); } };
+api.start({ tier: 'medium', mode: 'lockstep' });
+expect('calibrating: the 20 s ceiling until 5 gaps are in', lim().calibrating && lim().latencyAllowanceMs === 20000 && lim().effectiveHoldMs === 1500 + HOLD_GRACE_MS + 20000);
+paced(5000, 6);
+expect('acts 5 s apart → floor 5000, allowance 5000', lim().latencyFloorMs === 5000 && lim().latencyAllowanceMs === 5000 && !lim().calibrating, JSON.stringify(lim()));
+wall += 1500 + HOLD_GRACE_MS + 5000 - 50;
+expect('… frozen until hold + grace + 5000', isLockstepFrozen());
+wall += 100;
+expect('… then overdue', !isLockstepFrozen());
+api.step(10);
+paced(1000, 20); // a fast rhythm fills the window
+paced(20000, 1);  // one long think
+expect('one long think barely moves the floor (20th percentile)', lim().latencyFloorMs === 1000, `${lim().latencyFloorMs}`);
+paced(70000, 1);
+expect('a gap over 60 s is ignored (walked away)', lim().latencyFloorMs === 1000);
+await endGame(1);
+api.start({ tier: 'medium', mode: 'lockstep' });
+paced(40, 1); paced(1200, 5);
+expect('an early back-to-back call does not drag the floor down', lim().latencyFloorMs === 1200, `${lim().latencyFloorMs}`);
+for (let i = 0; i < 10; i++) { paced(6000, 1); paced(20, 1); } // key pairs: think, then two keys at once
+expect('a harness sending keys in pairs is judged by its round trip', lim().latencyFloorMs === 6000, `${lim().latencyFloorMs}`);
+await endGame(1);
+api.start({ tier: 'medium', mode: 'lockstep' });
+paced(30, 10);
+expect('a genuinely fast agent measures as fast', lim().latencyFloorMs === 30, `${lim().latencyFloorMs}`);
+await endGame(1);
+api.start({ tier: 'medium', mode: 'lockstep' });
+paced(1000, 8);
+await endGame(777777);
+const filed = agentBoard.list('deadStarDisco', 'lockstep', 'medium').find((e) => e.score >= 777777);
+expect('a lockstep entry is filed with its measured latency', filed?.latencyMs !== undefined && filed.latencyMs >= 1000 && filed.latencyMs <= 5000, JSON.stringify(filed));
+// no per-tier caps: every harness gets its own latency back in full, so a tier's
+// hold is extra THINKING time (a ~3.7 s browser harness can play Impossible)
+for (const [tier, hold] of [['medium', 1500], ['hard', 700], ['impossible', 350]] as const) {
+  api.start({ tier, mode: 'lockstep' });
+  paced(3700, 6);
+  expect(`${tier}: a 3.7 s harness gets its full 3700 ms back (hold ${3700 + hold + HOLD_GRACE_MS} ms)`, lim().latencyFloorMs === 3700 && lim().latencyAllowanceMs === 3700 && lim().effectiveHoldMs === 3700 + hold + HOLD_GRACE_MS);
+  await endGame(1);
+  api.start({ tier, mode: 'lockstep' });
+  paced(30000, 6);
+  expect(`${tier}: a 30 s harness is held to the 20 s sanity ceiling`, lim().latencyFloorMs === 30000 && lim().latencyAllowanceMs === 20000);
+  await endGame(1);
+}
+const clean = sanitizeAgentBoard([
+  { name: 'A', model: '', score: 5, day: '', latencyMs: 1234.6 },
+  { name: 'B', model: '', score: 4, day: '', latencyMs: -3 },
+  { name: 'C', model: '', score: 3, day: '', latencyMs: 'soon' },
+]);
+// ---------------- the wait zone: lockstep only waits near the flippers ----------------
+console.log('[wait zone] lockstep waits only while a ball is near the flippers');
+setZoneOverrideForTests(null);
+api.start({ tier: 'medium', mode: 'lockstep' });
+const W = api.getState();
+expect('ball waiting in the shooter lane → the game is not waiting for you', !isLockstepFrozen() && W.ok && !W.waitingForYou);
+const F = TABLE.flippers;
+const place = (x: number, y: number, vx: number, vy: number, extra: Record<string, unknown> = {}) => {
+  for (const b of gameRef.balls) b.active = false;
+  gameRef.balls.push({ id: 5000 + Math.floor(Math.random() * 1000), x, y, vx, vy, px: x, py: y, active: true, inLane: false, captured: 0, captureCooldown: 0, inside: new Set(), spin: 0, ...extra });
+};
+useGame.setState({ ballPhase: 'active' });
+place(F.left.pivot.x + 3, F.left.pivot.y + 3, 0, -5);
+expect('ball at the flipper → near', ballNearFlippers());
+expect('… and the lockstep game waits (frozen, waitingForYou)', isLockstepFrozen() && (api.getState() as { waitingForYou?: boolean }).waitingForYou === true);
+expect('… the state text says WAITING FOR YOU', stateText().startsWith('WAITING FOR YOU'));
+place(0, 10, 0, 5);
+expect('ball up-table, rising → not near: the game runs on its own', !ballNearFlippers() && !isLockstepFrozen() && stateText().startsWith('ball up-table'));
+place(0, 30, 0, -250);
+expect('ball at the top falling fast → NOT near (the playtest bug: it froze up-table)', !ballNearFlippers() && !isLockstepFrozen());
+place(0, zoneTopY() - 0.5, 0, -40);
+expect('ball just below the sling tops → near', ballNearFlippers());
+place(TABLE.plunger.x, TABLE.plunger.restY, 0, 0, { inLane: true });
+expect('ball in the shooter lane → not near', !ballNearFlippers());
+place(F.left.pivot.x + 3, F.left.pivot.y + 3, 0, 0, { captured: 1 });
+expect('captured ball → not near', !ballNearFlippers());
+place(F.left.pivot.x + 3, F.left.pivot.y + 3, 0, 0, { ride: { id: 'x', t: 0.5 } });
+expect('riding ball → not near', !ballNearFlippers());
+
+// slow render frames while the game runs by itself: it must freeze on the step
+// the ball enters the zone — at the sling tops, not down at the flippers
+place(-4, 28, 0, -250);
+wall += 5000;
+let frames = 0;
+while (!isLockstepFrozen() && frames++ < 200) runLockstepFrame(0.25);
+const caught = gameRef.balls.find((b) => b.active)!;
+const cz = api.getState();
+expect(`a fast ball from the top is caught on entry: y ${caught.y.toFixed(2)} just inside ${zoneTopY().toFixed(1)}`, isLockstepFrozen() && caught.y < zoneTopY() && caught.y > zoneTopY() - 3.5);
+expect('… waiting for you, with the full budget (the clock started on arrival)', cz.ok && cz.waitingForYou && cz.limits.holdRemainingMs === cz.limits.effectiveHoldMs, JSON.stringify(cz.ok && cz.limits.holdRemainingMs));
+
+let occ = false;
+setZoneOverrideForTests(() => occ);
+api.step(10);
+wall += 10000; // 10 s up-table
+occ = true;
+const entry = api.getState();
+expect('the hold clock starts when the ball arrives, not at the last act', entry.ok && entry.limits.holdRemainingMs === entry.limits.effectiveHoldMs && isLockstepFrozen(), JSON.stringify(entry.ok && entry.limits));
+await endGame(1);
+api.start({ tier: 'medium', mode: 'lockstep' });
+occ = false;
+for (let i = 0; i < 6; i++) { wall += 1000; api.step(10); }
+expect('acts while the ball is up-table add no latency gaps', (api.getState() as { limits: { calibrating: boolean } }).limits.calibrating);
+for (let i = 0; i < 6; i++) {
+  occ = false; wall += 8000; api.getState(); // 8 s up-table
+  occ = true; api.getState();                // the ball comes down
+  wall += 1200; api.step(10);                // the agent answers 1.2 s later
+}
+const lat = api.getState();
+expect('latency is measured from the ball\'s arrival (1200), not the last act (9200)', lat.ok && lat.limits.latencyFloorMs === 1200, JSON.stringify(lat.ok && lat.limits.latencyFloorMs));
+setZoneOverrideForTests(null);
+await endGame(1);
+
+// ---------------- 2c.2: script-paced runs file nowhere ----------------
+console.log('[2c.2] script-paced detection (real-time and lockstep)');
+setPaceCheckForTests(true);
+const onBoard = (mode: 'realtime' | 'lockstep' | 'script', score: number) => agentBoard.list('deadStarDisco', mode, 'medium').some((e) => e.score === score);
+api.start({ tier: 'medium', mode: 'lockstep' });
+for (let i = 0; i < 38 * 10; i++) { wall += 1000 / 38; api.getState(); }
+expect('a harness at 38 calls/s for 10 s: not flagged', !g().run.flagged);
+for (let sec = 0; sec < 10; sec++) {
+  wall += 1000 - 9 * 5;
+  for (let k = 0; k < 10; k++) { wall += 5; agentKey('Period', false); }
+}
+expect('10 batched keys every second (one harness action): not flagged', !g().run.flagged);
+await endGame(414141);
+expect('… and it files as usual', onBoard('lockstep', 414141));
+
+api.start({ tier: 'medium', mode: 'lockstep' });
+for (let i = 0; i < 45 * 3; i++) { wall += 1000 / 45; api.getState(); }
+const fl = api.getState();
+expect('45 calls/s over three windows → SCRIPT-PACED', !!g().run.flagged && fl.ok && fl.flagged !== null, JSON.stringify(g().run.flagged));
+expect('… the state text says so first', stateText().startsWith('SCRIPT-PACED'));
+expect('… and the game plays on', g().phase === 'playing' && isLockstepHeld());
+await endGame(424242);
+expect('a flagged lockstep game files nowhere', !onBoard('lockstep', 424242) && !onBoard('script', 424242) && /NOT RANKED/.test(g().message), g().message);
+expect('… and never the human board', !scores.list('deadStarDisco', 'medium').some((e) => e.score === 424242));
+
+api.start({ tier: 'medium', mode: 'lockstep' });
+for (let i = 0; i < 150; i++) api.turn({ stepMs: 10 });
+expect(`turn() counts as one call (150 turns in one instant < ${PACE_BURST})`, !g().run.flagged);
+for (let i = 0; i < 60; i++) api.getState();
+expect('… and reads count: a synchronous loop is flagged at once', !!g().run.flagged);
+await endGame(1);
+
+api.start({ tier: 'medium', mode: 'realtime' });
+wall += 5000;
+for (let i = 0; i < 3 * 60; i++) { wall += 1000 / 60; api.getState(); }
+expect('real time: a 60 Hz polling loop → SCRIPT-PACED', !!g().run.flagged);
+await endGame(434343);
+expect('a flagged real-time game files nowhere', !onBoard('realtime', 434343) && /NOT RANKED/.test(g().message));
+api.start({ tier: 'medium', mode: 'realtime' });
+expect('the flag is per game (the next one starts clean)', !g().run.flagged);
+await endGame(1);
+setPaceCheckForTests(false);
+
+// ---------------- 2c.2: Script mode ----------------
+console.log('[2c.2] Script mode');
+setRunnerFactoryForTests(inlineRunner);
+clearStrategyForTests();
+const flush = async () => { for (let i = 0; i < 6; i++) await Promise.resolve(); };
+/** One render frame of a Script game: the strategy hook, its answer, one physics step. */
+const frame = async () => { scriptFrame(); await flush(); simulateStep(); };
+expect('setMode(script)', api.setMode('script').ok);
+expect('start without a strategy is refused', !api.start({ tier: 'medium' }).ok && g().phase !== 'playing');
+expect('a syntax error is refused', !(await api.setStrategy('(state => {')).ok);
+expect('a non-function is refused', !(await api.setStrategy('42')).ok);
+expect('an oversized strategy is refused', !(await api.setStrategy('(s) => (' + ' '.repeat(20000) + '{})')).ok);
+const hold = await api.setStrategy('(state) => ({ left: true, right: true })');
+expect('a function-expression strategy loads', hold.ok);
+expect('a JS function is accepted too (sent as source)', (await api.setStrategy((s: { plungerReady: boolean }) => ({ left: true, right: true, plunge: s.plungerReady ? undefined : undefined }))).ok);
+
+for (const [tier, react] of [['medium', 150], ['impossible', 250]] as const) {
+  const sg = api.start({ tier });
+  expect(`${tier}: a Script game starts`, sg.ok && g().run.mode === 'script');
+  const t0 = gameRef.time;
+  let pressedAt: number | null = null;
+  for (let i = 0; i < 120 && pressedAt === null; i++) { await frame(); if (gameRef.left.pressed) pressedAt = gameRef.time; }
+  const dt = pressedAt === null ? NaN : Math.round((pressedAt - t0) * 1000);
+  expect(`${tier}: the strategy's flippers land after its ${react} ms reaction delay (game time)`, dt >= react && dt <= react + 4 * STEP * 1000, `${dt} ms`);
+  await endGame(1);
+}
+
+api.start({ tier: 'medium' });
+expect('inputs are locked: flip / hold / plunge / nudge / step / turn refused',
+  !api.flip('left').ok && !api.hold('left', true).ok && !api.plunge(0.5).ok && !api.nudge('up').ok && !api.step(100).ok && !api.turn({}).ok);
+expect('… the agent keys do nothing either', agentKey('KeyJ', false) && !gameRef.left.pressed);
+expect('the strategy can\'t be swapped mid-game', !(await api.setStrategy('(s) => ({})')).ok);
+const lane0 = gameRef.time;
+while (g().ballPhase === 'plunger' && gameRef.time - lane0 < SCRIPT_AUTOPLUNGE_S + 1) await frame();
+const waited = gameRef.time - lane0;
+expect(`a strategy that never plunges gets an auto-plunge after ${SCRIPT_AUTOPLUNGE_S} s`, g().ballPhase === 'active' && waited >= SCRIPT_AUTOPLUNGE_S - STEP && waited < SCRIPT_AUTOPLUNGE_S + 0.1, `${waited.toFixed(2)} s`);
+const sst = api.getState();
+expect('getState().script reports calls, timing and time left', sst.ok && sst.script.running && sst.script.calls > 0 && sst.script.avgMs !== null && sst.script.timeLeftS < SCRIPT_GAME_S && sst.script.reactionMs === 150, JSON.stringify(sst.ok && sst.script));
+expect('the state text has a script line', /^script: running calls=\d+/m.test(stateText()));
+useGame.setState({ score: 515151 });
+gameRef.time += SCRIPT_GAME_S; // skip to the end of the clock
+await frame();
+expect(`after ${SCRIPT_GAME_S / 60} minutes of game time: TIME — the game ends`, g().ballPhase === 'bonus' || g().phase === 'gameover');
+for (let i = 0; i < 100 && g().phase === 'playing'; i++) await sleep(100);
+const scr = agentBoard.list('deadStarDisco', 'script', 'medium').find((e) => e.score >= 515151);
+expect('… filed on the SCRIPT board, with no latency', g().phase === 'gameover' && !!scr && scr.latencyMs === undefined && g().lastAgentRank?.mode === 'script', JSON.stringify(scr));
+expect('… and not on the real-time / lockstep boards', !agentBoard.list('deadStarDisco', 'realtime', 'medium').concat(agentBoard.list('deadStarDisco', 'lockstep', 'medium')).some((e) => e.score === scr?.score));
+
+expect('a throwing strategy loads (it only throws when called)', (await api.setStrategy('(s) => { throw new Error("boom") }')).ok);
+api.start({ tier: 'medium' });
+for (let i = 0; i < SCRIPT_MAX_ERRORS + 10; i++) await frame();
+const thrown = api.getState();
+expect(`… it is stopped after ${SCRIPT_MAX_ERRORS} errors in a row, and the game plays on`, thrown.ok && !!thrown.script.stopped && /threw/.test(thrown.script.stopped) && thrown.script.lastError === 'boom' && g().phase === 'playing', JSON.stringify(thrown.ok && thrown.script.stopped));
+await endGame(1);
+
+// a strategy that never answers (the worker would be stuck in a loop)
+const silent: StrategyRunner = { load: async () => ({ ok: true }), decide: () => new Promise(() => {}), terminate() {} };
+setRunnerFactoryForTests(() => silent);
+await api.setStrategy('(s) => { while (true) {} }');
+api.start({ tier: 'medium' });
+await frame(); // loads
+g().setFlipper('left', true); // (as if the strategy had it up)
+for (let i = 0; i < 20; i++) await frame(); // asks, never hears back
+expect('no answer yet within 1 s: still running', !(api.getState() as { script: { stopped: string | null } }).script.stopped);
+wall += 1001;
+await frame();
+const hung = api.getState();
+expect('no answer for over 1 s → stopped, flippers dropped, the game plays on', hung.ok && /didn't answer/.test(hung.script.stopped ?? '') && !gameRef.left.pressed && g().phase === 'playing', JSON.stringify(hung.ok && hung.script.stopped));
+await endGame(1);
+setRunnerFactoryForTests(inlineRunner);
+api.setMode('lockstep');
+
+expect('sanitize keeps a real latency (rounded) and drops junk', clean[0].latencyMs === 1235 && clean[1].latencyMs === undefined && clean[2].latencyMs === undefined && clean.length === 3);
+
+process.exit(bad ? 1 : 0);

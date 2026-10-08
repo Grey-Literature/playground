@@ -17,8 +17,9 @@ copy.
 | Theme id        | Display name         | Status                              |
 | --------------- | -------------------- | ----------------------------------- |
 | `deadStarDisco` | Dead Star Disco      | Phase 1: the reference chassis      |
-| `salamander`    | Salamander           | Phase 2b, recreated (not ported)    |
+| `salamander`    | Salamander           | Phase 2b: built, awaiting playtest  |
 | _tbd_           | a MISFIRE ARCADE callback | Phase 4                        |
+| _tbd_           | a Snoopy Axolotl     | Phase 5                             |
 
 The origin prototypes are kept for reference in `examples/`:
 `realistic-3d-pinball-game.zip` (Neon Nova, now Dead Star Disco) and
@@ -59,6 +60,23 @@ games/pinball/
   examples/          ← origin zips (reference only; ignored by the dev watcher)
 ```
 
+## 3a. Live vs. in progress
+
+The piece is **live as a work in progress** (published 2026-09-27, merged via
+Grey-Literature/playground#2). The two branches work like this:
+
+- **`main`** is what GitHub Pages serves: the playable snapshot the kids play.
+  The arcade card and the attract screen both say WORK IN PROGRESS.
+- **`pinball`** is where development continues. Nothing on it reaches the live
+  site until it's published again.
+- **To publish a new snapshot:** run `npm test` (must be green) and
+  `npm run build` (commit the regenerated `pinball.html`), then open a PR from
+  `pinball` into `main` and merge it with a merge commit. Only publish at a
+  STOP checkpoint Rosetta has playtested.
+- **When the piece is finished:** remove the `wip-tag` badge in
+  `games/games-index.html` and the WORK IN PROGRESS pill in the engine
+  `AttractScreen` (`src/engine/hud/HUD.tsx`).
+
 ## 4. Design spec: the engine/theme contract
 
 - **Units.** One playfield unit has ball radius 1.55. x runs left to right.
@@ -87,6 +105,257 @@ games/pinball/
   API: `addScore`, `popup`, `message`, `bigMessage`, `startMultiball`,
   `flash`, `shake` and sound. Any theme-only state lives in that theme's own
   store.
+- **Layers (decks).** A table may list `layers: LayerDef[]`. Each is a raised
+  deck with a footprint `outline`, drop `holes` and a render `height`. Any
+  body can carry `layer: '<deck id>'`; leaving it out means `'field'`.
+  - Physics runs each ball against its own layer's bodies only, so balls roll
+    on the deck or under it.
+  - A ball leaves a deck through a hole, or by crossing a rail-less stretch
+    of the outline (a waterfall), and drops to the field.
+  - Rides reach a deck with `exitLayer`.
+  - The plunger, flippers, drain and height field exist on the field only.
+  - Every transition emits a `layer` event for rules to score.
+  - Two rules for deck designers: slope any front rails toward a waterfall,
+    so gravity never parks a ball in a corner; and keep every drop hole and
+    waterfall landing clear of field toys. `layers.check` gates both.
+  - Layer Lab (`?theme=layerLab`, hidden) is the reference layered table.
+- **Moving and scripted mechanics** (2b). All of them are optional fields, so
+  tables that don't use them are untouched. `mechanics.check` covers each.
+  - `KinematicDef.motion: 'swing'` (with `amp`, `base`) makes a bar flap
+    instead of spin. `kind: 'orbiter'` is a round body circling
+    `(cx, cy)` at `orbit`. Read a pose with `kinematicPose()`.
+  - `Sensor.blast` turns a sensor into a blast pad: the ball's velocity is
+    replaced on entry, then the pad recharges. `gameRef.padCool` shows the
+    charge.
+  - Rules may call `ejectIntoRide(captureId, rideId)` from a `capture` event,
+    so the next eject starts that ride instead of the normal kick.
+    `RideDef.internal` rides are only ever started that way.
+  - `gate.minLaunchPower` only admits the ball just plunged at or above that
+    power, whatever the tier.
+  - `RideDef.carry: { keep, min, max }` makes a ride keep momentum. It runs
+    at `clamp(entrySpeed × keep, min, max)` u/s instead of the fixed `dur`,
+    and the ball leaves along the path's end tangent at that speed. Without
+    it, a ride crawls at `dur` and exits on its fixed `exit` vector, which
+    felt like a vacuum on Salamander's ramps. Dead Star Disco doesn't use
+    `carry` yet; that's for the Phase 3 parity pass.
+  - Every riding ball now reports its velocity along the path (nothing
+    collides in transit, so this only feeds the renderer, roll sound and
+    camera), so the ball visibly keeps rolling on a wire.
+- **Scene parts.** `engine/scene/parts.tsx` draws everything table-driven
+  (walls, slings, bumpers, posts, flippers, balls, decks, ride wires) from
+  look props; `only` filters let a theme custom-draw some bumpers or rides.
+  `engine/scene/cabinet.tsx` is the shared cabinet, coloured by a
+  `CabinetLook` (Dead Star Disco's is the default).
+- **Spirit Board (scores).** `src/engine/scores.ts` keeps a top 10 per
+  theme × tier, with 3-letter arcade initials entered at game over.
+  - It's stored in this browser's localStorage under
+    `flipper-seance:<theme>:board:<tier>`. Everything read back is sanitized,
+    and storage that fails falls back to memory. The old single `best:<tier>`
+    score migrates as a `---` entry.
+  - The storage sits behind the `ScoreStore` adapter. An online board would
+    be a second adapter, and nothing else in the game would change.
+  - `scores.check` covers the storage; `rules.check` covers the
+    game-over → initials → board flow.
+- **Agent API and Agent Board (2c).** AI agents play through
+  `window.flipperSeance`, which `src/engine/agent.ts` installs only on
+  `?agent` pages. Its own `help()` documents it, a hidden `#agent-readme`
+  node in `index.html` points agents at it, and `scripts/reference-bot.js`
+  is a worked Script-mode example you can paste into the console.
+  - **Three modes (2c.2).** `realtime` and `lockstep` measure a model
+    deciding call by call. `script` is for bots: a strategy submitted once
+    and run by the game. Each has its own board.
+  - **Declare first.** Every call is refused until
+    `declare({ name, model? })`.
+  - **Inputs only.** The calls are `flip`, `hold`, `plunge`, `nudge`,
+    `start`, `setMode` and `setStrategy`. `getState()`, `getTable()` and `events()` return
+    copies, and the runtime is never exposed.
+  - **Timing.** In `realtime` the game runs on its own clock. In `lockstep`
+    it only advances when the agent calls `step(ms)`; the render loop draws
+    but doesn't simulate (`isLockstepFrozen`). Both paths run the same
+    `engine/sim.ts` `simulate()`.
+  - **Lockstep limits (per tier, `difficulty.ts`).** Unlimited waiting
+    would be an unfair advantage, so lockstep only waits within limits that
+    grow with the difficulty:
+
+    | Tier       | step cap | hold budget |
+    | ---------- | -------- | ----------- |
+    | Super Easy | 1000 ms  | unlimited   |
+    | Easy       | 1000 ms  | unlimited   |
+    | Medium     | 250 ms   | 1500 ms     |
+    | Hard       | 100 ms   | 700 ms      |
+    | Impossible | 50 ms    | 350 ms      |
+
+    - The **step cap** (`agentStepCapMs`) is the most a single `step()` may
+      advance.
+    - The **hold budget** (`agentHoldMs`) is the real time allowed between
+      step/input calls. `HOLD_GRACE_MS` (75 ms) is added to every hold, to
+      absorb a tool call's round trip.
+    - **Past the budget, the game stops waiting.** It runs in real time with
+      the flippers as last set, until the agent acts again or the ball
+      drains. That's the same price a human pays for hesitating.
+    - **Only acting resets the clock.** Reading state doesn't, so polling
+      can't buy thinking time; any step or input does.
+    - `getState().limits` and the console's `lockstep:` line show the step
+      cap, the hold and the live `holdRemainingMs`. They show `OVERDUE`
+      while the game is running on.
+    - The step cap alone would still let an agent think forever between
+      coarse steps, and the hold alone would let it poll in infinitely fine
+      steps. Together they close both loopholes.
+  - **Wait zone.** Pressure only matters where the agent can act, so
+    lockstep waits only while a ball is near the flippers. The top of that
+    zone is `zoneTopY` = the flipper pivot y + 20 (about the sling tops). A
+    ball counts if it's below that line (position only: a velocity
+    look-ahead at these ball speeds covered the whole table and froze the
+    game up-table); balls in the shooter lane, riding or captured don't
+    count. While the game runs by itself, `runLockstepFrame` advances one
+    physics step at a time and freezes on the very step a ball enters, even
+    on a slow frame.
+    - Up-table, the game runs by itself in real time, and the agent may
+      still step, flip or nudge.
+    - The hold clock runs from the later of the agent's last act and the
+      ball's arrival in the zone.
+    - Latency gaps are measured only from waits, so idle time up-table
+      never counts.
+    - `getState().waitingForYou` and the console's first line (`WAITING FOR
+      YOU` / `ball up-table …`) show it.
+  - **Latency allowance.** The hold would otherwise charge a slow harness's
+    round trip as thinking time: Claude in Chrome's key-and-read loop takes
+    about 5–10 s per action, which made medium and above unplayable for
+    it. The page can't tell latency from thinking; it only sees when calls
+    arrive. So it measures a **latency floor** from each agent's own call
+    gaps and adds it to the hold **in full, at every tier** (up to a 20 s
+    sanity ceiling, `LATENCY_CEILING_MS`). A tier's hold is therefore the
+    extra *thinking* time beyond an agent's own round trip.
+    - **No per-tier caps.** Caps (+10/4/1.5 s) turned the tiers into a
+      test of whose connection was fast enough: Sonnet, measured at about
+      3.7 s through Claude in Chrome, was locked out of Impossible however
+      well it played, while Codex over WebMCP cleared every cap.
+    - **The floor** is the 20th percentile (nearest rank) of the last 20
+      gaps. A low percentile tracks the round trip, not the occasional
+      long think.
+    - **Excluded gaps:** gaps over 60 s (the agent walked away) and gaps
+      spanning a drain or bonus.
+    - **Batched keys:** if most gaps are slow, sub-150 ms gaps count as
+      batched keys (two keys in one harness action) and are left out. An
+      agent whose gaps are mostly tiny is simply fast.
+    - **Calibration:** until 5 gaps are in, the agent gets the 20 s ceiling.
+    - **One arrival per call:** a `turn()` counts as one arrival, however
+      many acts it contains.
+    - **Visibility:** `getState().limits` shows `latencyFloorMs`,
+      `latencyAllowanceMs`, `calibrating` and `effectiveHoldMs`. A lockstep
+      score is filed with `latencyMs` (the median floor over the game), and
+      the Agent Board shows it (`~6.2 s`, `<0.1 s`). The allowance can be
+      gamed by padding calls, but padding shows up on the board, which is
+      the point: it keeps the field fair between harnesses while staying
+      honest about it.
+  - **Game time.** Timers that affect play run on game time (`later()` in
+    `runtime.ts`): tilt recovery, bell relights, door resets and the DSD
+    combo window. That way a lockstep agent sees them fire when a human
+    would. Cosmetic timers stay on the wall clock.
+  - **Filing.** A game played on an agent page files only to the Agent
+    Board (`flipper-seance:<theme>:agents:<realtime|lockstep|script>:<tier>`,
+    top 10). The three modes are ranked separately and never on the human
+    Spirit Board. The Agent Board has the same two-tap "Clear" button as the
+    Spirit Board. It clears only the mode and tier being shown.
+  - **Script-paced runs file nowhere (2c.2).** The latency allowance
+    assumed every call was one real decision. Sonnet showed it wasn't: a
+    strategy written once and run in a loop made thousands of calls with no
+    inference between them. In lockstep that loop also plays hours of game
+    time in seconds; it produced 800K/39M/80M+ "lockstep" runs. In real time
+    the same loop is a perfect-reflex bot.
+    - **The check is call rate** (`noteCall()` in `agent.ts`). Every API
+      call and agent key counts, reads included, in 1-second wall windows.
+      A window with `PACE_CALLS_PER_S` (40) calls is fast. Three fast
+      windows (`PACE_FAST_WINDOWS`), or one window reaching `PACE_BURST`
+      (200), flags the run. A synchronous loop can finish a whole game
+      inside one window.
+    - **Why call rate, not latency or jitter:** a loop can sleep 300 ms
+      with random jitter and pass a latency test, but it can't make fewer
+      calls than a model harness and still be a loop. No harness comes
+      close to 40 a second; one batching 10 keys per action would need 4+
+      actions a second. `turn()` counts once.
+    - **A flagged run** (`run.flagged`) plays on. The state text and HUD say
+      SCRIPT-PACED, and at game over it files nowhere ("NOT RANKED"). This
+      applies to both real-time and lockstep.
+    - **Honest limit:** this catches loops, not a determined cheater. A
+      script that reads `#agent-state` and presses keys only when needed is
+      invisible. The boards stay honesty-based; the check keeps the obvious
+      case off them. Old entries were left alone; the Clear button handles
+      cleanup.
+    - A loop that never yields to the page keeps it from painting.
+      Sonnet's "the HUD says 0" report was a stale frame, not a store
+      desync: the HUD and `getState()` read the same zustand store and
+      matched in every loop style tested.
+    - `help()` and the readme tell agents that the state is the source of
+      truth, and that loops should yield between turns.
+  - **Script mode (2c.2, `engine/script.ts`).** A strategy is submitted
+    once (`setStrategy(fn | source)`, `pinball_script`, or the console's
+    `#agent-strategy` box) and called every render frame. It must be a
+    function expression `(state, table) => ({ left?, right?, plunge?,
+    nudge? })`:
+    - `state` is the `getState()` copy, and `table` is `getTable()`, sent
+      once;
+    - `left`/`right` are held booleans, so the 80 ms minimum stroke still
+      applies;
+    - the source may be up to 16 KB;
+    - for memory between frames, submit an IIFE that returns the function.
+
+    How it runs:
+    - **In a Web Worker** (Blob URL): no DOM, no page globals, no
+      localStorage, so it can't touch the boards. Headless checks use
+      `inlineRunner()` through `setRunnerFactoryForTests`.
+    - **The main thread never waits.** One request is in flight at a time,
+      and a slow strategy just decides less often.
+    - **Guardrails:**
+      - No answer within 1 s: the worker is terminated, the flippers drop
+        and the ball plays out. This is checked each frame, and also by a
+        timer, so it works in a hidden tab.
+      - 50 consecutive exceptions stop it too.
+      - A load that takes more than 1 s is refused.
+      - A ball left in the lane 5 s is auto-plunged at 0.6.
+    - **Fairness:**
+      - Each action lands `agentReactionMs` of game time after the state it
+        answered: 50/100/150/200/250 ms from Super Easy to Impossible.
+        Tiers keep their physics and obstacles; the delay makes Impossible
+        mean sharp-human reflexes.
+      - Every game is `SCRIPT_GAME_S` (180 s) of game time. `timeUp()` ends
+        it as if the last ball drained, so a bot that never drains can't
+        run up a marathon.
+      - The game runs at 1× on the render clock.
+    - **Inputs are locked:** API inputs, agent keys, human keys (except C,
+      P, R) and touch controls do nothing while a Script game plays, and the
+      strategy can't be swapped mid-game.
+    - `getState().script` and the console's `script:` line show calls,
+      avg/max ms, errors, the reaction delay, time left and why it stopped.
+  - **`?debug` pages** can spawn balls, so their scores are filed nowhere.
+    The HUD says "DEBUG — NOT RANKED".
+  - **Forgiving taps, for everyone.** An instant key tap still gives a full
+    80 ms flipper stroke. A plunger tap with no hold auto-plunges at power
+    0.6. Agent games don't pause when the window loses focus.
+  - **Three routes in (2c.1).** Real harnesses can't always call page
+    scripts: Claude in Chrome asks the user to approve every JavaScript
+    call (about 500 prompts in one game), and Codex's browser can't see
+    page globals at all. So the same API is reachable three ways.
+    1. **Keyboard + DOM (no scripts).** On `?agent` pages the Agent Console
+       (`hud/AgentConsole.tsx`, bottom-left) has a form to declare, the
+       Real-time/Lockstep/Script choice (with a strategy box for Script)
+       and Start. During play the keys are
+       (`agentKey()`, active only after a declaration):
+       - `.` steps 100 ms; `>` steps 500 ms;
+       - `1`–`9` and `0` plunge at 0.1–1.0;
+       - `J`/`L`/`K` flip left/right/both, then step;
+       - `Z`/`M`/`A`/`W`/`D` as usual.
+
+       The live state is printed as plain text in `#agent-state`
+       (`formatStateText()`), repainted after every agent action.
+    2. **WebMCP.** `engine/webmcp.ts` registers `pinball_help`, `_declare`,
+       `_start`, `_turn`, `_script`, `_state` and `_table` through
+       `navigator.modelContext` (`registerTool` or `provideContext`),
+       feature-detected on every page.
+    3. **Scripts.** `window.flipperSeance`, where `turn()` acts, steps and
+       reads in one call, so there's one approval per decision.
+    - `index.html`'s hidden `#agent-readme` and the `agent-api` meta tag
+      describe all three.
 - **Clearance rule.** A ball passes a gap only if the centre-to-centre width
   is more than the sum of the two inflated radii:
   - wall to wall: 3.8
@@ -114,11 +383,132 @@ Run `npm test`. It runs `stuckcheck`, `launchcheck` and `feelcheck` for
 - `camera`: the auto camera's framing solver must keep the flippers and every
   ball (multiball included) inside the HUD-safe box on landscape and portrait
   screens; also reports how much of the top arch is visible.
+- `layers` (tables with decks): rides land on their deck; drop holes and
+  waterfalls land on clear field; random deck balls always leave within 6 s
+  with exactly one event each; no cross-layer collisions (with a positive
+  control); per-layer body sets partition the table. `stuck` also soaks
+  every deck. **Landing flow:** every ride onto a deck, including the
+  rules-started ones, is run at a spread of entry speeds. At most 10% may
+  drop straight down a hole within 1 s of landing, and on decks with
+  bumpers at least half must touch a deck bumper before leaving. A ramp
+  that dumps its ball into a hole makes the deck's toys unreachable.
 - `rules`: drives the real store with synthetic events and checks scoring,
-  modes, the ball lifecycle, tilt, and per-theme × per-tier bests.
+  modes (including the multiball extension cap), the ball lifecycle, tilt,
+  and per-theme × per-tier bests. Each real
+  theme has its own section.
+- `wires`: no wire ramp's rails enter the shooter lane, and no two wire
+  ramps cross (the Salamander playtest bug).
+- `agent`: the agent API contract. It covers declare-first, `step()`
+  timing, taps, copy-only state, game-time timers under lockstep, and
+  filing (the Agent Board per mode, human board untouched, `?debug` filed
+  nowhere). It also covers `turn()`, the agent keys and the state text,
+  and the WebMCP tools against both registration styles of a mock
+  `navigator.modelContext`. 2c.2 adds two groups:
+  - **Pace check:** model-paced and batched keys aren't flagged; loops,
+    bursts and 60 Hz polling are, in both modes, and flagged runs file
+    nowhere.
+  - **Script mode, with the inline runner:** load errors; the reaction
+    delay at two tiers; input locks; auto-plunge; the 3-minute clock filing
+    to the Script board; and a throwing or silent strategy being stopped
+    while the game plays on.
+- `mechanics`: swing bars stay in range with the right surface speed,
+  orbiters stay on their circle, blast pads fire once and recharge,
+  capture→ride redirects deliver, internal rides are never auto-entered,
+  and the launch-power gate holds at every tier.
 
 Paste the before and after output into the commit message whenever a change
 touches geometry, physics or difficulty.
+
+### Phase 2a results (engine layers)
+
+- Dead Star Disco has no layers, and every one of its numbers is identical
+  to Phase 1. That covers stuck, launch, feel, camera and rules.
+- On Layer Lab, `stuck=0` on the field and on the nest at every tier, and all
+  84 nest trials per tier fall off (none park).
+- Nest landing clearance is 0.93 or more at the drop holes and 1.69 at the
+  waterfall. All 500 of 500 random nest balls leave the deck at every tier,
+  about 20% through a hole and 80% over the waterfall.
+- Cross-layer collisions: 0.
+
+### Phase 2b results (Salamander)
+
+**After Rosetta's first playtest** she reported that the ramps killed the
+ball's speed, the ramps dumped straight into a drop hole (so the bells were
+unreachable), and H-O-T was hidden under the nest.
+- Rides gained `carry`.
+- The nest was rebuilt: bigger (about 32 × 15, y 12.5–27.5), lower, and
+  clear of the lanes.
+- Rides now land at the back corners heading into a sealed row of Fire
+  Bells, and the drop holes moved to the front corners.
+- The lane posts moved up to y 31.
+- The Maw, its orbiting Cinder Moons, the bumpers, spinner, saucers and
+  Serpent moved into the front field. The field under the nest is kept
+  clear.
+- The guardian moved to the cabinet rail so it can't hide the lanes.
+- Layer Lab's lift was fixed too, since the new gate caught it dropping
+  100% of balls down a hole.
+
+The current numbers:
+- Salamander: `stuck=0` on the field (946–952 trials per tier) and on the
+  nest (all 67 of 67 nest trials fall, every tier). Pin tests: 0.
+- Landing flow: 100% of landings on every ride reach a Fire Bell, and 0%
+  drop straight down a hole.
+- Holes land with 3.52 clearance and waterfalls with 2.08. All 500 of 500
+  nest balls leave at every tier. Cross-layer collisions: 0.
+- Feel: flipper and bumper exits are unchanged. Median life is still at the
+  45 s cap; the drain mix at hard and impossible is 96/4/0 and 98/2/0
+  (mid/off/out).
+
+**The first 2b pass** (for the record):
+
+- Dead Star Disco's numbers are identical to 2a (stuck trials
+  801/758/753/753/737, launch, camera, rules), and its cabinet renders the
+  same after moving to the shared `Cabinet` (compared by screenshot).
+- Salamander: `stuck=0` on the field (937–944 trials per tier) and on the
+  nest at every tier, where all 34 nest trials per tier fall off. The pin
+  tests for the pendulum and both moons report 0. Every ride enters and
+  ejects, and the internal Volcano/Maw-spit rides deliver to the nest.
+- `layers`: both ramps and the Skyshot land on the nest. Hole landings have
+  4.15 clearance and waterfall landings 0.78. All 500 of 500 nest balls leave
+  at every tier (about 45–60% through a hole). Cross-layer collisions: 0.
+- Launch: the skill-zone plunge reaches a top lane at every tier. (The sweep
+  runs without a live launch, so it never trips the Skyshot gate; the browser
+  smoke test covers the full-power Skyshot.)
+- Layout lesson: an earlier tight Fire Bell triangle left a pocket where a
+  ball ping-ponged between two bells forever. The bells now sit 3.76 apart
+  and the middle bell seals the back rail.
+- Feel signature (the Phase 3 starting point for Salamander):
+
+  | Tier       | flipExit (min) | bumpExit | life  | mid/off/out % | p95/max |
+  | ---------- | -------------- | -------- | ----- | ------------- | ------- |
+  | SUPER EASY | 202 (166)      | 80       | 45.0s | 100/0/0       | 0.85    |
+  | EASY       | 225 (199)      | 93       | 45.0s | 100/0/0       | 0.93    |
+  | MEDIUM     | 249 (235)      | 105      | 45.0s | 100/0/0       | 0.96    |
+  | HARD       | 282 (282)      | 121      | 45.0s | 97/0/3        | 0.92    |
+  | IMPOSSIBLE | 315 (131)      | 138      | 45.0s | 88/3/9        | 0.80    |
+
+  Flipper and bumper exits match Dead Star Disco (same chassis). Timestep
+  parity is exact (spread 0.0).
+- **Open items for Phase 3:**
+  - **Salamander is gentler than Dead Star Disco.** The auto-flipper's
+    median ball life hits the 45 s cap at every tier (DSD impossible: 12.2 s),
+    before and after the relayout.
+  - **Give Dead Star Disco's ramp and wormhole `carry`** once parity work
+    starts. Its feel numbers will move, so re-baseline them.
+  - ~~**Dead Star Disco multiball never ends for a good player.**~~ **Done
+    (2c.1).** Completing both banks during multiball used to extend it
+    (+5k and a full timer) without limit. A lockstep reflex-loop script
+    held 10× scoring on ball 1 until it reached 109,560,032.
+    `startMultiball()` now refills a running multiball at most
+    `MAX_MB_EXTENSIONS` (2) times; after that it pays a 5k jackpot and the
+    clock keeps running. This is engine-wide, so Salamander's lit Maw is
+    capped too. A perfect-reflex bot still never drains, so its score still
+    climbs, at 5× at most.
+  - **The Inferno Vents save balls.** They blast straight up the table (about
+    450 blasts in 40 impossible balls), and the impossible flip-exit reading
+    (315, weakest 131) is the vent catching the cradle shot. The prototype
+    pushed the ball radially away from the vent with a sideways kick; try
+    that, or angle the blasts, so impossible actually gets harder.
 
 ### Phase 1 measurements (the baseline Phase 3 starts from)
 
@@ -172,6 +562,16 @@ touches geometry, physics or difficulty.
    waterfall gaps and a beacon for balls under the deck. The harness covers
    every layer. **STOP**
    **(b) Salamander, recreated** at engine scale. **STOP**
+   **(c) Agent Arcade.** AI agents play through a declared API in real
+   time or lockstep, with their own Agent Board. Key taps are forgiving and
+   game-time timers are in place. **STOP**
+   **(c.1) No-script access.** The Agent Console (keys plus state text),
+   WebMCP page tools, and `turn()`. Per-tier lockstep limits (a step cap
+   and a real-time hold budget). **STOP**
+   **(c.2) Script mode.** Three modes. Script-paced real-time and lockstep
+   runs are caught and not ranked, and bots get Script mode: a Web Worker
+   strategy, a per-tier reaction delay, 3-minute games and their own
+   board. **STOP**
 3. **Physics parity.** Salamander should sit inside Dead Star Disco's
    envelope. Run death-trap and ball-trap audits, do Dead Star Disco's
    obstacle-placement pass, and check 30/60/144 Hz parity in a real
@@ -195,6 +595,10 @@ it fresh under `AGENTS.md`, and do not write any egg code before she approves.
 
 - Carrying over Salamander's Magnus, jitter or table-wobble physics. Dead
   Star Disco's feel is the physics truth.
-- Accounts, online leaderboards, or network calls of any kind.
+- Accounts, online leaderboards, or network calls of any kind. The Spirit
+  Board and the Agent Board are local on purpose (an agent plays in the
+  same browser the family uses), because this is a family board on a public,
+  keyless site. If that ever changes, the `ScoreStore` adapter in
+  `src/engine/scores.ts` is where an online board would plug in.
 - Scaling the ball per theme, or letting a theme fork `physics.ts`. New
   mechanics go into the engine, with tests.

@@ -6,12 +6,12 @@ import { useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import { BALL_RADIUS } from '../constants';
-import { TABLE, ACTIVE, samplePath, rideById } from '../table';
+import { TABLE, ACTIVE, samplePath, rideById, layerHeight, deckAbove, insidePolygon, isWireRide, WIRE_RAIL_OFFSET } from '../table';
 import type { WallSeg, PathPt } from '../types';
 import { gameRef, flashOf } from '../runtime';
 import { useGame } from '../store';
 import { DIFF } from '../difficulty';
-import { PX, PZ, triangleGeo, makeFlipperGeometry } from './track';
+import { PX, PZ, triangleGeo, makeFlipperGeometry, makeTrackTube } from './track';
 
 /** Re-render when the tier (and so the active obstacle set) changes. */
 export function useTier() {
@@ -41,7 +41,7 @@ export function Walls({ look = defaultWallLook, capColor = '#f8fafc' }: { look?:
   return (
     <group>
       {items.map(({ w, len, mx, my, rotY, look: l }) => (
-        <mesh key={w.id} position={[PX(mx), l.h / 2, PZ(my)]} rotation={[0, rotY, 0]} castShadow receiveShadow>
+        <mesh key={w.id} position={[PX(mx), layerHeight(w.layer) + l.h / 2, PZ(my)]} rotation={[0, rotY, 0]} castShadow receiveShadow>
           <boxGeometry args={[len + 0.7, l.h, 0.75]} />
           <meshStandardMaterial color={l.color} roughness={0.3} metalness={l.metal} />
         </mesh>
@@ -100,11 +100,13 @@ export function Slings({ tris, glow = '#ef4444', body = '#f1f5f9', rubber = '#dc
 }
 
 // ---------------- Pop bumpers ----------------
-export function Bumpers({ colors = ['#22d3ee', '#e879f9', '#fbbf24', '#4ade80', '#f472b6'], skirt = '#f8fafc', cap = '#0f172a' }: {
+export function Bumpers({ colors = ['#22d3ee', '#e879f9', '#fbbf24', '#4ade80', '#f472b6'], skirt = '#f8fafc', cap = '#0f172a', only }: {
   colors?: string[]; skirt?: string; cap?: string;
+  /** Draw only the bumpers this accepts (a theme custom-draws the rest). */
+  only?: (id: string) => boolean;
 }) {
   useTier();
-  const list = ACTIVE.bumpers;
+  const list = only ? ACTIVE.bumpers.filter((b) => only(b.id)) : ACTIVE.bumpers;
   const mats = useRef<(THREE.MeshStandardMaterial | null)[]>([]);
   const caps = useRef<(THREE.MeshStandardMaterial | null)[]>([]);
   const lights = useRef<(THREE.PointLight | null)[]>([]);
@@ -128,7 +130,7 @@ export function Bumpers({ colors = ['#22d3ee', '#e879f9', '#fbbf24', '#4ade80', 
       {list.map((b, i) => {
         const col = colors[i % colors.length];
         return (
-          <group key={b.id} position={[PX(b.x), 0, PZ(b.y)]}>
+          <group key={b.id} position={[PX(b.x), layerHeight(b.layer), PZ(b.y)]}>
             <mesh position={[0, 0.12, 0]} receiveShadow>
               <cylinderGeometry args={[b.r + 0.7, b.r + 0.9, 0.24, 32]} />
               <meshStandardMaterial color="#020617" roughness={0.6} />
@@ -165,7 +167,7 @@ export function Posts({ ring = () => '#f43f5e' }: { ring?: (id: string) => strin
   return (
     <group>
       {ACTIVE.posts.map((p) => (
-        <group key={p.id} position={[PX(p.x), TABLE.heightAt(p.x, p.y), PZ(p.y)]}>
+        <group key={p.id} position={[PX(p.x), p.layer ? layerHeight(p.layer) : TABLE.heightAt(p.x, p.y), PZ(p.y)]}>
           <mesh position={[0, 1.1, 0]} castShadow>
             <cylinderGeometry args={[0.28, 0.28, 2.2, 12]} />
             <meshStandardMaterial color="#e2e8f0" metalness={0.9} roughness={0.25} />
@@ -197,7 +199,7 @@ export function Kickers({ head = '#f43f5e', glow = '#be123c' }: { head?: string;
   return (
     <group>
       {ACTIVE.kickers.map((f, i) => (
-        <group key={f.id} position={[PX(f.x), 0, PZ(f.y)]}>
+        <group key={f.id} position={[PX(f.x), layerHeight(f.layer), PZ(f.y)]}>
           <group ref={(el) => { groups.current[i] = el; }}>
             <mesh position={[0, 1.2, 0]} castShadow>
               <cylinderGeometry args={[0.28, 0.28, 2.4, 12]} />
@@ -281,16 +283,23 @@ export function Flippers({ left = { body: '#fb923c', glow: '#9a3412', inlay: '#f
 }
 
 // ---------------- Balls ----------------
-export function Balls({ color = '#f8fafc', light = '#bfd9ff', metalness = 1, roughness = 0.06, map }: {
+export function Balls({ color = '#f8fafc', light = '#bfd9ff', metalness = 1, roughness = 0.06, map, emissive, beacon = '#fbbf24' }: {
   color?: string; light?: string; metalness?: number; roughness?: number; map?: THREE.Texture;
+  /** Self-glow (e.g. a molten ball); `map` doubles as the emissive map when set. */
+  emissive?: { color: string; intensity: number };
+  /** Colour of the under-deck beacon ring. */
+  beacon?: string;
 }) {
   const meshes = useRef<(THREE.Mesh | null)[]>([]);
+  const beacons = useRef<(THREE.Mesh | null)[]>([]);
   const lightRef = useRef<THREE.PointLight>(null!);
-  useFrame((_, dt) => {
+  useFrame((state, dt) => {
     const act = gameRef.balls.filter((b) => b.active);
     const a = gameRef.alpha;
     for (let i = 0; i < 4; i++) {
       const m = meshes.current[i];
+      const beacon = beacons.current[i];
+      if (beacon) beacon.visible = false;
       if (!m) continue;
       const b = act[i];
       if (!b) { m.visible = false; continue; }
@@ -304,10 +313,19 @@ export function Balls({ color = '#f8fafc', light = '#bfd9ff', metalness = 1, rou
       if (b.ride) {
         m.position.set(PX(x), (b.h ?? 0) + BALL_RADIUS + 0.12, PZ(y));
       } else {
-        // ease the elevation so climbing a ramp reads as a roll, not a teleport
-        const targetH = TABLE.heightAt(x, y);
+        // ease the elevation so climbing a ramp — or dropping off a deck — reads
+        // as motion, not a teleport
+        const targetH = b.layer ? layerHeight(b.layer) : TABLE.heightAt(x, y);
         b.h = (b.h ?? targetH) + (targetH - (b.h ?? targetH)) * Math.min(1, dt * 11);
         m.position.set(PX(x), b.h + BALL_RADIUS + 0.12 - sunk, PZ(y));
+        // Rolling UNDER a deck: a pulsing beacon on the deck top shows where it is.
+        const deck = !b.layer ? deckAbove(x, y) : undefined;
+        if (beacon && deck && insidePolygon(x, y, deck.outline)) {
+          beacon.visible = true;
+          beacon.position.set(PX(x), deck.height + 0.08, PZ(y));
+          const pulse = 1 + Math.sin(state.clock.elapsedTime * 9) * 0.18;
+          beacon.scale.setScalar(pulse);
+        }
       }
       // rolling rotation
       m.rotation.x += (-b.vy / BALL_RADIUS) * dt * 0.55;
@@ -324,10 +342,85 @@ export function Balls({ color = '#f8fafc', light = '#bfd9ff', metalness = 1, rou
       {[0, 1, 2, 3].map((i) => (
         <mesh key={i} ref={(el) => { meshes.current[i] = el; }} castShadow>
           <sphereGeometry args={[BALL_RADIUS, 32, 32]} />
-          <meshStandardMaterial color={color} metalness={metalness} roughness={roughness} envMapIntensity={1.6} map={map ?? null} />
+          <meshStandardMaterial
+            color={color} metalness={metalness} roughness={roughness} envMapIntensity={1.6} map={map ?? null}
+            emissive={emissive?.color ?? '#000000'} emissiveIntensity={emissive?.intensity ?? 0} emissiveMap={emissive ? map ?? null : null}
+          />
+        </mesh>
+      ))}
+      {[0, 1, 2, 3].map((i) => (
+        <mesh key={`beacon${i}`} ref={(el) => { beacons.current[i] = el; }} rotation={[-Math.PI / 2, 0, 0]} visible={false}>
+          <ringGeometry args={[BALL_RADIUS * 0.9, BALL_RADIUS * 1.35, 28]} />
+          <meshBasicMaterial color={beacon} transparent opacity={0.9} toneMapped={false} depthWrite={false} />
         </mesh>
       ))}
       <pointLight ref={lightRef} color={light} intensity={8} distance={30} decay={1.8} />
+    </group>
+  );
+}
+
+// ---------------- Decks (raised layers) ----------------
+/**
+ * Every TABLE layer as a slab at its height, with its drop holes cut out and
+ * lit rims. Translucent by default so balls rolling underneath stay readable.
+ */
+export function Decks({ color = '#64748b', edge = '#67e8f9', hole = '#e879f9', opacity = 0.42, thickness = 0.5 }: {
+  color?: string; edge?: string; hole?: string; opacity?: number; thickness?: number;
+}) {
+  const decks = useMemo(() => (TABLE.layers ?? []).map((l) => {
+    const shape = new THREE.Shape(l.outline.map(([x, y]) => new THREE.Vector2(x, y)));
+    for (const hl of l.holes) {
+      const p = new THREE.Path();
+      p.absarc(hl.x, hl.y, hl.r + 0.35, 0, Math.PI * 2, true);
+      shape.holes.push(p);
+    }
+    const geo = new THREE.ExtrudeGeometry(shape, { depth: thickness, bevelEnabled: false });
+    const edgeGeo = new THREE.EdgesGeometry(geo, 30);
+    return { l, geo, edgeGeo };
+  }), [thickness]);
+  return (
+    <group>
+      {decks.map(({ l, geo, edgeGeo }) => (
+        // shape is in physics (x, y); rotate so +y runs up-table (world -z), top face at l.height
+        <group key={l.id} position={[0, l.height, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <mesh geometry={geo} position={[0, 0, -thickness]} receiveShadow>
+            <meshStandardMaterial color={color} transparent opacity={opacity} roughness={0.3} metalness={0.4} depthWrite={false} side={THREE.DoubleSide} />
+          </mesh>
+          <lineSegments geometry={edgeGeo} position={[0, 0, -thickness]}>
+            <lineBasicMaterial color={edge} toneMapped={false} />
+          </lineSegments>
+          {l.holes.map((hl) => (
+            <mesh key={hl.id} position={[hl.x, hl.y, 0.02]}>
+              <ringGeometry args={[hl.r + 0.1, hl.r + 0.55, 32]} />
+              <meshBasicMaterial color={hole} toneMapped={false} />
+            </mesh>
+          ))}
+        </group>
+      ))}
+    </group>
+  );
+}
+
+/** Plain wire rails along every ride path — for tables without bespoke ramp art. */
+export function RideWires({ color = '#cbd5e1', glow = '#22d3ee', only }: {
+  color?: string; glow?: string;
+  /** Wire only the rides this accepts (a theme custom-draws the rest). */
+  only?: (id: string) => boolean;
+}) {
+  useTier();
+  const wires = useMemo(() => ACTIVE.rides.filter((r) => isWireRide(r) && (!only || only(r.id))).map((r) => {
+    const pts = r.path.map((p) => ({ ...p, h: p.h + 0.45 }));
+    return { id: r.id, a: makeTrackTube(pts, 0.14, -WIRE_RAIL_OFFSET), b: makeTrackTube(pts, 0.14, WIRE_RAIL_OFFSET), path: r.path };
+  }), []);
+  return (
+    <group>
+      {wires.map((w) => (
+        <group key={w.id}>
+          <mesh geometry={w.a}><meshStandardMaterial color={color} metalness={0.9} roughness={0.2} emissive={glow} emissiveIntensity={0.4} /></mesh>
+          <mesh geometry={w.b}><meshStandardMaterial color={color} metalness={0.9} roughness={0.2} emissive={glow} emissiveIntensity={0.4} /></mesh>
+          <RideTrail rideId={w.id} path={w.path} color={glow} r={1} />
+        </group>
+      ))}
     </group>
   );
 }

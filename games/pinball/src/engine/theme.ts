@@ -50,6 +50,8 @@ export interface ThemeCopy {
 
 export interface ThemeDef {
   id: string;
+  /** Test/fixture tables: reachable only via ?theme=<id>, never in the picker or T-cycle. */
+  hidden?: boolean;
   copy: ThemeCopy;
   table: TableDef;
   rules: ThemeRules;
@@ -77,6 +79,11 @@ export function registerTheme(def: ThemeDef) {
 
 export function allThemes(): ThemeDef[] {
   return order.map((id) => registry.get(id)!);
+}
+
+/** The tables shown in the hall (picker + T-cycle). */
+export function hallThemes(): ThemeDef[] {
+  return allThemes().filter((t) => !t.hidden);
 }
 
 export function themeById(id: string | null | undefined): ThemeDef | undefined {

@@ -3,24 +3,50 @@ import { Canvas } from '@react-three/fiber';
 import './themes';
 import { PinballScene } from './engine/scene/PinballScene';
 import { HUD } from './engine/hud/HUD';
-import { useGame, bootTheme } from './engine/store';
+import { useGame, bootTheme, scriptRunActive } from './engine/store';
 import { themeById } from './engine/theme';
-import { gameRef } from './engine/runtime';
+import { gameRef, spawnBallAt } from './engine/runtime';
 import { DIFF_ORDER } from './engine/difficulty';
 import { sound } from './engine/audio';
+import { createAgentApi, agentKey } from './engine/agent';
+import { installWebMcp } from './engine/webmcp';
 
 bootTheme();
+
+// ?debug exposes the live runtime for browser-driven checks (Playwright screenshots
+// of specific ball states). Opt-in only; nothing is exposed on a normal visit —
+// and because it can spawn balls, nothing a ?debug page scores is ever filed.
+// ?agent installs the agent API (engine/agent.ts) as window.flipperSeance.
+try {
+  const q = new URLSearchParams(window.location.search);
+  if (q.has('debug')) {
+    (window as unknown as { __pinball: unknown }).__pinball = { gameRef, useGame, spawnBallAt };
+    useGame.setState({ unranked: true });
+  }
+  // WebMCP page tools on every page (feature-detected: nothing happens without
+  // navigator.modelContext) — for agent browsers that can't reach page globals
+  installWebMcp();
+  if (q.has('agent')) {
+    (window as unknown as { flipperSeance: unknown }).flipperSeance = createAgentApi();
+    useGame.setState({ agentPage: true });
+    console.info('%cFLIPPER SÉANCE — agent API ready: flipperSeance.help()', 'color:#fbbf24;font-weight:bold');
+  }
+} catch { /* no window */ }
 
 function useKeyboard() {
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
       const st = useGame.getState();
+      // initials entry (or any text field) owns the keyboard — nothing leaks into play
+      if (st.initialsEntry || (e.target instanceof HTMLElement && ['INPUT', 'TEXTAREA'].includes(e.target.tagName))) return;
       // prevent scrolling for game keys
       if (['Space', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.code)) {
         e.preventDefault();
       }
       if (e.repeat) return;
       sound.ensure();
+      // a declared agent's extra keys (lockstep stepping, digit plunges, flip+step)
+      if (agentKey(e.code, e.shiftKey)) { e.preventDefault(); return; }
 
       if (e.code === 'KeyH') { st.toggleHelp(); return; }
       if (e.code === 'Escape') {
@@ -44,6 +70,9 @@ function useKeyboard() {
         }
         return;
       }
+
+      // a Script game is played by its strategy alone: camera / pause / restart only
+      if (scriptRunActive() && !['KeyC', 'KeyP', 'KeyR'].includes(e.code)) return;
 
       switch (e.code) {
         case 'KeyZ':
@@ -96,6 +125,7 @@ function useKeyboard() {
 
     const up = (e: KeyboardEvent) => {
       const st = useGame.getState();
+      if (scriptRunActive()) return;
       switch (e.code) {
         case 'KeyZ':
         case 'ArrowLeft':
@@ -116,6 +146,8 @@ function useKeyboard() {
     const blur = () => {
       const st = useGame.getState();
       if (st.phase !== 'playing') return;
+      // an agent's browser tooling steals focus constantly; its games don't auto-pause
+      if (st.run.agent) return;
       st.setFlipper('left', false);
       st.setFlipper('right', false);
       if (gameRef.plungerCharging) st.releasePlunger();
@@ -141,6 +173,7 @@ function useThemeVars(): CSSProperties {
   const vars: Record<string, string> = {
     '--pb-font-display': p.fontDisplay,
     '--pb-font-body': p.fontBody,
+    '--pb-bg': p.bg,
     background: p.bg,
   };
   for (const [k, v] of Object.entries(p.a)) vars[`--color-pa-${k}`] = v;

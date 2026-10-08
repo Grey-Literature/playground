@@ -1,0 +1,1487 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>Catbot</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link
+    href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;600&family=Inter:wght@400;600&family=Permanent+Marker&display=swap"
+    rel="stylesheet">
+  <style>
+    html,
+    body {
+      margin: 0;
+      height: 100%;
+      background: #12151b;
+      overflow: hidden;
+      touch-action: none;
+      -webkit-user-select: none;
+      user-select: none;
+      -webkit-touch-callout: none
+    }
+
+    #wrap {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center
+    }
+
+    canvas {
+      display: block
+    }
+
+    .pad {
+      position: fixed;
+      bottom: max(18px, env(safe-area-inset-bottom));
+      width: 88px;
+      height: 88px;
+      border-radius: 50%;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      font: 600 30px Oswald, sans-serif;
+      color: #d6a54e;
+      background: rgba(42, 48, 59, .55);
+      border: 1px solid rgba(214, 165, 78, .45);
+      touch-action: none
+    }
+
+    .pad.on {
+      background: rgba(214, 165, 78, .35);
+      color: #ffe3a0
+    }
+
+    body.touch .pad {
+      display: flex
+    }
+
+    body.hub .pad {
+      display: none
+    }
+
+    #stick {
+      position: fixed;
+      width: 112px;
+      height: 112px;
+      margin: -56px 0 0 -56px;
+      border-radius: 50%;
+      display: none;
+      pointer-events: none;
+      border: 1px solid rgba(214, 165, 78, .45);
+      background: rgba(42, 48, 59, .35)
+    }
+
+    #stick.on {
+      display: block
+    }
+
+    #stick i {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: 46px;
+      height: 46px;
+      border-radius: 50%;
+      background: rgba(214, 165, 78, .4);
+      border: 1px solid rgba(255, 227, 160, .6);
+      transform: translate(-50%, -50%)
+    }
+
+    /* the cover page: a plain page in front of the opening (see "COVER" in the script) */
+    body.cover .pad {
+      display: none
+    }
+
+    #cover {
+      position: fixed;
+      inset: 0;
+      z-index: 20;
+      display: flex;
+      background: #0b0d11;
+      color: #efe6d2;
+      padding: 28px 20px;
+      box-sizing: border-box;
+      overflow-y: auto;
+      touch-action: pan-y;
+      -webkit-user-select: text;
+      user-select: text
+    }
+
+    #cover[hidden] {
+      display: none
+    }
+
+    #cover .in {
+      max-width: 520px;
+      width: 100%;
+      margin: auto;
+      text-align: center
+    }
+
+    #cover h1 {
+      font: 600 46px/1 Oswald, sans-serif;
+      letter-spacing: .2em;
+      padding-left: .2em;
+      margin: 0 0 8px;
+      color: #d6a54e
+    }
+
+    #cover .tag {
+      font: 400 15px Inter, sans-serif;
+      color: rgba(239, 230, 210, .65);
+      margin: 0 0 26px
+    }
+
+    #cover p {
+      font: 400 15px/1.65 Inter, sans-serif;
+      color: rgba(239, 230, 210, .85);
+      margin: 0 0 14px
+    }
+
+    #cover .how {
+      font: 400 13px/1.65 Inter, sans-serif;
+      color: rgba(239, 230, 210, .6);
+      margin: 26px 0 0
+    }
+
+    #cover .how b {
+      font-weight: 600;
+      color: rgba(239, 230, 210, .85)
+    }
+
+    #play {
+      font: 600 18px Oswald, sans-serif;
+      letter-spacing: .24em;
+      padding: 14px 44px 14px 50px;
+      color: #12151b;
+      background: #d6a54e;
+      border: 0;
+      border-radius: 6px;
+      cursor: pointer
+    }
+
+    #play:hover,
+    #play:focus-visible {
+      background: #ffe3a0;
+      outline: none
+    }
+
+    #snd {
+      font: 600 12px Oswald, sans-serif;
+      letter-spacing: .14em;
+      margin-top: 16px;
+      padding: 6px 12px;
+      color: #d6a54e;
+      background: none;
+      border: 1px solid rgba(214, 165, 78, .4);
+      border-radius: 4px;
+      cursor: pointer
+    }
+
+    #snd:hover,
+    #snd:focus-visible {
+      border-color: #ffe3a0;
+      color: #ffe3a0;
+      outline: none
+    }
+
+    #cover .fine {
+      font: 400 12px/1.6 Inter, sans-serif;
+      color: rgba(239, 230, 210, .45);
+      margin: 10px 0 0
+    }
+
+    #cover .jam {
+      margin-top: 22px;
+      font-size: 11px;
+      color: rgba(239, 230, 210, .35)
+    }
+
+    #cover p+button {
+      margin-top: 10px
+    }
+
+    @media (max-height:480px) {
+
+      /* a short embed (the game's own frame is 720x405): keep PLAY on screen without scrolling */
+      #cover {
+        padding: 14px 20px
+      }
+
+      #cover h1 {
+        font-size: 34px;
+        margin-bottom: 4px
+      }
+
+      #cover .tag {
+        margin-bottom: 12px;
+        font-size: 13px
+      }
+
+      #cover p {
+        font-size: 13px;
+        line-height: 1.5;
+        margin-bottom: 8px
+      }
+
+      #play {
+        padding: 10px 40px 10px 46px;
+        font-size: 16px
+      }
+
+      #snd {
+        margin-top: 10px
+      }
+    }
+
+    #padL {
+      left: max(18px, env(safe-area-inset-left))
+    }
+
+    #padR {
+      right: max(18px, env(safe-area-inset-right))
+    }
+  </style>
+</head>
+
+<body>
+  <div id="wrap"><canvas id="stage" aria-label="Catbot: walk left and right"></canvas></div>
+  <div id="stick"><i></i></div>
+  <div id="cover">
+    <div class="in">
+      <h1>CATBOT</h1>
+      <div class="tag">a clockwork repair cat · a wrecked shuttle</div>
+      <p>A shuttle has crashed on a dead world, and something small survived it: a brass-and-copper clockwork cat that
+        has no idea it is a repair unit. Wind it up, wander the wreck, and find out what is broken.</p>
+      <p>Ship parts look like toys to a cat, so the ship gets put back together one plaything at a time.</p>
+      <button id="play" type="button">PLAY</button>
+      <div><button id="snd" type="button"></button></div>
+      <div class="fine" id="sndHint"></div>
+      <div class="how">Walking is the only verb. <b>◀ ▶</b> or <b>A D</b> to walk (<b>▲ ▼</b> or <b>W S</b> too, on the
+        deck plan). Double-tap a direction to trot. On a phone, hold the on-screen arrows. Everything else is somewhere
+        to stand. You can also start by walking instead of pressing PLAY.</div>
+      <div class="fine jam">Made for Jamference: AI Game Jam Hack 1 · built with Claude Opus 5.5 and Sonnet 5.5
+        (Claude Code, Cowork, chat), GPT-6.1-Sol (Codex) and Mistral Medium 3.5 (Vibe). Full credits at the end.</div>
+    </div>
+  </div>
+  <div class="pad" id="padL" role="button" aria-label="walk left">◀</div>
+  <div class="pad" id="padR" role="button" aria-label="walk right">▶</div>
+  <script src="catbot.js"></script>
+  <script src="audio.js"></script>
+  <script>
+    'use strict';
+    /* =====================================================================
+       CATBOT · room 1.  Jamference AI Game Jam Hack 1 (theme: cat + robot).
+       Built with Claude Opus 5.5 (claude-opus-5-5) in Claude Code.
+       Jam rule: every input is movement. ← → / A D / the two touch pads.
+       Title, restart and room transitions all happen by walking somewhere.
+       Layers: room data -> world (props, constraints) -> ctrl -> rig (catbot.js)
+       ===================================================================== */
+    const W = 720, H = 405;
+    const cv = document.getElementById('stage'), ctx = cv.getContext('2d');
+    const catC = document.createElement('canvas'), cctx = catC.getContext('2d');
+    const silC = document.createElement('canvas'), sctx = silC.getContext('2d');
+    const FILTER = typeof ctx.filter === 'string';
+    let S = 1;
+
+    /* =====================================================================
+       ROOMS: plain data. A new room is a new object, not new code.
+       x values are world px (left edges unless noted); GY is the deck line.
+       ===================================================================== */
+    const ROOMS = [{
+      id: 'aft-hold', name: 'Aft Hold', w: 1460,
+      floorSlip: 0,                              // 0 = deck plate, →1 = ice (feet slide, slow to start/stop)
+      start: { x: 250, face: 1 },
+      reset: { x: 22, w: 112 },                      // walk onto it: the room rewinds
+      crate: { x: 420, w: 96, h: 80, mass: 1 },        // mass 1 = needs full strain to break static friction
+      plate: { x: 640, w: 100, depth: 78 },           // recess x..x+w, plate at the bottom; its far wall is the stopper
+      gate: { x: 860, w: 22 },                       // held open while the crate sits on the plate
+      part: { x: 1040, id: 'hip', name: 'HIP GEAR' }, // what catbot thinks is a toy (name: the toolbox label once it's found)
+      exit: { x: 1180 },                            // hatch in the end bulkhead; opens once the part is in
+      port: { x: 190 },                             // porthole (light source, matches the shadow direction)
+      wreck: [                                   // set dressing from the crash: drawn on the back deck, never collides
+        { k: 'plate', x: 170, a: -.42 }, { k: 'gear', x: 214, r: 7 }, { k: 'nut', x: 296 }, { k: 'nut', x: 305 }, { k: 'gear', x: 334, r: 5 },
+        { k: 'wrench', x: 362, a: .25 }, { k: 'cable', x: 300 }, { k: 'scorch', x: 282 }, { k: 'bin', x: 912 }, { k: 'gear', x: 966, r: 6 }, { k: 'nut', x: 985 }
+      ],
+      captions: [
+        { on: 'start', text: '← →  or  A D.   Walking is the only verb.' },
+        { on: 'push', text: 'Heavy things move if you lean on them long enough.' },
+        { on: 'cart', text: 'The service trolley follows you. Stand still on a button to press it.' }
+      ]
+    }];
+
+    /* =====================================================================
+       STATE
+       ===================================================================== */
+    const rig = new Catbot();
+    const CAT = { weight: 1, nose: 88, paw: 62 };      // nose: root→face of whatever it leans on; paw: root→ledge edge
+    const keys = { l: false, r: false, u: false, d: false }; // rooms read l/r; the deck plan reads all four
+    let pulse = 0, pulseY = 0;                        // a tap shorter than a frame still counts once
+    const GAIT = { walk: 105, trot: 165, hold: 1.6, tapMs: 280 }; // shared by the galley bot and live movement
+    let tapDir = 0, tapT = -1e9, sprint = 0;            // double-tap: a second fresh press of the same direction within 0.28 s goes straight to the trot
+    function tap(d) { const now = performance.now(); if (d === tapDir && now - tapT < GAIT.tapMs) sprint = d; tapDir = d; tapT = now; }
+    const dirInput = () => (keys.r ? 1 : 0) - (keys.l ? 1 : 0) || pulse;
+    const dirY = () => (keys.d ? 1 : 0) - (keys.u ? 1 : 0) || pulseY;
+    const anyInput = () => dirInput() || dirY();
+    let room, roomI = 0, st, camX = 0, camY = 0, zoom = 1, mode = 'play', modeT = 0, fade = 1, fadeDir = -1, fadeCb = null;
+    let idle = 0, walkT = 0, walkDir = 0, look = 0, lookT = 0, latch = false;   // latch: ignore a key still held from before a fade
+    const installed = new Set();                    // installed parts survive a rewind
+    const seenCaps = new Set(), caps = [];
+    const P = { on: false, dir: 0, pt: 0, str: 0, F: 0, cd: 0, nx: 0 };
+
+    const inHub = () => mode === 'hub' || mode === 'hubin' || mode === 'hubgo';   // hub.js owns these modes
+    function loadRoom(i) { room = ROOMS[i]; roomI = i; resetRoom(); camX = camTarget(); }
+    function resetRoom() {
+      const R = room;
+      st = {
+        crate: R.crate ? { x: R.crate.x, w: R.crate.w, h: R.crate.h, mass: R.crate.mass ?? 1, v: 0, cy: 0, vy: 0, rot: 0, st: 'floor', x0: 0, ft: 0 } : null,   // not every room has one
+        gate: new Spring(0, 1.4, .38), door: new Spring(0, 1.8, .5),
+        plate: 0, cable: 0, got: installed.has(R.part?.id), oops: null, pk: {}, cart: newCart()
+      };
+      for (const k of [...flags]) if (/^(perk|jump|test|puff)/.test(k)) flags.delete(k);
+      Object.assign(P, { on: false, str: 0, F: 0 });
+      rig.reset(R.start.x); if (R.start.face < 0) rig.flip();
+      rig.hipGear = installed.has('hip') ? 1 : 0;
+      idle = 0; walkT = 0;
+      ENG.reset();                                // engine.js: belts, vents, turbine (a no-op in rooms without them)
+      BERTH.reset();                              // berthing.js: beam and covers
+      GAL.reset();                                // galley.js: trays, mats, cucumber
+      OBS.reset();                                // observation.js: plates, lifts, the telescope
+      SAN.reset();                                // sanitation.js: the rake, grates, screens, the mound
+      HYD.reset();                                // hydroponics.js: wheels, troughs, catnip
+      EGGX.reset();                               // eggs.js: the clock, the locker, the fern, the daydream
+      CKP.reset();                                // cockpit.js: lamp, wheel, door, thread, the coil
+    }
+    function caption(on) {
+      if (seenCaps.has(on)) return; seenCaps.add(on);
+      for (const c of room.captions || []) if (c.on === on) caps.push({ text: c.text, t: 0, max: c.dur || 4.2 });
+    }
+    function fadeTo(cb) { if (fadeDir > 0) return; fadeDir = 1; fadeCb = () => { cb(); latch = true; }; }
+
+    /* =====================================================================
+       WORLD: crate, recess + plate, gate, hatch, part
+       ===================================================================== */
+    const pit = () => room.plate;
+    const pitOpen = () => room.plate && st.crate && st.crate.st !== 'set';
+    function crateBlocks() { const cr = st.crate; return cr.st !== 'set' || cr.h - 2 - cr.cy > 4; }
+
+    function updCrate(dt) {
+      const cr = st.crate, pl = pit(); if (!cr) return;
+      if (cr.st === 'floor' && pl) {
+        // stopper: the recess walls stop a crate that is sliding over it
+        if (cr.x + cr.w > pl.x && cr.x < pl.x + pl.w) {
+          if (cr.x + cr.w > pl.x + pl.w) { cr.x = pl.x + pl.w - cr.w; cr.v = 0; }
+          if (cr.x < pl.x && cr.x + cr.w / 2 > pl.x + pl.w) cr.x = pl.x;
+        }
+        // once its centre is over the hole there is nothing holding it up
+        const mid = cr.x + cr.w / 2;
+        if (mid > pl.x + 2 && mid < pl.x + pl.w - 2) {
+          cr.st = 'fall'; cr.vy = 0; cr.x0 = cr.x; cr.ft = 0; cr.dir = mid < pl.x + pl.w / 2 ? 1 : -1; cr.v = 0;
+          if (P.on) { endPush(); st.oops = 0; rig.thv -= 1.3; rig.hOx.vel += 70; rig.hOy.vel -= 40; rig.vy -= 60; rig.tailFlick(3); }
+        }
+      }
+      if (cr.st === 'fall') {
+        cr.ft += dt; cr.vy += G * dt; cr.cy += cr.vy * dt;
+        const tx = pl.x + (pl.w - cr.w) / 2; cr.x = lerp(cr.x0, tx, smooth(cr.cy / pl.depth));
+        cr.rot = Math.sin(Math.PI * clamp(cr.cy / pl.depth, 0, 1)) * .13 * cr.dir;
+        if (cr.cy >= pl.depth) {
+          cr.cy = pl.depth; cr.rot = 0; cr.st = 'set';
+          const p = clamp(cr.vy / 700, .6, 1.4);
+          shake = Math.max(shake, 6 * p);
+          FX.dust(pl.x - 6, GY, 8, p, -1); FX.dust(pl.x + pl.w + 6, GY, 8, p, 1); FX.ring(pl.x + pl.w / 2, GY, p);
+          FX.flash(pl.x + pl.w / 2, GY + pl.depth - 4, .8, '255,220,150');
+          sfx('crate', { mag: p, x: pl.x + pl.w / 2 }); sfx('plate', { x: pl.x + pl.w / 2, delay: .08 });   // the plate has no event of its own: it clicks just after the crate seats
+          rig.earL.vel -= 14; rig.earR.vel -= 12; rig.hOy.vel -= 30;
+        }
+      }
+      if (cr.st === 'set') {
+        st.plate = damp(st.plate, 1, 10, dt);
+        st.cable = Math.min(1, st.cable + dt * 1.6);
+      }
+    }
+    function updGates(dt) {
+      const g = room.gate, ex = room.exit;
+      if (g) {
+        const under = Math.abs(rig.x - (g.x + g.w / 2)) < 70;
+        const want = st.cable >= 1 ? 1 : (under && st.gate.v > .3 ? st.gate.v : 0);
+        const was = st.gate.v; st.gate.step(want, dt); st.gate.v = clamp(st.gate.v, 0, 1.06);
+        if (was < .02 && st.gate.v >= .02) { FX.dust(g.x + g.w / 2, GY, 5, .5); sfx('gate', { x: g.x + g.w / 2 }); }
+      }
+      if (ex) {
+        const ready = !room.part || st.got, near = rig.x > ex.x - 300;
+        const was = st.door.v; st.door.step(ready && near ? 1 : 0, dt); st.door.v = clamp(st.door.v, 0, 1.06);
+        if (was < .02 && st.door.v >= .02) { FX.steam(ex.x + 20, GY - 150, 4, .7); sfx('hatch', { x: ex.x + 20 }); }
+      }
+    }
+    /* solid x-intervals at catbot's height. clr = root distance it can get to the face */
+    function blockers() {
+      const b = [{ x0: -1e4, x1: 16, clr: CAT.nose }], cr = st.crate, R = room;
+      if (cr && crateBlocks()) b.push({ x0: cr.x, x1: cr.x + cr.w, clr: CAT.nose });
+      if (pitOpen()) { const pl = pit(); b.push({ x0: pl.x, x1: pl.x + pl.w, clr: CAT.paw }); }
+      if (R.gate && st.gate.v < .8) b.push({ x0: R.gate.x, x1: R.gate.x + R.gate.w, clr: CAT.nose });
+      if (R.exit && st.door.v < .8) b.push({ x0: R.exit.x + 10, x1: R.exit.x + 30, clr: CAT.nose });
+      for (const e of ENG.blocks()) b.push(e);       // engine.js: the face of a platform too low to walk under (soft: see constrain)
+      for (const e of GAL.blocks()) b.push(e);       // galley.js: unseated trays
+      for (const e of SAN.blocks()) b.push(e);       // sanitation.js: shut sifter screens
+      for (const e of HYD.blocks()) b.push(e);       // hydroponics.js: troughs whose raft is down
+      for (const e of CKP.blocks()) b.push(e);       // cockpit.js: the bulkhead, the nose's wall
+      return b;
+    }
+    let BL = [];
+    function constrain() {
+      // soft: a cat that lands overlapping one (dropped beside a platform) is eased out over a few frames rather than snapped
+      for (const b of BL) {
+        if (b.x0 > rig.x) { const lim = b.x0 - b.clr; if (rig.x > lim) { rig.x = b.soft && rig.x - lim > 4 ? lerp(rig.x, lim, .08) : lim; if (rig.vx > 0) rig.vx = 0; } }
+        else if (b.x1 < rig.x) { const lim = b.x1 + b.clr; if (rig.x < lim) { rig.x = b.soft && lim - rig.x > 4 ? lerp(rig.x, lim, .08) : lim; if (rig.vx < 0) rig.vx = 0; } }
+      }
+    }
+
+    /* =====================================================================
+       PUSH: lifted from the rig's push study. Force = strain × leg
+       compression × catbot's weight; stick-slip against the crate's mass.
+       ===================================================================== */
+    function contactX(dir) { const cr = st.crate; return dir > 0 ? cr.x - CAT.nose : cr.x + cr.w + CAT.nose; }
+    function endPush() { P.on = false; P.str = 0; P.F = 0; }
+    function push(dt, c, dir) {
+      const cr = st.crate; if (!cr) return false;
+      if (!P.on) {
+        const ok = dir && cr.st === 'floor' && rig.facing === dir && rig.turnT < 0 && !rig.air && Math.abs(rig.x - contactX(dir)) < 2.5;
+        if (!ok) return false;
+        Object.assign(P, { on: true, dir, pt: 0, str: 0, F: 0, cd: 0 }); caption('push');
+      }
+      if (dir !== P.dir || cr.st !== 'floor') { endPush(); return false; }
+      P.pt += dt;
+      const s = seg(P.pt, 0, .5), k = s * (.55 + .45 * P.str), slip = GAL.slipAt(rig.x);
+      Object.assign(c, {
+        crouch: .42 * k, pitch: -.15 * k, headDrop: 14 * k, headPitch: -.32 * k, headFwd: 0, earL: 40 * k, earR: 36 * k, lid: .3 + .15 * P.str, lidTilt: .6 + .4 * P.str, pupil: .3, mouth: -.7 * P.str, lookX: .6, lookY: -.2,
+        tailBase: lerp(162, 176, s), tailCurve: lerp(-9, -2.5, s), tailTip: -6, tailStiff: 1.4, wagAmp: 1, hindReach: -16 * s, gaitRate: 0, earFlick: false, weight: CAT.weight, slip
+      });
+      const face = dir > 0 ? cr.x - 2 : cr.x + cr.w + 2;
+      c.manual.FN = { x: face, y: 24, ang: 1.45, rate: 9 }; c.manual.FF = { x: face, y: 31, ang: 1.45, rate: 8 };
+      const hn = rig.leg('HN'), hf = rig.leg('HF');
+      const ext = -(rig.footErr(hn) + rig.footErr(hf)) / 2, stuck = cr.v <= 0, both = hn.planted && hf.planted;
+      const force = () => CAT.weight * (.5 + .72 * P.str) * clamp(1.12 - Math.max(0, ext) / 38, 0, 1.12);
+      const muS = cr.mass, muK = cr.mass * .74 * (1 - .8 * slip);
+      P.cd -= dt;
+      if (stuck && P.pt > .45) {
+        if (ext > 12 && both && P.cd <= 0) { rig.forceStep(P.nx ? 'HF' : 'HN', .2); P.nx ^= 1; P.cd = .26; P.str *= .6; }
+        else if (both) P.str = Math.min(1, P.str + dt * 1.15);
+        P.F = force();
+        if (P.F > muS) { cr.v = 6; FX.dust(cr.x + 4, GY, 5, .7, -1); FX.dust(cr.x + cr.w - 4, GY, 5, .7, 1); shake = Math.max(shake, 2.2); sfx('unstick', { x: cr.x + cr.w / 2 }); }   // static friction breaks: the strain loop gives way to the scrape
+        if (P.str > .75 && Math.random() < dt * 5) { const kp = rig.toWorld(rig.keyP); FX.steam(kp.x, kp.y - 4, 1, .8); }
+      } else if (!stuck) {
+        P.F = force();
+        cr.v = Math.max(0, cr.v + (P.F - muK) * 340 / cr.mass * dt);
+        if (cr.v === 0) P.str = .2;
+        if (Math.random() < dt * 14) FX.dust(cr.x + rnd(0, cr.w), GY, 1, .5, -dir);
+        if (Math.random() < dt * 20) scratch(dir > 0 ? cr.x + rnd(2, 20) : cr.x + cr.w - rnd(2, 20) - 14, rnd(8, 18), .35);
+      }
+      cr.x += dir * cr.v * dt;
+      c.kin = dir * cr.v + (contactX(dir) - rig.x) * 10;
+      c.strain = stuck ? (P.pt > .45 ? P.str : 0) : .35;
+      return true;
+    }
+
+    /* =====================================================================
+       CONTROL: input -> ctrl, per mode
+       asleep -> wake -> play <-> (pounce | oops) -> exit -> card -> hub (hub.js)
+       ===================================================================== */
+    function walk(dt, c, dir) {
+      const slip = GAL.slipAt(rig.x);
+      c.slip = slip; c.accel = 260 * (1 - .8 * slip); c.weight = CAT.weight; c.limp = rig.hipGear < 1 ? 1 : 0;
+      if (dir !== sprint) sprint = 0;                   // a double-tap trot lasts while that direction is held; letting go or turning drops it
+      if (push(dt, c, dir)) return;
+      if (dir) {
+        idle = 0;
+        if (dir === walkDir) walkT += dt; else walkT = dt;
+        walkDir = dir;
+        // hold it and it breaks into a trot. not on a bad hip, though.
+        const max = c.limp ? 92 : walkT >= GAIT.hold || sprint === dir ? GAIT.trot : GAIT.walk;
+        c.face = dir; c.vx = (dir === rig.facing && rig.turnT < 0) ? dir * max : 0;
+        if (max > 140) { c.earL = c.earR = 16; c.tailBase = 172; c.tailCurve = -5; }
+      } else { idle += dt; walkT = 0; walkDir = 0; }
+      if (Math.abs(rig.vx) < 8 && !dir) {
+        lookT -= dt; if (lookT < 0) { lookT = rnd(.9, 2.4); look = rnd(-1, 1); }
+        c.lookX = look; c.headYaw = .35 + look * .22; c.wagAmp = 7; c.wagFreq = .6;
+        // standing on a bad hip: now and then the gear train slips and the leg jerks
+        if (c.limp && idle > 1 && Math.random() < dt * .4) { rig.forceStep('HN', .3); const h = rig.toWorld(rig.hipJ); FX.sparks(h.x, h.y, 2, -rig.facing, .3); sfx('slip', { x: h.x }); rig.earR.vel += 6; }
+      }
+    }
+    /* wound down: the end pose of the rig's wind-down study, held */
+    function slump(c, t) {
+      Object.assign(c, {
+        energy: .05 + .04 * Math.sin(t * 2), lid: .85, lidTilt: -.6, colF: 1, colH: 1, headDrop: 34, headPitch: -.5, earL: 58, earR: 52,
+        tailStiff: .08, tailBase: 205, tailCurve: 4, tailTip: 0, height: .84, bodyFreq: 1.8, lookY: -.6, pupil: .7, wagAmp: 0, earFlick: false, blink: false, keySpin: 0, mouth: -.6, lift: .22, limp: 1
+      });
+      const f = rig.facing, sx = rig.x + f * (rig.shJ.x + 38), hx = rig.x + f * (rig.hipJ.x + 17);
+      c.manual.FN = { x: sx, y: 0, rate: 10 }; c.manual.FF = { x: sx - 6 * f, y: 0, rate: 9 };
+      c.manual.HN = { x: hx, y: 0, rate: 8 }; c.manual.HF = { x: hx - 5 * f, y: 0, rate: 8 };
+    }
+    function sleep() {
+      mode = 'asleep'; modeT = 0;
+      for (let t = 0; t < 2.6; t += SUB) { const c = freshCtrl(); slump(c, t); rig.update(SUB, c); }   // pre-roll the collapse off-screen
+      rig.events.length = 0; parts.length = 0; scratches.length = 0; shake = 0; camX = camTarget();
+    }
+    /* first step: the rewind. Same beats as the rig study, re-timed from the keypress */
+    function wake(dt, c, t) {
+      const E = seg(t, .4, 1.2), f = rig.facing;
+      Object.assign(c, {
+        energy: t < 1.2 ? E * (.4 + Math.random() * .6) : 1, height: lerp(.84, 1, E), headPitch: -(1 - E) * .5, earL: (1 - E) * 58, earR: (1 - E) * 52, tailStiff: .08 + .92 * E,
+        tailBase: lerp(205, 162, E), tailCurve: lerp(4, -9, E), tailTip: lerp(0, -16, E), lid: t < 1.2 ? lerp(.85, .5, t / 1.2) : 0, lidTilt: lerp(-.6, .35, E),
+        bodyFreq: lerp(1.8, 3.2, E), pupil: t < 1.2 ? .7 : .25, lookY: -(1 - E) * .6, wagAmp: 3 * E, earFlick: false, mouth: -(1 - E) * .6, blink: false, limp: 1
+      });
+      c.keySpin = t < 1.2 ? -24 : 2;
+      const cf = 1 - seg(t, 1.8, 2.2), ch = 1 - seg(t, 1.4, 1.8);
+      c.colF = cf; c.colH = ch; c.headDrop = lerp(15, 34, cf) * (1 - seg(t, 1.2, 1.6));
+      if (cf > .02 && t < 1.95) { const sx = rig.x + f * (rig.shJ.x + 38); c.manual.FN = { x: sx, y: 0, rate: 10 }; c.manual.FF = { x: sx - 6 * f, y: 0, rate: 9 }; }
+      if (ch > .02 && t < 1.6) { const hx = rig.x + f * (rig.hipJ.x + 17); c.manual.HN = { x: hx, y: 0, rate: 8 }; c.manual.HF = { x: hx - 5 * f, y: 0, rate: 8 }; }
+      if (t > 1.2 && t < 2.5) { c.earL = -14; c.earR = -12; }
+      if (t < 1.2 && (st.tick = (st.tick || 0) + dt) > .075) { st.tick = 0; const k = rig.toWorld(rig.keyP); FX.sparks(k.x, k.y, 1, f * (Math.random() < .5 ? 1 : -1), .5); sfx('ratchet', { mag: t / 1.2, x: k.x }); }   // one click per spark; pitch climbs as it winds
+      if (once('relit', t >= 1.2)) { const p = rig.toWorld(rig.bp(60, -2)); FX.flash(p.x, p.y, 1.2); sfx('relit', { x: p.x }); rig.earL.vel -= 16; rig.earR.vel -= 14; rig.tailFlick(4); }
+      if (once('clunk', t >= 2.22)) { rig.vy -= 140; rig.hOy.vel -= 60; for (const id of ['FN', 'HN']) { const l = rig.leg(id); FX.dust(l.fx, GY, 3, .5); } shake = Math.max(shake, 2.2); }
+      if (t > 2.6) { mode = 'play'; modeT = 0; caption('start'); }
+    }
+    const flags = new Set();
+    function once(k, cond) { if (cond && !flags.has(k)) { flags.add(k); return true; } return false; }
+
+    /* the toy: freeze, wiggle, pounce, pin it. Then it wriggles free and goes home. */
+    function pounceReady() {
+      const pt = room.part; if (!pt || st.got || st.carry || rig.air || rig.turnT >= 0 || (pt.y || 0) !== rig.fl) return false;   // pt.y: the part is up on a platform
+      const d = pt.x - rig.x, f = Math.sign(d);
+      if (f !== rig.facing || Math.abs(d) > 190 || Math.abs(d) < 40) return false;
+      return !BL.some(b => f > 0 ? (b.x0 > rig.x && b.x0 < pt.x) : (b.x1 < rig.x && b.x1 > pt.x));
+    }
+    function pounce(dt, c, t) {
+      const pt = room.part, f = rig.facing, k = st.pk;
+      c.limp = rig.hipGear < 1 ? 1 : 0; c.vx = 0; c.accel = k.land ? 2500 : 900; c.earFlick = false;   // claws in on landing: it stops short
+      if (t < 1.95 && !k.flying && !k.home) {
+        const hx = rig.toWorld({ x: rig.hx, y: rig.hy }).x;
+        Object.assign(c, { earL: -16, earR: -14, pupil: 1, lid: 0, lidTilt: -.1, headTilt: .3, mouth: .3, lookX: clamp((pt.x - hx) * f / 120, -1, 1), lookY: -.4 });
+      }
+      if (once('perk', t > .05)) { rig.earL.vel -= 12; rig.earR.vel -= 12; sfx('perk', { x: rig.x }); }
+      if (t < .95) { c.crouch = .5 * seg(t, .1, .5); }
+      if (t >= .5 && t < .95) {
+        Object.assign(c, { hipLift: 7 + Math.sin(t * 24) * 2.5, pitch: -.05, wagTip: 18, tipFreq: 4, gaitRate: 0 });
+        k.wg = (k.wg ?? 0) - dt; if (k.wg < 0) { k.wg = .11; rig.forceStep(k.wf ? 'HF' : 'HN', .1); k.wf = !k.wf; }
+      }
+      if (once('jump', t >= .95)) { const tx = pt.x - f * 64; rig.jump(430, f * clamp(Math.abs(tx - rig.x) / .36, 60, 340)); sfx('pounce', { x: rig.x }); }
+      if (t > .95 && rig.air) { c.tuck = .7; c.claws = 1; c.tailBase = 185; c.tailCurve = -4; }
+      if (t > 1.0 && !rig.air && !k.land) { k.land = t; FX.dust(pt.x, GY - rig.fl, 4, .6); sfx('pin', { x: pt.x }); }
+      if (k.land && !k.flying && !k.home) {
+        const lt = t - k.land;
+        c.crouch = .22; c.happy = lt > .1 ? 1 : 0; c.mouth = 1.2; c.claws = lt < .3 ? 1 : 0; c.tailBase = 130; c.wagAmp = 6; c.wagFreq = 2.5;
+        c.manual.FN = { x: pt.x - f * 2, y: 22, ang: .25, rate: 30 };
+        k.squash = Math.max(0, 1 - lt * 4);
+        if (lt > .6 && room.carry) { k.home = t; ENG.pickUp(); }   // room.carry: it doesn't fly home, catbot takes it in its mouth (engine.js)
+        else if (lt > .6) { k.flying = t; k.fx = pt.x; k.fy = GY - 15; sfx('partfly', { x: pt.x }); }
+      }
+      if (k.flying && !k.home) {
+        // it goes back where it came from. catbot watches it go, over its shoulder.
+        // a hip part goes into catbot; anything else goes into the room's own socket (room.socket, e.g. the engine bay's turbine)
+        const u = clamp((t - k.flying) / .8, 0, 1), e = easeIO(u), hip = pt.id === 'hip' || !room.socket ? rig.toWorld(rig.hipJ) : room.socket;
+        k.x = lerp(k.fx, hip.x, e); k.y = lerp(k.fy, hip.y, e) - Math.sin(Math.PI * u) * 46; k.u = u;
+        Object.assign(c, { headYaw: -.75, lookX: -1, lookY: -.2, headFwd: -6, headTilt: -.08, earL: 42, earR: 58, pupil: .9, lid: 0, crouch: .1, mouth: 0 });
+        if (Math.random() < dt * 30) FX.sparks(k.x, k.y, 1, -f, .25);
+        if (u >= 1) {
+          k.home = t; st.got = true; installed.add(pt.id);
+          if (pt.id === 'hip' || !room.socket) rig.hipGear = 1; else ENG.seat();   // engine.js spins the turbine up
+          const hp = hip; FX.flash(hp.x, hp.y, 1.1, '255,225,150'); FX.sparks(hp.x, hp.y, 10, -f, .7); FX.sparks(hp.x, hp.y, 6, f, .5);
+          sfx('socket', { x: hp.x }); AUDIO.music.setLayers(installed.size);   // setLayers is a stub today: this is where the score will hear "one more part is back"
+          rig.vy -= 90; rig.thv += .9; rig.earL.vel -= 18; rig.earR.vel -= 16; rig.tailFlick(5); shake = Math.max(shake, 2.6);
+        }
+      }
+      if (k.home) {
+        const ht = t - k.home;
+        // startled -> test the leg -> pleased with itself
+        const bk = !room.carry;                    // a part that flew home gets a startled look back at it; a carried one doesn't
+        Object.assign(c, { headYaw: bk && ht < .9 ? -.6 : .35, lookX: bk && ht < .9 ? -1 : .4, lookY: 0, pupil: ht < .5 ? .2 : .5, lid: 0, earL: -16, earR: -14, mouth: bk ? (ht < .6 ? -.4 : .6) : -.2, headFwd: bk && ht < .9 ? -4 : 0 });
+        if (pt.id === 'hip') for (const [i, tt] of [[0, .55], [1, .8], [2, 1.05]]) if (once('test' + i, ht >= tt)) rig.forceStep('HN', .14);   // tests the new leg
+        if (ht > 1.3) { Object.assign(c, { happy: 1, tailBase: 118, tailCurve: -4, tailTip: -12, wagAmp: 6, wagFreq: 3, keySpin: 6 }); }
+        if (once('puff', ht >= 1.35)) { const kp = rig.toWorld(rig.keyP); FX.steam(kp.x, kp.y - 4, 5, .9); sfx('puff', { x: kp.x }); }
+        if (ht > 2.1) { mode = 'play'; modeT = 0; }
+      }
+    }
+    /* ---------- egg: waggle left-right in place and it chases its own tail ---------- */
+    const egg = { last: 0, rev: [], f0: 1 };
+    function waggle(dir) {
+      if (dir && dir !== egg.last) { if (egg.last && Math.abs(rig.vx) < 40 && !P.on && !rig.air) egg.rev.push(T); egg.last = dir; }
+      egg.rev = egg.rev.filter(t => T - t < 2.4);
+      if (egg.rev.length >= 5) { egg.rev = []; return true; }
+      return false;
+    }
+    function chase(dt, c, t) {
+      c.limp = rig.hipGear < 1 ? 1 : 0; c.vx = 0; c.accel = 600; c.earFlick = false;
+      if (t < 2.6) {
+        // round and round: a pivot every 0.42 s, eyes locked on the tail tip
+        c.face = Math.floor(t / .42) % 2 ? -egg.f0 : egg.f0;
+        Object.assign(c, {
+          headYaw: -.7, lookX: -1, lookY: -.3, headFwd: -5, crouch: .25, earL: -10, earR: -8, pupil: 1, lid: 0, mouth: .4,
+          tailBase: 150, tailCurve: -6, wagAmp: 12, wagFreq: 2.6, wagTip: 20, tipFreq: 5
+        });
+      }
+      if (once('catch', t >= 2.6)) { rig.jump(300, 0); starLog = makeStarLog(); EGGS.mark('chase'); console.log('%cTAIL CAUGHT · logged by Claude Opus 5.5 (claude-opus-5-5) in Claude Code', 'color:#5fd0ff'); }
+      if (t > 2.6 && rig.air) { c.tuck = .6; c.claws = 1; c.headYaw = -.75; c.lookX = -1; }
+      if (t > 2.6 && !rig.air) { Object.assign(c, { happy: 1, mouth: 1.2, tailBase: 118, tailCurve: -4, tailTip: -12, wagAmp: 6, wagFreq: 3, crouch: .1 }); }
+      if (once('caught', t > 2.75 && !rig.air)) { rig.tailFlick(5); FX.dust(rig.x, GY, 6, .6); shake = Math.max(shake, 2); }
+      if (t > 3.9) { mode = 'play'; modeT = 0; flags.delete('caught'); }
+    }
+    /* the stars outside spell it out: the title as a dot-matrix of round stars on
+       a fixed grid (sampled at device resolution, letter-spaced so dots never
+       merge), then the signature typed out under it as crisp glowing text */
+    const SIG = 'logged by Claude Opus 5.5 (claude-opus-5-5) in Claude Code';
+    let starLog = null;
+    function makeStarLog() {
+      const h = 56, k = Math.max(2, S), pitch = 2.8, o = document.createElement('canvas').getContext('2d', { willReadFrequently: true });
+      o.canvas.width = Math.ceil(W * k); o.canvas.height = Math.ceil(h * k);
+      o.scale(k, k); o.textAlign = 'center'; o.fillStyle = '#fff'; o.font = '600 38px Oswald,sans-serif';
+      if ('letterSpacing' in o) o.letterSpacing = '5px';
+      o.fillText('TAIL CAUGHT', W / 2, 44);
+      const d = o.getImageData(0, 0, o.canvas.width, o.canvas.height).data, cw = o.canvas.width, dots = [];
+      for (let y = pitch / 2; y < h; y += pitch)for (let x = pitch / 2; x < W; x += pitch) {
+        if (d[(Math.floor(y * k) * cw + Math.floor(x * k)) * 4 + 3] > 140) dots.push({ x, y, t0: Math.random(), tw: rnd(2, 6), ph: rnd(0, TAU) });
+      }
+      o.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.font = '500 13px Inter,sans-serif';
+      const xs = []; let acc = 0; for (const ch of SIG) { xs.push(acc); acc += ctx.measureText(ch).width; }
+      return { dots, xs, w: acc, t: 0 };
+    }
+    function drawStarLog(g, dt) {
+      if (!starLog) return;
+      const L = starLog; L.t += dt; if (L.t > 8.5) { starLog = null; return; }
+      const out = clamp((L.t - 6.4) / 1.2, 0, 1);
+      g.fillStyle = 'rgb(215,232,255)';
+      for (const p of L.dots) {
+        if (L.t < p.t0 * 1.2 || out > p.t0) continue;
+        g.globalAlpha = .78 + .22 * Math.sin(T * p.tw + p.ph);
+        g.beginPath(); g.arc(p.x, p.y + 4, 1.05, 0, TAU); g.fill();
+      }
+      // signature: one character per 30 ms after the title has formed
+      g.font = '500 13px Inter,sans-serif'; g.save(); g.shadowColor = 'rgba(120,190,255,.8)'; g.shadowBlur = 6;
+      const x0 = W / 2 - L.w / 2, y = 76;
+      for (let i = 0; i < SIG.length; i++) {
+        const a = clamp((L.t - 1.3 - i * .03) / .2, 0, 1) * (1 - out); if (a <= 0) continue;
+        g.globalAlpha = a; g.fillText(SIG[i], x0 + L.xs[i], y);
+      }
+      g.restore(); g.globalAlpha = 1;
+    }
+    /* the crate fell out from under its paws. it meant to do that. */
+    function oops(dt, c, dir, t) {
+      if (t > .7 && dir) { st.oops = null; return false; }
+      c.limp = rig.hipGear < 1 ? 1 : 0; c.vx = 0; c.accel = 500;
+      Object.assign(c, { lid: .5, lidTilt: .55, lookX: -.6, lookY: .1, headYaw: .15, earL: 24, earR: 18, mouth: -.15, earFlick: false, blink: false });
+      if (t > .95 && t < 2.7) {
+        // groom: paw up to the muzzle, three licks, eyes shut
+        const lt = t - .95, f = rig.facing;
+        Object.assign(c, { lid: .95, headPitch: -.28 + Math.sin(lt * 10) * .07, headDrop: 4, headTilt: .12, mouth: .2, earL: 6, earR: 4 });
+        c.manual.FN = { x: rig.x + f * (rig.hx + 3), y: rig.hy - 19, ang: 1.0, rate: 9 }; c.pawFront = 1;
+      }
+      if (t > 2.9) { st.oops = null; }
+      return true;
+    }
+    function control(dt, c) {
+      if (latch && !anyInput()) latch = false;
+      const dir = latch ? 0 : dirInput();
+      modeT += dt;
+      if (inHub()) { HUB.ctrl(dir, latch ? 0 : dirY()); return; }   // the deck plan reads its own input
+      if (mode === 'cover') {
+        slump(c, T);
+        if (!latch && anyInput()) beginOpening();      // the first step starts the opening, same as PLAY (and is the gesture that lets audio start)
+      } else if (mode === 'intro') {
+        slump(c, T); OPEN.ctrl(c, modeT);
+        if (dir) { AUDIO.unlock(); fadeTo(() => OPEN.finish(false)); }     // any step skips the opening (and is the first gesture: audio starts here)
+      } else if (mode === 'asleep') {
+        slump(c, T);
+        if (dir) { mode = 'wake'; modeT = 0; latch = true; AUDIO.unlock(); }   // the first walk input is the user gesture that starts audio
+      } else if (mode === 'wake') {
+        wake(dt, c, modeT);
+      } else if (mode === 'pounce') {
+        pounce(dt, c, modeT);
+      } else if (mode === 'chase') {
+        chase(dt, c, modeT);
+      } else if (mode === 'play') {
+        if (st.oops != null && oops(dt, c, dir, st.oops += dt)) return;
+        if (room.id === 'aft-hold' && waggle(dir)) { mode = 'chase'; modeT = 0; egg.f0 = -rig.facing; flags.delete('catch'); return; }
+        walk(dt, c, dir);
+        if (pounceReady()) { mode = 'pounce'; modeT = 0; st.pk = {}; endPush(); return; }
+        // reset tile: front paws on it, facing it
+        const rs = room.reset;
+        if (rs && rig.facing < 0 && rig.x - 45 < rs.x + rs.w - 14 && (dir < 0 || !rig.bv) && GAL.intent(dir, -1) && OBS.intent(dir, -1)) { mode = 'rewind'; modeT = 0; run.rewinds++; sfx('rewind'); fadeTo(() => { resetRoom(); mode = 'play'; }); }   // GAL.intent: galley drift is not a step onto REWIND
+        // exit hatch
+        const ex = room.exit;
+        if (ex && rig.x > ex.x + 64 && (dir > 0 || !rig.bv) && GAL.intent(dir, 1) && OBS.intent(dir, 1)) { mode = 'exit'; modeT = 0; fadeTo(() => { if (HUB.hasNew()) { mode = 'card'; modeT = 0; sfx('card'); } else HUB.enter(room.id); }); }   // GAL.intent: galley drift is not a step through the hatch
+      } else if (mode === 'rewind') {
+        c.vx = 0; c.keySpin = -14; c.lid = .4; c.limp = rig.hipGear < 1 ? 1 : 0;
+      } else if (mode === 'exit') {
+        c.vx = 105; c.face = 1;
+      } else if (mode === 'card') {
+        if (modeT > 2.8 && fadeDir === 0) fadeTo(() => HUB.enter(room.id));     // the card is the beat between the hold and the deck plan
+      }
+    }
+
+    /* =====================================================================
+       SERVICE CART: settings, the movement-only way (jam mods: "the character
+       moves to select"). A rail cart follows catbot along the back of the deck
+       and parks on clear floor nearby whenever it stops. Its floor buttons are
+       pressed by standing still on one until the ring fills, so walking over
+       them never presses anything.
+       ===================================================================== */
+    const GAME = { totalParts: 8 };                    // hub.js overwrites this with its slot count (DECK.slots.length). The yarn coil counts but is never listed.
+    /* EGGS: which easter eggs this player has found. Silent on purpose: nothing during play says it is
+       counting, so the all-eggs bonus is a surprise at the end (the credits read EGGS.summary()). Kept in
+       localStorage (catbot.eggs) so it spans sessions; dev entries with &test or &verify never count, so
+       the bots and live tests can't find eggs for a player. Each egg calls EGGS.mark(id) where it fires.
+       Added by Claude Opus 5.5 in Claude Cowork, 2026-10-07 (Tasha's idea). */
+    const EGGS = (() => {
+      const LIST = [
+        { id: 'chase', room: 'Aft Hold', what: 'Caught its own tail', by: 'Claude Opus 5.5' },
+        { id: 'footnote', room: 'Deck plan', what: 'Sat on the blueprint', by: 'Claude Sonnet 5.5' },
+        { id: 'eyes', room: 'Berthing', what: 'Something in the drawer looked back', by: 'Mistral Medium 3.5 (Vibe), eyes by Claude Sonnet 5.5' },
+        { id: 'doodle', room: 'Berthing', what: 'Bored the laser into doodling', by: 'Claude Opus 5.5' },
+        { id: 'produce', room: 'Galley', what: 'Inspected the rejected produce', by: 'GPT-6.1-Sol (Codex)' },
+        { id: 'raked', room: 'Sanitation', what: 'Sat in the sand until the rake wrote back', by: 'Claude Opus 5.5 (Cowork), planned with Claude Sonnet 5.5' },
+        { id: 'tick', room: 'Engine Bay', what: 'Rode the belt backwards; the clock went with you', by: 'Claude Opus 5.5 (Cowork)', nod: true },
+        { id: 'locker', room: 'Observation', what: 'The locker went back further than it should', by: 'Claude Opus 5.5 (Cowork)', nod: true },
+        { id: 'creeper', room: 'Hydroponics', what: 'The fern only moved while you weren\'t looking', by: 'Claude Opus 5.5 (Cowork)', nod: true },
+        { id: 'brainstorm', room: 'Aft Hold', what: 'Daydreamed the rooms at the porthole', by: 'Claude Sonnet 5.5 in Claude chat (the brainstorming); drawn by Claude Opus 5.5' }
+      ];
+      const testing = () => typeof location !== 'undefined' && /[#&](test|verify|mcp)(?:&|$)/.test(location.hash);   // mcp: webmcp.js staging
+      let found; try { found = new Set(JSON.parse(localStorage.getItem('catbot.eggs') || '[]')); } catch (e) { found = new Set(); }
+      return {
+        LIST,
+        mark(id) { if (testing() || found.has(id) || !LIST.some(e => e.id === id)) return; found.add(id); try { localStorage.setItem('catbot.eggs', JSON.stringify([...found])); } catch (e) { } },
+        has: id => found.has(id),
+        count: () => LIST.filter(e => found.has(e.id)).length,
+        all: () => LIST.every(e => found.has(e.id)),
+        summary: () => ({ found: LIST.filter(e => found.has(e.id)).length, total: LIST.length, all: LIST.every(e => found.has(e.id)), eggs: LIST.map(e => ({ ...e, found: found.has(e.id) })) }),
+        forget() { found.clear(); try { localStorage.removeItem('catbot.eggs'); } catch (e) { } }
+      };
+    })();
+    const settings = (() => { const d = { sound: true, calm: false, kit: false }; try { return Object.assign(d, JSON.parse(localStorage.getItem('catbot.settings') || '{}')); } catch (e) { return d; } })();
+    function saveSettings() { try { localStorage.setItem('catbot.settings', JSON.stringify(settings)); } catch (e) { } }
+    const calmK = () => settings.calm ? .2 : 1;           // screen shake + flashes multiplier
+    /* sound (audio.js) is optional: if the file failed to load, every call below becomes a no-op and the game runs as it always did */
+    if (typeof AUDIO === 'undefined') { window.AUDIO = { sfx() { }, start() { }, stop() { }, enable() { }, unlock() { }, frame() { }, muffle() { }, duck() { }, stopAll() { }, active() { return false; }, music: { setLayers() { } } }; window.sfx = () => { }; }
+    AUDIO.enable(settings.sound);                 // sound follows the trolley's SOUND / MUTE floor button
+    /* engine.js (room 2) replaces this stub when it loads; until then (room 1 boots first), or if it fails to load, every hook is a no-op */
+    window.ENG = { reset() { }, update() { }, seat() { }, tread() { return false; }, audio() { }, wall() { return false; }, deck() { }, front() { }, on() { return false; }, blocks() { return []; }, camY() { return 0; }, pickUp() { } };
+    window.BERTH = { reset() { }, update() { }, audio() { }, deck() { }, front() { } };
+    window.GAL = { reset() { }, update() { }, after() { }, blocks() { return []; }, slipAt() { return room?.floorSlip || 0; }, intent() { return true; }, strain() { return false; }, camY() { return 0; }, kitShift() { return 0; }, audio() { }, wall() { return false; }, deck() { }, front() { } };
+    window.OBS = { reset() { }, update() { }, after() { }, intent() { return true; }, camY() { return 0; }, ev() { return false; }, audio() { }, wall() { return false; }, deck() { }, front() { } };   // observation.js (room 5) replaces it
+    window.SAN = { reset() { }, update() { }, ev() { return false; }, blocks() { return []; }, audio() { }, deck() { }, front() { } };   // sanitation.js (room 6) replaces it
+    window.HYD = { reset() { }, update() { }, ev() { return false; }, blocks() { return []; }, audio() { }, deck() { }, front() { } };   // hydroponics.js (room 7) replaces it
+    window.EGGX = { reset() { }, update() { }, deck() { }, front() { }, hush() { return false; } };   // eggs.js (the eggs for rooms without one) replaces it
+    window.CKP = { reset() { }, update() { }, blocks() { return []; }, strain() { return false; }, look() { return null; }, click() { return false; }, clickable() { return false; }, audio() { }, deck() { }, front() { }, overlay() { } };   // cockpit.js (room 8, the finale) replaces it
+    // lets sfx({x}) pan against whatever camera is showing: the deck plan's own (HUB.cam, centre + zoom), else the room's (zoom is 1 outside the opening's close-up)
+    AUDIO.view = () => inHub() ? ({ x: HUB.cam.x - W / (2 * HUB.cam.z), w: W / HUB.cam.z }) : ({ x: camX, w: W / zoom });
+    { const f = FX.flash; FX.flash = (x, y, p, rgb) => f(x, y, p * (settings.calm ? .35 : 1), rgb); }
+    const PADS = [{ id: 'kit', dx: -72 }, { id: 'sound', dx: 0 }, { id: 'calm', dx: 72 }], CART_HALF = 100;
+    const run = { t: 0, rewinds: 0 };
+    const ui = { o: 0, peek: 0, flip: 0, lastParts: 0 };
+    function newCart() { return { x: null, tx: null, wheel: 0, pads: PADS.map(p => ({ ...p, charge: 0, armed: true, blink: 0 })) }; }
+    function cartFree(cx) {
+      const R = room, a = cx - CART_HALF, b = cx + CART_HALF;
+      if (a < (R.reset ? R.reset.x + R.reset.w + 60 : 16) ||   // room to stand on the end button without the REWIND tile catching a paw
+        b > (R.exit ? R.exit.x - 8 : R.w - 16)) return false;
+      const occ = [];
+      if (R.plate) occ.push([R.plate.x - 6, R.plate.x + R.plate.w + 24]);
+      const cr = st.crate; if (cr && cr.st !== 'set') occ.push([cr.x - 6, cr.x + cr.w + 6]);
+      for (const z of R.noCart || []) occ.push(z);    // engine.js: belts and steam vents, plus a margin
+      if (R.gate) occ.push([R.gate.x - 14, R.gate.x + R.gate.w + 14]);
+      if (R.part && !st.got) occ.push([R.part.x - 30, R.part.x + 30]);
+      return !occ.some(([u, v]) => b > u && a < v);
+    }
+    function updCart(dt, dir) {
+      const k = st.cart;
+      for (const p of k.pads) p.blink = Math.max(0, p.blink - dt * 2);
+      // follow: once catbot has stood still a moment, roll to clear floor in view
+      const seen = k.x != null && k.x > camX - 40 && k.x < camX + W + 40;
+      if (mode === 'play' && !dir && idle > 1.2 && !rig.fl && !rig.air && k.tx == null && !EGGX.hush() && (!seen || !cartFree(k.x))) {   // EGGX.hush: not while catbot daydreams at the aft hold's porthole   // !rig.fl: it rides the deck's wall rail, not up to the platforms
+        const lo = camX + CART_HALF + 12, hi = camX + W - CART_HALF - 12;
+        // prefer just behind catbot, then ahead, then right where it stands (it rides the back rail)
+        const offs = []; for (let d = 140; d <= 440; d += 20)offs.push(-rig.facing * d); for (let d = 140; d <= 440; d += 20)offs.push(rig.facing * d);
+        for (let d = 0; d < 140; d += 20)offs.push(-rig.facing * d, rig.facing * d);
+        const clear = cx => PADS.every(p => Math.abs(cx + p.dx - rig.x) > 34);   // first choice: no button right under it
+        for (const pass of [true, false]) { for (const o of offs) { const cx = rig.x + o; if (cx >= lo && cx <= hi && cartFree(cx) && (!pass || clear(cx))) { k.tx = cx; break; } } if (k.tx != null) break; }
+        if (k.tx != null && k.x == null) k.x = k.tx < rig.x ? camX - CART_HALF - 30 : camX + W + CART_HALF + 30;
+      }
+      if (k.tx != null) {
+        const d = k.tx - k.x, v = Math.sign(d) * Math.min(300, Math.abs(d) * 4 + 30);
+        k.x += v * dt; k.wheel += v * dt / 6;
+        if (Math.abs(k.tx - k.x) < 1.5) {
+          k.x = k.tx; k.tx = null; caption('cart');
+          for (const p of k.pads) if (Math.abs(k.x + p.dx - rig.x) < 24) p.armed = false;   // arrived under a cat standing still: no free press
+        }
+        return;
+      }
+      if (k.x == null || mode !== 'play' || P.on) return;
+      for (const p of k.pads) {
+        const px = k.x + p.dx, on = Math.abs(rig.x - px) < 24 && Math.abs(rig.vx + rig.bv) < 25 && !rig.air && !rig.fl;   // standing still on the floor, not riding a belt
+        if (Math.abs(rig.vx) > 30 || Math.abs(rig.x - px) >= 24) p.armed = true;   // any walking re-arms it
+        if (!on) { p.charge = Math.max(0, p.charge - dt * 3); continue; }
+        if (!p.armed) continue;
+        p.charge += dt / .7;
+        if (p.charge >= 1) {
+          p.charge = 0; p.armed = false; p.blink = 1;
+          if (p.id === 'sound') {
+            // the press is heard either way: turning on enables first, turning off clicks first (master ramps down over ~30 ms)
+            if (!settings.sound) { settings.sound = true; AUDIO.enable(true); sfx('pad', { x: px }); }
+            else { sfx('pad', { x: px }); settings.sound = false; AUDIO.enable(false); }
+          } else {
+            sfx('pad', { x: px });
+            if (p.id === 'kit') settings.kit = !settings.kit; else settings.calm = !settings.calm;
+          }
+          saveSettings();
+          FX.sparks(px, GY - 10, 4, 0, .3); rig.earL.vel -= 10; rig.earR.vel -= 9; rig.hOy.vel -= 25;
+        }
+      }
+    }
+    /* ---- cart + buttons (world, back of the deck, behind catbot) ---- */
+    function iconKit(g, x, y, c) { g.fillStyle = c; g.fillRect(x - 9, y - 4, 18, 11); g.fillRect(x - 5, y - 8, 10, 3); g.fillStyle = 'rgba(0,0,0,.35)'; g.fillRect(x - 9, y, 18, 1.5); }
+    function iconSound(g, x, y, c, on) {
+      g.fillStyle = c; g.beginPath(); g.moveTo(x - 9, y - 3); g.lineTo(x - 5, y - 3); g.lineTo(x, y - 8); g.lineTo(x, y + 8); g.lineTo(x - 5, y + 3); g.lineTo(x - 9, y + 3); g.closePath(); g.fill();
+      g.strokeStyle = c; g.lineWidth = 1.6;
+      if (on) { g.beginPath(); g.arc(x + 1, y, 5, -.9, .9); g.stroke(); g.beginPath(); g.arc(x + 1, y, 9, -.9, .9); g.stroke(); }
+      else { g.beginPath(); g.moveTo(x + 3, y - 4); g.lineTo(x + 10, y + 4); g.moveTo(x + 10, y - 4); g.lineTo(x + 3, y + 4); g.stroke(); }
+    }
+    function iconShake(g, x, y, c, calm) {
+      g.strokeStyle = c; g.lineWidth = 1.8; g.beginPath();
+      if (calm) { g.moveTo(x - 9, y); g.lineTo(x + 9, y); } else { g.moveTo(x - 9, y); for (let i = 1; i <= 6; i++)g.lineTo(x - 9 + i * 3, y + (i % 2 ? -5 : 5)); }
+      g.stroke(); g.beginPath(); g.moveTo(x - 9, y + 8); g.lineTo(x + 9, y + 8); g.lineWidth = 1; g.stroke();
+    }
+    function padLabel(id) { return id === 'kit' ? (installed.size ? 'KIT' : 'TOYS') : id === 'sound' ? (settings.sound ? 'SOUND' : 'MUTE') : (settings.calm ? 'STEADY' : 'SHAKE'); }
+    function drawCart(g, t) {
+      const k = st.cart; if (k.x == null) return;
+      const x = k.x, bob = k.tx != null ? Math.sin(t * 30) * .6 : 0;
+      // buttons on the deck
+      for (const p of k.pads) {
+        const px = x + p.dx, py = GY - 11, lit = p.charge > 0 || p.blink > 0;
+        g.save(); g.translate(px, py); g.scale(1, .32);
+        g.beginPath(); g.arc(0, 0, 22, 0, TAU); g.fillStyle = '#2a2e35'; g.fill(); g.lineWidth = 3; g.strokeStyle = '#8c5b22'; g.stroke();
+        g.beginPath(); g.arc(0, 0, 16, 0, TAU); g.fillStyle = lit ? '#ffd27a' : '#d29f4a'; g.fill();
+        if (p.charge > 0) { g.beginPath(); g.arc(0, 0, 22, -Math.PI / 2, -Math.PI / 2 + TAU * p.charge); g.lineWidth = 5; g.strokeStyle = '#7dffb0'; g.stroke(); }
+        g.restore();
+        if (p.blink > 0) { g.save(); g.globalCompositeOperation = 'lighter'; softEllipse(g, px, py, 34, 12, .5 * p.blink, '255,220,140'); g.restore(); }
+      }
+      // the trolley: hangs from the wall rail, one icon over each floor button,
+      // up above catbot's ears so whatever it stands on stays readable
+      const top = GY - 170 + bob;
+      for (const wx of [x - 78, x + 78]) {
+        g.save(); g.translate(wx, GY - 176); g.rotate(k.wheel); g.beginPath(); g.arc(0, 0, 4.5, 0, TAU); g.fillStyle = '#3b3f45'; g.fill(); g.strokeStyle = OL; g.lineWidth = 1; g.stroke(); g.fillRect(-.6, -4.5, 1.2, 9); g.restore();
+        g.fillStyle = '#3b3f45'; g.fillRect(wx - 1.5, GY - 176, 3, 8 + bob);
+      }
+      const gr = g.createLinearGradient(0, top, 0, top + 36); gr.addColorStop(0, '#ffe3a0'); gr.addColorStop(.4, '#d29f4a'); gr.addColorStop(1, '#8c5b22');
+      g.fillStyle = gr; g.beginPath(); g.roundRect(x - CART_HALF, top, CART_HALF * 2, 36, 5); g.fill(); g.strokeStyle = OL; g.lineWidth = 1.4; g.stroke();
+      for (const p of k.pads) {
+        const px = x + p.dx, hot = p.charge > 0 || p.blink > 0, c = hot ? '#ffe3a0' : '#e6b25a';
+        g.fillStyle = hot ? '#3a2410' : '#2a1a0c'; g.beginPath(); g.roundRect(px - 24, top + 4, 48, 28, 3); g.fill();
+        if (p.id === 'kit') iconKit(g, px, top + 13, c); else if (p.id === 'sound') iconSound(g, px, top + 13, c, settings.sound); else iconShake(g, px, top + 12, c, settings.calm);
+        g.font = '600 8px Oswald,sans-serif'; g.textAlign = 'center'; g.fillStyle = 'rgba(239,230,210,.85)'; g.fillText(padLabel(p.id), px, top + 29); g.textAlign = 'left';
+        // a faint line down to its button
+        g.strokeStyle = `rgba(214,165,78,${hot ? .35 : .12})`; g.setLineDash([2, 4]); g.beginPath(); g.moveTo(px, top + 37); g.lineTo(px, GY - 16); g.stroke(); g.setLineDash([]);
+      }
+    }
+    /* ---- the toolbox panel (screen space, top right) ---- */
+    function fmtTime(s) { s = Math.floor(s); return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`; }
+    function drawKit(g, dt) {
+      if (!['play', 'pounce', 'oops', 'chase', 'rewind', 'exit'].includes(mode)) { ui.o = 0; return; }
+      if (installed.size > ui.lastParts) { ui.peek = 3.2; if (ui.lastParts === 0) ui.flip = 1; }
+      ui.lastParts = installed.size; ui.peek = Math.max(0, ui.peek - dt); ui.flip = Math.max(0, ui.flip - dt * 1.6);
+      ui.o = damp(ui.o, settings.kit || ui.peek > 0 ? 1 : 0, 9, dt);
+      const pw = 232, x0 = W - pw - 12, y0 = 12, rev = installed.size > 0;
+      // tray (slides out below the lid)
+      if (ui.o > .02) {
+        const th = 124 * ui.o;
+        g.save(); g.beginPath(); g.rect(x0, y0 + 34, pw, th); g.clip();
+        g.fillStyle = 'rgba(28,22,14,.92)'; g.fillRect(x0 + 4, y0 + 34, pw - 8, 124); g.strokeStyle = '#8c5b22'; g.lineWidth = 1.2; g.strokeRect(x0 + 4, y0 + 34, pw - 8, 124);
+        const lx = x0 + 14, ty = y0 + 34;
+        g.font = '600 9px Oswald,sans-serif'; g.fillStyle = 'rgba(214,165,78,.75)'; g.fillText(rev ? 'PARTS IN THIS ROOM' : 'TOYS IN THIS ROOM', lx, ty + 15);
+        // this room's parts only: silhouette until found, the real thing after
+        const pts = room.part ? [room.part] : [];
+        pts.forEach((pt, i) => {
+          const sx = lx + 18 + i * 44, sy = ty + 40, got = installed.has(pt.id);
+          g.fillStyle = 'rgba(0,0,0,.35)'; g.fillRect(sx - 17, sy - 17, 34, 34); g.strokeStyle = 'rgba(214,165,78,.35)'; g.strokeRect(sx - 17, sy - 17, 34, 34);
+          if (got) { g.save(); g.translate(sx, sy); g.scale(1, -1); disc(g, 0, 0, 12, NEAR, T * .4, false); g.restore(); }
+          else { g.save(); g.translate(sx, sy); g.fillStyle = 'rgba(0,0,0,.75)'; g.beginPath(); g.arc(0, 0, 12, 0, TAU); g.fill(); g.strokeStyle = 'rgba(239,230,210,.25)'; g.lineWidth = 1; g.stroke(); gear(g, 0, 0, 6.7, 9, 0, 'rgba(0,0,0,.6)'); g.restore(); }
+          g.font = '600 9px Oswald,sans-serif'; g.textAlign = 'center'; g.fillStyle = 'rgba(239,230,210,.7)'; g.fillText(got ? (pt.name || pt.id.toUpperCase()) : '?', sx, sy + 28); g.textAlign = 'left';
+        });
+        // repair status: appears with the reveal, not before
+        const rx = x0 + 92;
+        if (rev) {
+          const f = installed.size / GAME.totalParts;
+          g.font = '600 9px Oswald,sans-serif'; g.fillStyle = 'rgba(214,165,78,.75)'; g.fillText('REPAIR', rx, ty + 15);
+          g.fillStyle = 'rgba(0,0,0,.45)'; g.fillRect(rx, ty + 22, 124, 10);
+          const bg = g.createLinearGradient(rx, 0, rx + 124, 0); bg.addColorStop(0, '#5fd0ff'); bg.addColorStop(1, '#7dffb0'); g.fillStyle = bg; g.fillRect(rx, ty + 22, 124 * f, 10);
+          g.strokeStyle = 'rgba(214,165,78,.5)'; g.strokeRect(rx, ty + 22, 124, 10);
+          g.font = '600 12px Oswald,sans-serif'; g.fillStyle = '#efe6d2'; g.fillText(`${Math.round(f * 100)}%`, rx, ty + 48);
+          g.font = '400 10px Inter,sans-serif'; g.fillStyle = 'rgba(239,230,210,.6)'; g.fillText(`${installed.size} of ${GAME.totalParts} parts`, rx + 34, ty + 48);
+        }
+        // stats
+        g.strokeStyle = 'rgba(214,165,78,.2)'; g.beginPath(); g.moveTo(lx, ty + 78); g.lineTo(x0 + pw - 14, ty + 78); g.stroke();
+        g.font = '400 10px Inter,sans-serif'; g.fillStyle = 'rgba(239,230,210,.75)';
+        g.fillText(`Room ${roomI + 1} · ${room.name}`, lx, ty + 93);
+        g.textAlign = 'right'; g.fillText(`${fmtTime(run.t)}   ·   ${run.rewinds} rewind${run.rewinds === 1 ? '' : 's'}`, x0 + pw - 14, ty + 93); g.textAlign = 'left';
+        g.fillStyle = 'rgba(239,230,210,.45)';
+        g.fillText(`Sound ${settings.sound ? 'on' : 'off'} · Shake ${settings.calm ? 'reduced' : 'on'}`, lx, ty + 112);
+        g.restore();
+      }
+      // lid: label flips from TOYS to REPAIR KIT when the hip goes in
+      const lg = g.createLinearGradient(0, y0, 0, y0 + 34); lg.addColorStop(0, '#ffe3a0'); lg.addColorStop(.45, '#d29f4a'); lg.addColorStop(1, '#8c5b22');
+      g.fillStyle = '#3b3f45'; g.fillRect(x0 + pw / 2 - 22, y0 - 2, 44, 6);
+      g.fillStyle = lg; g.beginPath(); g.roundRect(x0, y0 + 3, pw, 31, 5); g.fill(); g.strokeStyle = OL; g.lineWidth = 1.5; g.stroke();
+      g.fillStyle = 'rgba(74,46,16,.5)'; for (const bx of [x0 + 10, x0 + pw - 10]) { g.beginPath(); g.arc(bx, y0 + 18, 2, 0, TAU); g.fill(); }
+      const fl = ui.flip > 0 ? Math.abs(Math.cos(Math.PI * (1 - ui.flip))) : 1, label = (ui.flip > .5 || !rev) ? 'TOYS' : 'REPAIR KIT';
+      g.save(); g.translate(x0 + pw / 2, y0 + 18); g.scale(1, fl);
+      g.fillStyle = '#2a1a0c'; g.beginPath(); g.roundRect(-46, -9, 92, 18, 3); g.fill();
+      g.font = '600 12px Oswald,sans-serif'; g.textAlign = 'center'; g.fillStyle = '#ffe3a0'; g.fillText(label, 0, 4.5); g.restore(); g.textAlign = 'left';
+    }
+
+    /* =====================================================================
+       EVENTS -> particles, and sound
+       Each rig event feeds two consumers: the FX below and sfx() (audio.js,
+       whose table is keyed by the same names; a kind with no sound is ignored).
+       'step' is the dust cue and only fires at trot speed (or with stepDust), so
+       footsteps are sounded from 'foot', which fires on every plant.
+       ===================================================================== */
+    function handleRigEvents() {
+      for (const e of rig.events) {
+        if (!OBS.ev(e) && !SAN.ev(e) && !HYD.ev(e)) sfx(e.k, { mag: e.mag, x: e.x, tread: e.k === 'foot' && ENG.tread(e.x) });   // tread: the foot came down on a belt. OBS.ev: a hushed low-gravity landing instead (and less dust)
+        if (e.k === 'land') { const p = clamp(e.mag / 420, .4, 1.6); FX.dust(e.x - 30, e.y, 6, p, -1); FX.dust(e.x + 30, e.y, 6, p, 1); FX.ring(e.x, e.y, p); shake = Math.max(shake, Math.min(6, e.mag / 110)); }
+        else if (e.k === 'thud') { const p = clamp(e.mag / 260, .3, 1.3); FX.dust(e.x, e.y, 9, p); FX.ring(e.x, e.y, p * .6); shake = Math.max(shake, Math.min(5, e.mag / 70)); }
+        else if (e.k === 'headthud') { FX.dust(e.x, e.y, 6, .7); shake = Math.max(shake, Math.min(4, e.mag / 70)); }
+        else if (e.k === 'step') { FX.dust(e.x, e.y, 2, .45); }
+        else if (e.k === 'scuff') { FX.dust(e.x, e.y, 1, .3, -rig.facing); }
+        else if (e.k === 'grind') { FX.sparks(e.x, e.y, 3, -rig.facing, .35); shake = Math.max(shake, .7); }
+      }
+      rig.events.length = 0;
+    }
+    /* Sound's per-frame feed, called once per tick after the sim. One-shots come
+       from events at the moment things happen (above, and the sfx() lines at each
+       mechanic). Loops are *states*, so they read state here: start() is
+       idempotent and doubles as "set params", stop() fades out. Mute needs no
+       branch here: audio.js drops everything while settings.sound is off. */
+    function audioFrame(dt) {
+      const inRoom = !inHub();
+      // leaning on the crate: pitch and level ride the same P.str that bends the cat; slide adds grit once the crate moves
+      if (!GAL.strain() && !CKP.strain()) {         // galley.js (and cockpit.js, reeling the yarn) own the shared strain loop while in their rooms
+        if (inRoom && P.on) AUDIO.start('strain', { amt: P.str, slide: st.crate.v / 80 }); else AUDIO.stop('strain');
+      }
+      // ice: hiss scaled by how slippery the floor is and how fast catbot is going
+      const ice = inRoom ? GAL.slipAt(rig.x) * Math.min(1, Math.abs(rig.vx) / 165) : 0;
+      if (ice > .02 && !rig.air && (mode === 'play' || mode === 'exit')) AUDIO.start('ice', { amt: ice }); else AUDIO.stop('ice');
+      // ambient clockwork: its rate follows rig energy. Silent on the cover and muted on the card. In the opening it belongs to the cue sheet:
+      // it begins with the click at 35.6 and stops when the key stops, then this takes over again.
+      const quiet = mode === 'cover' || mode === 'card' || (mode === 'intro' && !OPEN.ticking());
+      if (!quiet) AUDIO.start('tick', { energy: rig.E }); else AUDIO.stop('tick');
+      ENG.audio(dt);                              // engine.js: belt motors and the far rumble (stops itself outside the bay)
+      BERTH.audio(dt);                              // berthing.js: lamp hum loop
+      GAL.audio(dt);                               // galley.js: weight, scrape and sizzle
+      OBS.audio(dt);                               // observation.js: the glass hum
+      SAN.audio(dt);                               // sanitation.js: the drum, once it turns
+      HYD.audio(dt);                               // hydroponics.js: wheel, pump, water
+      CKP.audio(dt);                               // cockpit.js: the lamp's hum
+      AUDIO.frame(dt);
+    }
+
+    /* =====================================================================
+       DRAW: room
+       ===================================================================== */
+    function camTarget() { const look = CKP.look(); return clamp(look ?? (rig.x - W * .42 + rig.facing * 30), 0, room.w - W); }   // CKP.look: the cockpit holds the nose in view while the yarn comes in
+    const STARS = Array.from({ length: 26 }, () => [rnd(-1, 1), rnd(-1, 1), rnd(.4, 1.3)]);
+    function drawRoom(g, t) {
+      const R = room, x0 = camX - 4, x1 = camX + W + 4;
+      if (!ENG.wall(g, t) && !GAL.wall(g, t) && !OBS.wall(g, t)) {          // room modules may supply their own cached back wall
+        // hull wall
+        const wall = g.createLinearGradient(0, 0, 0, GY - 24); wall.addColorStop(0, '#1d222b'); wall.addColorStop(1, '#363d4a');
+        g.fillStyle = wall; g.fillRect(x0, -90, x1 - x0, GY - 24 + 90);   // runs above the frame: the camera starts high when catbot drops in from the deck plan
+        g.strokeStyle = 'rgba(0,0,0,.25)'; g.lineWidth = 1;
+        for (const y of [64, 168]) { g.beginPath(); g.moveTo(x0, y); g.lineTo(x1, y); g.stroke(); }
+        for (let x = 60; x < R.w; x += 170) {
+          if (x < x0 - 20 || x > x1 + 20) continue;
+          g.fillStyle = 'rgba(0,0,0,.2)'; g.fillRect(x, 0, 16, GY - 30);
+          g.fillStyle = 'rgba(255,255,255,.05)'; g.fillRect(x, 0, 2, GY - 30);
+          g.fillStyle = 'rgba(0,0,0,.35)'; for (let y = 20; y < GY - 40; y += 26) { g.beginPath(); g.arc(x + 8, y, 1.6, 0, TAU); g.fill(); }
+        }
+        // stencilled livery: the title lives on the hull
+        g.save(); g.font = '600 72px Oswald,sans-serif'; g.fillStyle = 'rgba(214,165,78,.13)'; g.fillText('CATBOT', 330, 150);
+        g.font = '600 12px Oswald,sans-serif'; g.fillStyle = 'rgba(214,165,78,.2)'; g.fillText(`REPAIR UNIT  ·  ${R.name.toUpperCase()}  ·  KEEP WOUND`, 334, 172); g.restore();
+      }
+      // the service trolley's wall rail (room.rail: only these spans; default the whole wall)
+      for (const [a, b] of R.rail || [[x0, x1]]) {
+        const u = Math.max(a, x0), v = Math.min(b, x1); if (v <= u) continue;
+        g.fillStyle = '#4b5059'; g.fillRect(u, GY - 178, v - u, 4); g.fillStyle = 'rgba(0,0,0,.35)'; g.fillRect(u, GY - 174, v - u, 2);
+      }
+      // porthole + the light shaft it throws (upper-left light, same as the shadows)
+      if (R.port) {
+        const px = R.port.x, py = 118;
+        g.save(); g.beginPath(); g.arc(px, py, 30, 0, TAU); g.clip();
+        g.fillStyle = '#05070d'; g.fillRect(px - 30, py - 30, 60, 60);
+        g.fillStyle = 'rgba(220,235,255,.85)';
+        for (const [sx, sy, r] of STARS) { const xx = px + ((sx * 30 + t * 1.5) % 60 + 60) % 60 - 30; g.fillRect(xx, py + sy * 30, r, r); }
+        g.restore();
+        g.lineWidth = 7; g.strokeStyle = '#59606b'; g.beginPath(); g.arc(px, py, 33, 0, TAU); g.stroke();
+        g.lineWidth = 1.5; g.strokeStyle = OL; g.beginPath(); g.arc(px, py, 36.5, 0, TAU); g.stroke(); g.beginPath(); g.arc(px, py, 29.5, 0, TAU); g.stroke();
+        g.fillStyle = '#8d939b'; for (let i = 0; i < 8; i++) { const a = i / 8 * TAU; g.beginPath(); g.arc(px + Math.cos(a) * 33, py + Math.sin(a) * 33, 1.5, 0, TAU); g.fill(); }
+        g.save(); g.globalCompositeOperation = 'lighter';
+        const sh = g.createLinearGradient(px, py, px + 260, GY); sh.addColorStop(0, 'rgba(190,215,255,.09)'); sh.addColorStop(1, 'rgba(190,215,255,0)');
+        g.fillStyle = sh; g.beginPath(); g.moveTo(px - 24, py + 12); g.lineTo(px + 22, py - 14); g.lineTo(px + 330, GY + 30); g.lineTo(px + 150, GY + 30); g.closePath(); g.fill(); g.restore();
+      }
+      // baseboard, deck, deck cross-section (cutaway)
+      g.fillStyle = '#171b21'; g.fillRect(x0, GY - 32, x1 - x0, 8);
+      const dk = g.createLinearGradient(0, GY - 24, 0, GY + 2); dk.addColorStop(0, '#3a3f48'); dk.addColorStop(1, '#565c66');
+      g.fillStyle = dk; g.fillRect(x0, GY - 24, x1 - x0, 26);
+      g.strokeStyle = 'rgba(0,0,0,.3)'; g.beginPath(); g.moveTo(x0, GY - 13); g.lineTo(x1, GY - 13); g.stroke();
+      const cx = camX + W / 2;
+      for (let x = Math.floor(x0 / 64) * 64; x < x1; x += 64) { g.beginPath(); g.moveTo(x, GY - 24); g.lineTo(x + (x - cx) * .05, GY + 2); g.stroke(); }
+      g.fillStyle = 'rgba(255,255,255,.18)'; g.fillRect(x0, GY + 1, x1 - x0, 1.5);
+      g.fillStyle = '#4b5059'; g.fillRect(x0, GY + 2.5, x1 - x0, 8);
+      const xs = g.createLinearGradient(0, GY + 10, 0, H); xs.addColorStop(0, '#23272e'); xs.addColorStop(1, '#111419');
+      g.fillStyle = xs; g.fillRect(x0, GY + 10.5, x1 - x0, H - GY);
+      g.strokeStyle = 'rgba(255,255,255,.04)'; g.lineWidth = 3;
+      for (let x = Math.floor(x0 / 90) * 90; x < x1; x += 90) { g.beginPath(); g.moveTo(x, GY + 14); g.lineTo(x + 90, H); g.moveTo(x + 90, GY + 14); g.lineTo(x, H); g.stroke(); }
+      g.fillStyle = 'rgba(0,0,0,.45)'; for (let x = Math.floor(x0 / 30) * 30 + 15; x < x1; x += 30) { g.beginPath(); g.arc(x, GY + 6.5, 1.3, 0, TAU); g.fill(); }
+      ENG.deck(g, t);                              // engine.js: belts, vent grates, the steam behind catbot
+      BERTH.deck(g, t);                              // berthing.js: bunks and set dressing
+      GAL.deck(g, t);                               // galley.js: grease, trays and plate recesses
+      OBS.deck(g, t);                               // observation.js: the glass floor, gantries and spring plates
+      SAN.deck(g, t);                               // sanitation.js: sand, prints, grates, the rake, the drum
+      HYD.deck(g, t);                               // hydroponics.js: planters, troughs, rafts, the wheels
+      EGGX.deck(g, t);                              // eggs.js: the clock, the locker, the fern
+      CKP.deck(g, t);                               // cockpit.js: the corridor, the nose, the console, the view out
+      drawReset(g, t);
+      drawPit(g, t);
+      drawCable(g, t);
+      drawExitBack(g);
+      drawGateBack(g);
+      drawWreck(g, t);
+      drawCart(g, t);
+    }
+    function drawWreck(g, t) {
+      const P = NEAR, y = GY - 12;
+      for (const w of room.wreck || []) {
+        if (w.x < camX - 80 || w.x > camX + W / zoom + 80) continue;
+        g.save();
+        if (w.k === 'scorch') { const gr = g.createRadialGradient(w.x, GY - 90, 4, w.x, GY - 90, 70); gr.addColorStop(0, 'rgba(5,3,2,.55)'); gr.addColorStop(1, 'rgba(5,3,2,0)'); g.fillStyle = gr; g.fillRect(w.x - 70, GY - 160, 140, 140); }
+        else if (w.k === 'cable') {
+          // torn conduit from the ceiling, still live
+          const sw = Math.sin(t * .9) * 4, ex = w.x + 16 + sw, ey = GY - 150;
+          g.strokeStyle = '#0b0d11'; g.lineWidth = 4; g.beginPath(); g.moveTo(w.x, 0); g.quadraticCurveTo(w.x + 4, ey * .6, ex, ey); g.stroke();
+          g.strokeStyle = '#c3673d'; g.lineWidth = 1.2; g.beginPath(); g.moveTo(ex, ey); g.lineTo(ex - 3, ey + 6); g.moveTo(ex, ey); g.lineTo(ex + 4, ey + 5); g.stroke();
+          if (Math.random() < .025) { g.globalCompositeOperation = 'lighter'; softEllipse(g, ex, ey + 5, 16, 16, .8, '180,220,255'); }
+        }
+        else if (w.k === 'plate') { g.translate(w.x, GY - 20); g.rotate(w.a); g.fillStyle = '#6d747d'; g.beginPath(); g.moveTo(-22, -14); g.lineTo(20, -12); g.lineTo(24, 8); g.lineTo(6, 4); g.lineTo(-20, 10); g.closePath(); g.fill(); g.strokeStyle = OL; g.lineWidth = 1.2; g.stroke(); g.fillStyle = '#8d939b'; for (const [bx, by] of [[-16, -8], [14, -6], [-14, 5]]) { g.beginPath(); g.arc(bx, by, 1.4, 0, TAU); g.fill(); } }
+        else if (w.k === 'gear') { g.translate(w.x, y); g.scale(1, .38); gear(g, 0, 0, w.r, 9, w.x, P.b); }
+        else if (w.k === 'nut') { g.translate(w.x, y + 2); g.scale(1, .5); g.beginPath(); for (let i = 0; i < 6; i++) { const q = i / 6 * TAU; g.lineTo(Math.cos(q) * 3.5, Math.sin(q) * 3.5); } g.closePath(); g.fillStyle = '#9aa0a8'; g.fill(); g.strokeStyle = OL; g.lineWidth = .8; g.stroke(); }
+        else if (w.k === 'wrench') { g.translate(w.x, y); g.rotate(w.a); limb(g, -11, 0, 8, 0, 4, 4, STC(P), 1); g.beginPath(); g.arc(10, 0, 5, .6, TAU - .6); g.lineWidth = 3; g.strokeStyle = P.st; g.stroke(); }
+        else if (w.k === 'bin') { g.translate(w.x, GY - 8); g.rotate(-.08); g.fillStyle = '#3e434b'; g.fillRect(-26, -28, 52, 28); g.fillStyle = '#0b0d10'; g.fillRect(14, -24, 10, 20); g.strokeStyle = OL; g.lineWidth = 1.2; g.strokeRect(-26, -28, 52, 28); g.fillStyle = '#d6a54e'; g.fillRect(-20, -22, 14, 3); }
+        g.restore();
+      }
+    }
+    function drawReset(g, t) {
+      const rs = room.reset; if (!rs) return;
+      const near = clamp(1 - (rig.x - rs.x - rs.w) / 160, 0, 1), pul = .5 + .5 * Math.sin(t * 3);
+      const x = rs.x, w = rs.w;
+      g.beginPath(); g.moveTo(x + 4, GY - 23); g.lineTo(x + w - 4, GY - 23); g.lineTo(x + w, GY + 1); g.lineTo(x, GY + 1); g.closePath();
+      g.fillStyle = `rgb(${90 + 40 * near | 0},${70 + 26 * near | 0},${40 + 10 * near | 0})`; g.fill(); g.lineWidth = 1.2; g.strokeStyle = OL; g.stroke();
+      // hazard edge + the rewind glyph
+      g.save(); g.clip(); g.fillStyle = 'rgba(20,12,4,.45)'; for (let i = -2; i < w / 10 + 2; i++) { g.beginPath(); g.moveTo(x + i * 10, GY + 1); g.lineTo(x + i * 10 + 5, GY + 1); g.lineTo(x + i * 10 + 11, GY - 5); g.lineTo(x + i * 10 + 6, GY - 5); g.closePath(); g.fill(); } g.restore();
+      const gx = x + w / 2, gy = GY - 13, a = .35 + .4 * near + .15 * pul * near;
+      g.save(); g.translate(gx, gy); g.scale(1, .38);
+      g.strokeStyle = `rgba(255,214,140,${a})`; g.lineWidth = 4; g.beginPath(); g.arc(0, 0, 18, -.4 * Math.PI, 1.25 * Math.PI); g.stroke();
+      g.fillStyle = `rgba(255,214,140,${a})`; g.beginPath(); g.moveTo(-6, -22); g.lineTo(10, -18); g.lineTo(-2, -8); g.closePath(); g.fill(); g.restore();
+      if (near > .02) { g.save(); g.globalCompositeOperation = 'lighter'; softEllipse(g, gx, GY - 10, 70, 14, .12 * near * (.7 + .3 * pul), '255,190,90'); g.restore(); }
+      g.font = '600 9px Oswald,sans-serif'; g.fillStyle = 'rgba(214,165,78,.4)'; g.fillText('REWIND', x + w / 2 - 15, GY - 36);
+    }
+    function drawPit(g, t) {
+      const pl = room.plate; if (!pl) return;
+      const x = pl.x, w = pl.w, d = pl.depth;
+      const gr = g.createLinearGradient(0, GY - 24, 0, GY + d); gr.addColorStop(0, '#0a0c10'); gr.addColorStop(1, '#181b21');
+      g.fillStyle = gr; g.fillRect(x, GY - 24, w, d + 24);
+      g.strokeStyle = 'rgba(255,255,255,.05)'; g.lineWidth = 1; for (let y = GY; y < GY + d; y += 16) { g.beginPath(); g.moveTo(x, y); g.lineTo(x + w, y); g.stroke(); }
+      // the plate, and the lamp that reports it
+      const pd = st.plate * 3;
+      g.fillStyle = '#3b3f45'; g.fillRect(x + 2, GY + d - 1, w - 4, 6);
+      const pg = g.createLinearGradient(0, GY + d - 6 + pd, 0, GY + d + pd); pg.addColorStop(0, '#ffe3a0'); pg.addColorStop(1, '#8c5b22');
+      g.fillStyle = pg; g.fillRect(x + 6, GY + d - 6 + pd, w - 12, 6); g.strokeStyle = OL; g.strokeRect(x + 6, GY + d - 6 + pd, w - 12, 6);
+      // near lip + stopper wall (far side, hazard-striped)
+      g.fillStyle = '#4b5059'; g.fillRect(x - 4, GY - 24, 4, d + 30);
+      const sx = x + w;
+      g.fillStyle = '#5a616b'; g.fillRect(sx, GY - 24, 10, d + 30);
+      g.save(); g.beginPath(); g.rect(sx, GY + 12, 10, d - 8); g.clip();
+      for (let y = GY; y < GY + d + 20; y += 12) { g.fillStyle = '#d6a54e'; g.beginPath(); g.moveTo(sx, y); g.lineTo(sx + 10, y - 6); g.lineTo(sx + 10, y); g.lineTo(sx, y + 6); g.closePath(); g.fill(); }
+      g.restore(); g.strokeStyle = OL; g.lineWidth = 1; g.strokeRect(sx, GY - 24, 10, d + 30);
+      // lamp post on the deck past the stopper
+      const on = st.plate > .5;
+      g.fillStyle = '#2b2f36'; g.fillRect(sx + 14, GY - 44, 5, 22);
+      g.beginPath(); g.arc(sx + 16.5, GY - 48, 6, 0, TAU); g.fillStyle = on ? '#7dffb0' : '#ff5a4a'; g.fill(); g.strokeStyle = OL; g.stroke();
+      g.save(); g.globalCompositeOperation = 'lighter'; softEllipse(g, sx + 16.5, GY - 48, 22, 22, .35 + .1 * Math.sin(t * 4), on ? '110,255,170' : '255,90,70'); g.restore();
+    }
+    function drawCable(g, t) {
+      const pl = room.plate, gt = room.gate; if (!pl || !gt) return;
+      const a = pl.x + pl.w + 16, b = gt.x + gt.w / 2, y = GY + 30;
+      g.strokeStyle = '#0b0d11'; g.lineWidth = 4; g.beginPath(); g.moveTo(a, GY + 12); g.lineTo(a, y); g.lineTo(b, y); g.lineTo(b, GY + 12); g.stroke();
+      const live = st.cable; if (live <= 0) return;
+      g.strokeStyle = 'rgba(95,208,255,.55)'; g.lineWidth = 1.6; g.beginPath(); g.moveTo(a, y); g.lineTo(lerp(a, b, live), y); g.stroke();
+      g.save(); g.globalCompositeOperation = 'lighter';
+      for (let i = 0; i < 5; i++) { const u = ((t * .6 + i / 5) % 1) * live; softEllipse(g, lerp(a, b, u), y, 9, 4, .5, '95,208,255'); }
+      g.restore();
+    }
+    function drawGateBack(g) {
+      const gt = room.gate; if (!gt) return;
+      g.fillStyle = '#14171c'; g.fillRect(gt.x - 2, GY - 24, gt.w + 4, 24);   // slot in the deck
+    }
+    function drawGateFront(g) {
+      const gt = room.gate; if (!gt) return;
+      const x = gt.x, w = gt.w, o = clamp(st.gate.v, 0, 1.06), bot = GY - o * (GY - 58);
+      // panel
+      const gr = g.createLinearGradient(x, 0, x + w, 0); gr.addColorStop(0, '#7a818b'); gr.addColorStop(.3, '#565c66'); gr.addColorStop(1, '#2c3036');
+      g.fillStyle = gr; g.fillRect(x, -10, w, bot + 10);
+      g.strokeStyle = OL; g.lineWidth = 1.2; g.strokeRect(x, -10, w, bot + 10);
+      g.fillStyle = '#8d939b'; for (let y = bot - 14; y > 0; y -= 30) { g.beginPath(); g.arc(x + w / 2, y, 1.6, 0, TAU); g.fill(); }
+      g.save(); g.beginPath(); g.rect(x, bot - 22, w, 22); g.clip();
+      for (let i = 0; i < 5; i++) { g.fillStyle = i % 2 ? '#d6a54e' : '#22150a'; g.fillRect(x, bot - 22 + i * 5, w, 5); } g.restore();
+      // ceiling housing
+      g.fillStyle = '#2a2e35'; g.fillRect(x - 12, 0, w + 24, 52); g.strokeStyle = OL; g.strokeRect(x - 12, 0, w + 24, 52);
+      const on = st.cable >= 1; g.beginPath(); g.arc(x + w / 2, 42, 4, 0, TAU); g.fillStyle = on ? '#7dffb0' : '#ff5a4a'; g.fill();
+    }
+    function drawExitBack(g) {
+      const ex = room.exit; if (!ex) return;
+      const x = ex.x;
+      // corridor beyond the bulkhead
+      const cg = g.createLinearGradient(x, 0, x + 260, 0); cg.addColorStop(0, '#0c0e12'); cg.addColorStop(1, '#020203');
+      g.fillStyle = cg; g.fillRect(x + 40, 0, room.w - x, H);
+      g.fillStyle = '#0c0e12'; g.fillRect(x, GY - 150, 40, 150);
+    }
+    function drawExitFront(g, t) {
+      const ex = room.exit; if (!ex) return;
+      const x = ex.x, o = clamp(st.door.v, 0, 1.06), ready = !room.part || st.got;
+      // bulkhead above the doorway + the deck below it
+      const gr = g.createLinearGradient(x, 0, x + 40, 0); gr.addColorStop(0, '#6d747d'); gr.addColorStop(.3, '#4b5058'); gr.addColorStop(1, '#2a2e34');
+      g.fillStyle = gr; g.fillRect(x, 0, 40, GY - 150); g.fillRect(x, GY + 2, 40, H - GY);
+      g.strokeStyle = 'rgba(255,255,255,.3)'; g.beginPath(); g.moveTo(x + .5, 0); g.lineTo(x + .5, GY - 150); g.stroke();
+      for (let i = 0; i < 4; i++) { g.fillStyle = i % 2 ? '#d6a54e' : '#22150a'; g.fillRect(x, GY - 160 + i * 3, 40, 3); }
+      // hatch: slides up into the lintel
+      const top = GY - 150, bot = GY - o * 150;
+      if (bot > top + 1) {
+        g.fillStyle = '#3e434b'; g.fillRect(x + 10, top, 20, bot - top); g.strokeStyle = OL; g.lineWidth = 1; g.strokeRect(x + 10, top, 20, bot - top);
+        g.fillStyle = '#8d939b'; for (let y = bot - 12; y > top; y -= 24) { g.beginPath(); g.arc(x + 20, y, 1.5, 0, TAU); g.fill(); }
+      }
+      // status ring above the door
+      g.beginPath(); g.arc(x + 20, GY - 176, 7, 0, TAU); g.fillStyle = ready ? '#7dffb0' : '#ff5a4a'; g.fill(); g.strokeStyle = OL; g.lineWidth = 1.4; g.stroke();
+      g.save(); g.globalCompositeOperation = 'lighter'; softEllipse(g, x + 20, GY - 176, 26, 26, .3 + .1 * Math.sin(t * 3), ready ? '110,255,170' : '255,90,70'); g.restore();
+    }
+    /* soft horizontal contact band (a box sitting on the deck) */
+    function softBar(g, x0, x1, y, h, a) {
+      if (a <= .004) return;
+      const gr = g.createLinearGradient(0, y - h, 0, y + h); gr.addColorStop(0, 'rgba(8,5,3,0)'); gr.addColorStop(.5, `rgba(8,5,3,${a})`); gr.addColorStop(1, 'rgba(8,5,3,0)');
+      g.fillStyle = gr; g.fillRect(x0, y - h, x1 - x0, h * 2);
+      softEllipse(g, x0, y, h * 2, h, a * .8); softEllipse(g, x1, y, h * 2, h, a * .8);
+    }
+    /* crate: its mass presses a hard dark line into the deck. Straining against
+       it presses harder; once it breaks free the line loosens, pales and smears
+       back along the scrape. Falling, its shadow gathers on the plate. */
+    function crateAO(g) {
+      const cr = st.crate, pl = pit(); if (!cr) return;
+      if (cr.st === 'floor') {
+        const sl = Math.min(1, cr.v / 40), d = P.on ? P.dir : 1, press = P.on && cr.v <= 0 ? .12 * P.str : 0;
+        const a = Math.min(.68, (.42 + .1 * cr.mass + press) * (1 - .35 * sl));
+        softBar(g, cr.x - 2, cr.x + cr.w + 2, GY + 1, 4.5 - 1.5 * press * 4, a);
+        if (sl > .02) { const len = 8 + cr.v * .9, x = d > 0 ? cr.x : cr.x + cr.w; softBar(g, Math.min(x, x - d * len), Math.max(x, x - d * len), GY + 1.5, 3, a * .45 * sl); }
+      } else if (cr.st === 'fall') {
+        const u = clamp(cr.cy / pl.depth, 0, 1);
+        softBar(g, pl.x + 6 + 10 * (1 - u), pl.x + pl.w - 6 - 10 * (1 - u), GY + pl.depth - 4, 3 + 3 * (1 - u), .12 + .45 * u);
+      }
+    }
+    const partHere = () => room.part && !st.got && !st.carry;   // on its floor (not installed, not in catbot's mouth)
+    function partAO(g, t) {
+      if (!partHere()) return;
+      const p = partPos(t), py = GY - (room.part.y || 0), h = clamp(1 - (py - 15 - p.y) / 110, 0, 1);
+      softEllipse(g, p.x + 2, py + 1, 13 * (1 + .25 * p.sq) * (1.4 - .4 * h), 3.2, .48 * h * h);
+    }
+    function drawCrateW(g) {
+      const cr = st.crate; if (!cr) return;
+      g.save();
+      if (cr.rot) { const px = cr.x + cr.w / 2, py = GY + cr.cy; g.translate(px, py); g.rotate(cr.rot); g.translate(-px, -py); }
+      g.translate(0, cr.cy); drawCrate(g, cr); g.restore();
+      // seated flush: its lid is now a patch of deck you can walk on
+      if (cr.st === 'set' && cr.h - 2 - cr.cy <= 4) {
+        const top = GY + cr.cy - cr.h + 2, gr = g.createLinearGradient(0, top - 24, 0, top); gr.addColorStop(0, '#5e3c1c'); gr.addColorStop(1, '#9a6a35');
+        g.fillStyle = gr; g.fillRect(cr.x, top - 24, cr.w, 24);
+        g.strokeStyle = 'rgba(30,15,5,.5)'; g.lineWidth = 1;
+        for (let i = 1; i < 4; i++) { g.beginPath(); g.moveTo(cr.x, top - 24 + i * 6); g.lineTo(cr.x + cr.w, top - 24 + i * 6); g.stroke(); }
+        g.strokeStyle = OL; g.strokeRect(cr.x, top - 24, cr.w, 24);
+      }
+    }
+    /* the part looks exactly like the hip disc it belongs in: a toy, to a cat */
+    function partPos(t) {
+      const pt = room.part, k = st.pk;
+      if (k.flying) return { x: k.x, y: k.y, r: lerp(15, 17, k.u), a: t * 14, sq: 0 };
+      const rock = k.land ? 0 : Math.sin(t * 2.2) * .18;
+      return { x: pt.x + rock * 6, y: GY - (pt.y || 0) - 15, r: 15, a: k.land ? 0 : t * .3, rock, sq: k.squash || 0 };
+    }
+    function drawPartAt(g, t) {
+      const p = partPos(t);
+      g.save(); g.translate(p.x, p.y + p.sq * 3); g.rotate(p.rock || 0); g.scale(1 + .16 * p.sq, -(1 - .2 * p.sq)); disc(g, 0, 0, p.r, NEAR, p.a, false); g.restore();
+      if (!st.pk.land && (t * .7) % 1 < .08) { g.save(); g.globalCompositeOperation = 'lighter'; softEllipse(g, p.x - 6, p.y - 8, 10, 10, .6, '255,240,200'); g.restore(); }
+    }
+    function drawPart(g, t) { if (partHere() && !st.pk.flying) drawPartAt(g, t); }
+    function drawPartFly(g, t) { if (partHere() && st.pk.flying) drawPartAt(g, t); }
+    function partShadow(g, t) {
+      if (!partHere()) return;
+      const p = partPos(t); g.beginPath(); g.arc(p.x, p.y, p.r, 0, TAU); g.fill();
+    }
+    function drawTitle(g) {
+      const a = mode === 'asleep' ? Math.min(1, modeT / 1.2) : mode === 'wake' ? Math.max(0, 1 - modeT * 2.5) : 0; if (a <= 0) return;
+      const pul = .75 + .25 * Math.sin(T * 2.4);
+      g.textAlign = 'center';
+      g.font = '600 22px Oswald,sans-serif'; g.fillStyle = `rgba(214,165,78,${a * pul})`; g.fillText('◀     ▶', W / 2, H - 58);
+      g.font = '400 14px Inter,sans-serif'; g.fillStyle = `rgba(239,230,210,${a * .75})`; g.fillText('walk to wind it up', W / 2, H - 36);
+      g.textAlign = 'left';
+    }
+    function vignette(g) {
+      const gr = g.createRadialGradient(W / 2, H * .55, H * .38, W / 2, H * .55, W * .7); gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(1, 'rgba(0,0,0,.5)');
+      g.fillStyle = gr; g.fillRect(0, 0, W, H);
+    }
+    function drawCaptions(g) {
+      const c = caps[0]; if (!c) return;
+      const a = Math.min(1, c.t / .45, (c.max - c.t) / .9), hub = inHub();   // the deck plan has no spare floor: its captions take a slim strip in the bottom hull margin
+      g.font = `400 ${hub ? 12 : 15}px Inter,sans-serif`; const tw = g.measureText(c.text).width;
+      g.fillStyle = `rgba(18,20,26,${(hub ? .85 : .72) * a})`; g.fillRect(W / 2 - tw / 2 - 16, hub ? H - 23 : H - 62, tw + 32, hub ? 20 : 30);
+      g.fillStyle = `rgba(239,230,210,${a})`; g.fillText(c.text, W / 2 - tw / 2, hub ? H - 9.5 : H - 42);
+    }
+    function drawCard(g) {
+      if (mode !== 'card') return;
+      const a = Math.min(1, modeT / .5);
+      g.fillStyle = '#0b0d11'; g.fillRect(0, 0, W, H);
+      g.globalAlpha = a; g.textAlign = 'center';
+      g.font = '600 13px Oswald,sans-serif'; g.fillStyle = '#d6a54e'; g.fillText(`Room ${roomI + 1}  ·  ${room.name}`, W / 2, H / 2 - 26);
+      g.font = '600 34px Oswald,sans-serif'; g.fillStyle = '#efe6d2'; g.fillText(`${installed.size} part${installed.size === 1 ? '' : 's'} back where ${installed.size === 1 ? 'it belongs' : 'they belong'}`, W / 2, H / 2 + 10);
+      g.font = '400 14px Inter,sans-serif'; g.fillStyle = 'rgba(239,230,210,.6)'; g.fillText('The hatch opens onto the rest of the ship.', W / 2, H / 2 + 40);
+      g.textAlign = 'left'; g.globalAlpha = 1;
+    }
+
+    /* =====================================================================
+       LOOP
+       ===================================================================== */
+    function resize() {
+      // a hidden or zero-size frame (some embeds load that way) still gets a real canvas
+      const vw = innerWidth || W, vh = innerHeight || H, w = Math.max(W / 4, Math.min(vw, vh * W / H)), dpr = Math.min(2, devicePixelRatio || 1);
+      cv.style.width = w + 'px'; cv.style.height = (w * H / W) + 'px';
+      cv.width = Math.round(w * dpr); cv.height = Math.round(w * H / W * dpr); S = cv.width / W;
+      for (const c of [catC, silC]) { c.width = cv.width; c.height = cv.height; }
+    }
+    addEventListener('resize', resize);
+
+    let last = performance.now(), acc = 0, T = 0;
+    let paused = false, hud = true;                 // webmcp.js staging (#mcp): freeze time, hide the HUD for a clean shot
+    const SUB = 1 / 240;
+    function frame(now) {
+      const dt = Math.max(0, Math.min(.05, (now - last) / 1000)); last = now;   // never negative: a page's first frame can be stamped before `last` was read, and a negative dt at rest NaNs the hub token (0 x -Infinity)
+      if (!paused) tick(dt); render(paused ? 0 : dt);
+      requestAnimationFrame(frame);
+    }
+    function tick(dt) {
+      T += dt;
+      if (caps[0] && (caps[0].t += dt) > caps[0].max) caps.shift();
+      const c = freshCtrl();
+      const din = dirInput();
+      control(dt, c); pulse = 0; pulseY = 0;
+      if (!['cover', 'intro', 'asleep', 'wake', 'card'].includes(mode)) run.t += dt;
+      syncCover();
+      if (inHub()) HUB.update(dt);                 // the deck plan: the room's rig and props stay frozen behind it
+      else {
+        if (st.cart) updCart(dt, din);
+        ENG.update(dt, c);                         // engine.js: the beat, belt drift into c.belt, vent blasts and shoves
+        BERTH.update(dt, c);                       // berthing.js: beam sweep, spotted logic
+        GAL.update(dt, c, din);                     // galley.js: preserve short-tap movement through the fixed steps
+        OBS.update(dt, c, din);                     // observation.js: low-gravity throws, lifts, the telescope
+        SAN.update(dt, c, din);                     // sanitation.js: the rake replays catbot's trail; grates, screens, the dig
+        HYD.update(dt, c, din);                     // hydroponics.js: the wheel (c.belt), the pump, the zoomies and the flop
+        EGGX.update(dt, c, din);                    // eggs.js: watches for its triggers (never moves catbot)
+        CKP.update(dt, c, din);                     // cockpit.js: belt and wheel (c.belt), the pull, and the finale's own mode
+        BL = blockers();
+        acc += dt; let n = 0; while (acc >= SUB && n < 40) { rig.update(SUB, c); constrain(); acc -= SUB; n++; }
+        GAL.after();                              // galley.js: synchronize the rig after its spring substeps
+        OBS.after();                              // observation.js: the same, plus the floating tail
+        updCrate(dt); updGates(dt);
+        handleRigEvents(); updParts(dt);
+        if (mode === 'intro') OPEN.update(dt, modeT);
+        else { const cy = ENG.camY() + GAL.camY() + OBS.camY(); camX = damp(camX, camTarget(), 4, dt); camY = Math.abs(camY - cy) < .05 ? cy : damp(camY, cy, 5, dt); }   // room modules follow their raised routes, else 0
+      }
+      audioFrame(dt);
+      if (fadeDir) { fade += fadeDir * dt * 2.4; if (fade >= 1 && fadeDir > 0) { fade = 1; fadeDir = -1; const cb = fadeCb; fadeCb = null; cb && cb(); camX = camTarget(); } if (fade <= 0 && fadeDir < 0) { fade = 0; fadeDir = 0; } }
+    }
+
+    function view(g) { g.scale(zoom, zoom); g.translate(-camX, -camY); }
+    function render(dt) {
+      const cw = cv.width, ch = cv.height;
+      if (mode === 'cover') { ctx.setTransform(S, 0, 0, S, 0, 0); ctx.fillStyle = '#0b0d11'; ctx.fillRect(0, 0, W, H); return; }   // the cover page (DOM) is in front; nothing to draw behind it
+      if (mode === 'intro' && OPEN.cine(modeT)) { OPEN.render(ctx, modeT); if (fade > 0) { ctx.fillStyle = `rgba(11,13,17,${fade})`; ctx.fillRect(0, 0, W, H); } return; }
+      if (inHub()) {
+        HUB.render(ctx, dt);
+        ctx.setTransform(S, 0, 0, S, 0, 0); vignette(ctx); if (hud) drawCaptions(ctx);
+        if (fade > 0) { ctx.fillStyle = `rgba(11,13,17,${fade})`; ctx.fillRect(0, 0, W, H); }
+        return;
+      }
+      const sx = (Math.random() - .5) * shake * calmK(), sy = (Math.random() - .5) * shake * calmK();
+      ctx.setTransform(S, 0, 0, S, sx * S, sy * S);
+      ctx.save(); view(ctx);
+      drawRoom(ctx, T);
+      drawScratches(ctx);
+      ctx.restore();
+      // cat -> offscreen, then its silhouette for the projected shadow
+      cctx.setTransform(1, 0, 0, 1, 0, 0); cctx.clearRect(0, 0, cw, ch); cctx.setTransform(S * zoom, 0, 0, S * zoom, -camX * S * zoom, -camY * S * zoom); drawCat(cctx, rig);
+      if (zoom === 1) {   // projected shadow is screen-space; skipped in the opening's close-up
+        sctx.setTransform(1, 0, 0, 1, 0, 0); sctx.globalCompositeOperation = 'source-over'; sctx.clearRect(0, 0, cw, ch);
+        sctx.drawImage(catC, 0, 0); sctx.globalCompositeOperation = 'source-in'; sctx.fillStyle = '#0a0705'; sctx.fillRect(0, 0, cw, ch); sctx.globalCompositeOperation = 'source-over';
+        const gy = GY - rig.fl - camY;   // the floor line on screen (the one catbot stands on): the drop into a room starts with the camera high
+        ctx.save(); ctx.transform(1, 0, -SK, SS, SK * gy, (1 - SS) * gy);
+        if (FILTER) ctx.filter = 'blur(2px)';
+        ctx.save(); ctx.translate(-camX, -camY); ctx.fillStyle = 'rgba(8,5,3,.33)';
+        const cr = st.crate; if (cr && cr.cy < 1) ctx.fillRect(cr.x, GY - cr.h + 2, cr.w, cr.h);
+        ctx.fillStyle = 'rgba(8,5,3,.3)'; partShadow(ctx, T); ctx.restore();
+        ctx.globalAlpha = .36; ctx.drawImage(silC, 0, 0, W, H); ctx.restore();
+      }
+      ctx.save(); view(ctx);
+      crateAO(ctx); partAO(ctx, T);
+      contactAO(ctx, rig);
+      drawCrateW(ctx);
+      drawPart(ctx, T);
+      ctx.restore();
+      ctx.save(); ctx.setTransform(1, 0, 0, 1, sx * S, sy * S); ctx.drawImage(catC, 0, 0); ctx.restore();
+      ctx.save(); view(ctx);
+      drawGlow(ctx, rig);
+      drawPartFly(ctx, T);
+      drawGateFront(ctx);
+      drawExitFront(ctx, T);
+      drawParts(ctx);
+      ENG.front(ctx, T);                           // engine.js: steam in front of catbot, then the blurred foreground layer
+      BERTH.front(ctx, T);                          // berthing.js: darkness overlay and beam
+      GAL.front(ctx, T);                            // galley.js: steam, warm light, rejected produce
+      OBS.front(ctx, T);                            // observation.js: the ghost arc and the telescope's eyepiece
+      SAN.front(ctx, T);                            // sanitation.js: the sifter screens' mesh (catbot passes under it)
+      HYD.front(ctx, T);                            // hydroponics.js: the wheel's near rim, catnip puffs, mist
+      EGGX.front(ctx, T);                           // eggs.js: the daydream's thought bubbles
+      CKP.front(ctx, T);                            // cockpit.js: the wheel's near rim, the lamp's cone, the red tint
+      ctx.restore();
+      ctx.setTransform(S, 0, 0, S, 0, 0);
+      vignette(ctx);
+      if (mode === 'intro') OPEN.overlay(ctx, modeT, true);
+      if (hud) {                                    // webmcp.js can hide these for a clean shot
+        drawStarLog(ctx, dt);
+        ctx.save(); ctx.translate(GAL.kitShift(), 0); drawKit(ctx, dt); ctx.restore(); // galley: keep the raised mixer clear of the kit
+        drawTitle(ctx);
+        drawCaptions(ctx);
+      }
+      drawCard(ctx);
+      CKP.overlay(ctx);                             // cockpit.js: liftoff, credits and the end card (screen space, over everything but the fade)
+      if (fade > 0) { ctx.fillStyle = `rgba(11,13,17,${fade})`; ctx.fillRect(0, 0, W, H); }
+    }
+
+    /* =====================================================================
+       INPUT: movement only
+       ===================================================================== */
+    addEventListener('keydown', e => {
+      const k = e.key.toLowerCase();
+      if (k === 'arrowleft' || k === 'a') { keys.l = true; pulse = -1; if (!e.repeat) tap(-1); e.preventDefault(); }   // e.repeat: a held key's auto-repeat isn't a tap
+      else if (k === 'arrowright' || k === 'd') { keys.r = true; pulse = 1; if (!e.repeat) tap(1); e.preventDefault(); }
+      else if (k === 'arrowup' || k === 'w') { keys.u = true; pulseY = -1; e.preventDefault(); }
+      else if (k === 'arrowdown' || k === 's') { keys.d = true; pulseY = 1; e.preventDefault(); }
+    });
+    addEventListener('keyup', e => {
+      const k = e.key.toLowerCase();
+      if (k === 'arrowleft' || k === 'a') keys.l = false; else if (k === 'arrowright' || k === 'd') keys.r = false;
+      else if (k === 'arrowup' || k === 'w') keys.u = false; else if (k === 'arrowdown' || k === 's') keys.d = false;
+    });
+    addEventListener('blur', () => { keys.l = keys.r = keys.u = keys.d = false; });
+    for (const [id, key] of [['padL', 'l'], ['padR', 'r']]) {
+      const b = document.getElementById(id);
+      b.addEventListener('pointerdown', e => { keys[key] = true; pulse = key === 'l' ? -1 : 1; tap(pulse); b.classList.add('on'); b.setPointerCapture(e.pointerId); e.preventDefault(); });
+      for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture']) b.addEventListener(ev, () => { keys[key] = false; b.classList.remove('on'); });
+    }
+    /* the deck plan swaps the two pads for a floating thumb-stick: touch anywhere, drag to walk.
+       It only sets the same four keys, so nothing downstream knows the difference. */
+    {
+      const stick = document.getElementById('stick'), knob = stick.firstElementChild, R = 46, DZ = 14;
+      let id = null, ox = 0, oy = 0;
+      const release = () => { id = null; keys.l = keys.r = keys.u = keys.d = false; stick.classList.remove('on'); };
+      addEventListener('pointerdown', e => {
+        if (id !== null || !inHub() || e.pointerType === 'mouse') return;
+        id = e.pointerId; ox = e.clientX; oy = e.clientY;
+        stick.style.left = ox + 'px'; stick.style.top = oy + 'px'; knob.style.transform = 'translate(-50%,-50%)'; stick.classList.add('on');
+        e.preventDefault();
+      }, { passive: false });
+      addEventListener('pointermove', e => {
+        if (e.pointerId !== id) return;
+        if (!inHub()) { release(); return; }
+        let dx = e.clientX - ox, dy = e.clientY - oy; const m = Math.hypot(dx, dy);
+        knob.style.transform = `translate(calc(-50% + ${m > R ? dx / m * R : dx}px),calc(-50% + ${m > R ? dy / m * R : dy}px))`;
+        const on = m > DZ;                                  // eight directions: a component counts once it is over ~38% of the drag
+        keys.r = on && dx > .38 * m; keys.l = on && dx < -.38 * m; keys.d = on && dy > .38 * m; keys.u = on && dy < -.38 * m;
+      });
+      for (const ev of ['pointerup', 'pointercancel']) addEventListener(ev, e => { if (e.pointerId === id) release(); });
+    }
+    const touchy = () => document.body.classList.add('touch');
+    if (matchMedia('(pointer:coarse)').matches) touchy();
+    addEventListener('pointerdown', e => { if (e.pointerType === 'touch') touchy(); }, { capture: true });
+    addEventListener('contextmenu', e => e.preventDefault());
+    /* the opening's "◀ ▶ skip" label (opening.js draws it, top right) also skips when it is clicked or tapped,
+       the same as a step does there. Meta UI, like the cover's PLAY button, not a gameplay input. */
+    {
+      const onSkip = e => { const r = cv.getBoundingClientRect(), x = (e.clientX - r.left) / r.width * W, y = (e.clientY - r.top) / r.height * H; return mode === 'intro' && modeT > 1.5 && x > W - 130 && y < 52; };
+      cv.addEventListener('pointerdown', e => { if (CKP.click()) { AUDIO.unlock(); e.preventDefault(); return; } if (!onSkip(e) || fadeDir > 0) return; AUDIO.unlock(); fadeTo(() => OPEN.finish(false)); e.preventDefault(); });
+      cv.addEventListener('pointermove', e => { cv.style.cursor = onSkip(e) || CKP.clickable() ? 'pointer' : ''; });
+    }
+
+    /* =====================================================================
+       COVER: a plain page in front of the opening, with a summary of the game.
+       PLAY (or the first step with the keys) starts the opening. That gesture is
+       also what lets the browser start audio, so the opening can have sound.
+       The Sound toggle is for muted browsers and devices: a page cannot see a
+       muted tab or a muted system volume, so the player says so, and the sounds
+       are captioned instead. It is the same flag as the trolley's SOUND button.
+       Visibility follows mode (every route out of 'cover', dev hashes included,
+       hides it).
+       ===================================================================== */
+    const coverEl = document.getElementById('cover'), sndBtn = document.getElementById('snd'), sndHint = document.getElementById('sndHint'), playBtn = document.getElementById('play');
+    let coverOn = true;
+    document.body.classList.add('cover');
+    function syncCover() {
+      const on = mode === 'cover';
+      if (on === coverOn) return;
+      coverOn = on; coverEl.hidden = !on; document.body.classList.toggle('cover', on);
+    }
+    function showSnd() {
+      sndBtn.textContent = settings.sound ? 'SOUND ON' : 'SOUND OFF';
+      sndHint.textContent = settings.sound ? 'Muted browser or device? Switch sound off here and the sounds are captioned instead.'
+        : 'Sounds are captioned instead. The trolley in the first room has a SOUND button to turn it back on.';
+    }
+    function beginOpening() {
+      if (mode !== 'cover') return;
+      AUDIO.unlock(); latch = true; OPEN.begin();      // latch: the key that started it must not also skip it
+    }
+    playBtn.addEventListener('click', beginOpening);
+    sndBtn.addEventListener('click', () => { settings.sound = !settings.sound; AUDIO.enable(settings.sound); saveSettings(); showSnd(); });
+    showSnd();
+    try { playBtn.focus({ preventScroll: true }); } catch (e) { }
+
+    resize(); loadRoom(0); sleep();
+    requestAnimationFrame(frame);
+  </script>
+  <script src="opening.js"></script>
+  <script src="hub.js"></script>
+  <script src="engine.js"></script>
+  <script src="berthing.js"></script>
+  <script src="galley.js"></script>
+  <script src="observation.js"></script>
+  <script src="sanitation.js"></script>
+  <script src="hydroponics.js"></script>
+  <script src="eggs.js"></script>
+  <script src="cockpit.js"></script>
+  <script src="webmcp.js"></script>
+</body>
+
+</html>

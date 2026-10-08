@@ -45,7 +45,8 @@ function flipShot(advance: () => void, seconds = 3, frac = 0.65) {
     advance();
     t += gameRef.time - before;
     // speed + heading once the swing has finished and the per-tier cap has been applied
-    if (exit === 0 && t >= 0.1) { exit = Math.hypot(b.vx, b.vy); angle = Math.atan2(b.vy, b.vx) * 180 / Math.PI; }
+    // (epsilon: 3 × 1/30 s sums to 0.0999…, which would sample a step late at 30 Hz)
+    if (exit === 0 && t >= 0.1 - 1e-9) { exit = Math.hypot(b.vx, b.vy); angle = Math.atan2(b.vy, b.vx) * 180 / Math.PI; }
     if (!b.ride && b.captured <= 0) apex = Math.max(apex, b.y);
   }
   gameRef.left.pressed = false;
@@ -67,7 +68,7 @@ function flipSpread(makeAdvance: () => () => void) {
 }
 
 function bumperExit() {
-  const bumper = ACTIVE.bumpers[0];
+  const bumper = ACTIVE.byLayer.field?.bumpers[0]; // the probe ball starts on the field
   if (!bumper) return NaN;
   resetField();
   const b = mkBall(bumper.x, bumper.y - bumper.r - BALL_RADIUS - 4, 0, 60, 0);
@@ -208,8 +209,9 @@ function parity(entry: TableEntry) {
       return through;
     };
     // posts only — hide everything else so the ball has a clean run at it
-    const saved = { walls: ACTIVE.walls, bumpers: ACTIVE.bumpers, posts: ACTIVE.posts, kickers: ACTIVE.kickers, targets: ACTIVE.targets, drops: ACTIVE.drops, sensors: ACTIVE.sensors, rides: ACTIVE.rides, captures: ACTIVE.captures, kinematics: ACTIVE.kinematics };
-    Object.assign(ACTIVE, { walls: [], bumpers: [], posts: [post], kickers: [], targets: [], drops: [], sensors: [], rides: [], captures: [], kinematics: [] });
+    // physics iterates the per-layer view, so swap the field layer's set
+    const savedField = ACTIVE.byLayer.field;
+    ACTIVE.byLayer.field = { walls: [], bumpers: [], posts: [post], kickers: [], targets: [], drops: [], sensors: [], rides: [], captures: [], kinematics: [], circles: [post] };
     const savedGrav = DIFF.grav;
     DIFF.grav = 0;
     const row: string[] = [];
@@ -221,14 +223,15 @@ function parity(entry: TableEntry) {
       row.push(`${hz}Hz legacy ${legacyN} / fixed ${fixedN}`);
     }
     DIFF.grav = savedGrav;
-    Object.assign(ACTIVE, saved);
+    ACTIVE.byLayer.field = savedField;
     console.log(`  post tunnel-through at ${DIFF.maxSpeed} u/s (of 200 shots): ${row.join('   ')}`);
   }
   return bad;
 }
 
 let bad = 0;
-for (const entry of TABLES) {
+// fixtures are engine test tables — Dead Star Disco et al. define the feel envelope
+for (const entry of TABLES.filter((t) => !t.fixture)) {
   signature(entry);
   bad += parity(entry);
 }

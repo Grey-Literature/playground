@@ -1,0 +1,703 @@
+// The agent API — `window.flipperSeance`, installed only on `?agent` pages.
+//
+// Lets an AI agent play through calls instead of synthetic key timing:
+// declare itself, choose real-time or lockstep timing, press the same controls
+// a human has (flippers, plunger, nudge) and read the game state as JSON.
+//
+// Honesty rules (the Agent Board depends on them):
+//   • nothing works until declare({ name }) — every call before that is refused;
+//   • inputs only: nothing here moves a ball, and getState() returns copies;
+//   • a game played on an agent page files ONLY to the Agent Board (store.ts),
+//     tagged with its mode; real-time, lockstep and script are ranked apart;
+//   • real-time and lockstep measure a model deciding call by call: a run whose
+//     calls come faster than any model can think is SCRIPT-PACED and files
+//     nowhere (pace check below) — bots belong in Script mode (engine/script.ts);
+//   • a ?debug page (which exposes ball spawning) never files anywhere.
+
+import { STEP } from './constants';
+import type { PhysEvent } from './types';
+import { FIELD } from './types';
+import { TABLE, ACTIVE } from './table';
+import { gameRef, isTilted, later } from './runtime';
+import { useGame, setRunLatencyProvider } from './store';
+import { hallThemes, themeById } from './theme';
+import { DIFF_ORDER, DIFF } from './difficulty';
+import { simulateStep, resetStepper, simListeners } from './sim';
+import { cleanAgentText, AGENT_MODES, type AgentMode } from './scores';
+import {
+  bindScriptHost, setStrategy, hasStrategy, startScriptRun, scriptStatus, SCRIPT_GAME_S, MAX_STRATEGY_BYTES, SCRIPT_MAX_ERRORS,
+} from './script';
+import { scriptRunActive } from './store';
+import type { DiffId } from './types';
+
+/** Called after every agent action or step (the Agent Console repaints its state text,
+ *  so what an agent reads right after acting is never a frame stale). */
+export const stepListeners = new Set<() => void>();
+const changed = () => { for (const l of stepListeners) l(); };
+
+/** True while a lockstep agent game is in play. */
+export function isLockstepHeld(): boolean {
+  const s = useGame.getState();
+  return s.phase === 'playing' && !!s.run.agent && s.run.mode === 'lockstep';
+}
+
+// ---------------- lockstep limits (per tier, engine/difficulty.ts) ----------------
+// Waiting for an agent is only fair if it costs something, so each tier sets
+//   agentStepCapMs — the most one step() may advance (coarse steps = easier), and
+//   agentHoldMs    — the real time an agent may spend between step/input calls.
+// Past its hold budget the game stops waiting: it resumes IN REAL TIME with the
+// flippers as last set, until the agent acts again (or the ball drains) — the
+// same price a human pays for hesitating. Reading state doesn't reset the
+// clock (polling mustn't buy thinking time); every step or input does.
+// HOLD_GRACE_MS is added to every budget to absorb a tool call's round trip.
+//
+// LATENCY ALLOWANCE. The page can't tell an agent's harness latency (a
+// screenshot + key loop can take 5–10 s per action) from its thinking time —
+// it only sees when calls arrive. So it measures a latency FLOOR from the
+// agent's own call gaps (the 20th percentile of its last 20 gaps: a low
+// percentile tracks the harness round trip, not the occasional long think)
+// and adds it to the hold IN FULL, at every tier — so a tier measures extra
+// thinking time beyond the agent's own latency, not whose connection is fast
+// enough (per-tier caps locked a ~3.7 s browser harness out of Impossible).
+// LATENCY_CEILING_MS is only a sanity limit. Until 5 gaps are in, the agent
+// gets the ceiling (calibrating). The floor is shown in
+// getState().limits and filed with the score, so a harness that pads its calls
+// to buy thinking time is visible on the Agent Board.
+
+//
+// WAIT ZONE. Pressure only means something where the agent can act: near the
+// flippers. So lockstep waits only while a ball is in (or about to reach) the
+// flipper zone — the slings, inlanes and flippers. Up-table the game runs by
+// itself in real time, and neither the hold clock nor the latency gaps tick.
+
+export const HOLD_GRACE_MS = 75;
+/** The most measured latency credited to any agent, at any tier (sanity limit). */
+export const LATENCY_CEILING_MS = 20_000;
+/** The wait zone's top edge sits this far above the flipper pivots (≈ the sling tops). */
+export const AGENT_ZONE_RISE = 20;
+let zoneSince: number | null = null;
+let zoneOverride: (() => boolean) | null = null;
+/** Headless check only: force the zone occupied / empty (null = real detection). */
+export function setZoneOverrideForTests(fn: (() => boolean) | null) { zoneOverride = fn; }
+
+export function zoneTopY(): number {
+  const F = TABLE.flippers;
+  return Math.min(F.left.pivot.y, F.right.pivot.y) + AGENT_ZONE_RISE;
+}
+
+/** A live field ball near the flippers (position only — a velocity look-ahead at these
+ *  ball speeds reached the whole table and froze the game up-table; runLockstepFrame
+ *  catches a ball on the very step it enters instead). */
+export function ballNearFlippers(): boolean {
+  const top = zoneTopY();
+  const P = TABLE.plunger;
+  return gameRef.balls.some((b) => b.active && (b.layer === undefined || b.layer === FIELD) && !b.ride
+    && b.captured <= 0 && !b.inLane && b.x <= P.dividerX
+    && b.y < top);
+}
+
+/** Is a lockstep game waiting on the agent's zone right now? Tracks when that started. */
+export function inWaitZone(): boolean {
+  const occupied = isLockstepHeld() && (zoneOverride ? zoneOverride() : ballNearFlippers());
+  if (occupied && zoneSince === null) zoneSince = clock();
+  if (!occupied) zoneSince = null;
+  return occupied;
+}
+const CALIBRATION_GAPS = 5;
+const GAP_WINDOW = 20;
+const MAX_GAP_MS = 60_000; // longer = the agent walked away, not latency
+let clock: () => number = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+let lastAct = 0;
+/** Set by start(): there is a previous act to measure a gap from. */
+let armed = false;
+let lastActBall = 0;
+let gaps: number[] = [];
+let floorReadings: number[] = [];
+/** Inside one API call (e.g. turn(): flip + step) only the first act is an arrival. */
+let batching = false;
+
+/** The agent stepped or pressed something: its hold clock restarts, and (once per
+ *  incoming call) the gap since its last act feeds the latency floor. */
+function acted() {
+  const now = clock();
+  const ball = useGame.getState().ball;
+  // only a response to a WAIT is latency: acting while the ball is up-table isn't
+  if (!batching && inWaitZone()) {
+    const gap = now - Math.max(lastAct, zoneSince ?? lastAct);
+    // a gap spanning a drain / bonus count-up wasn't the agent's latency
+    if (armed && ball === lastActBall && gap >= 0 && gap <= MAX_GAP_MS) {
+      gaps.push(gap);
+      if (gaps.length > GAP_WINDOW) gaps.shift();
+      const f = latencyFloor();
+      if (f !== null) floorReadings.push(f);
+    }
+  }
+  lastAct = now;
+  lastActBall = ball;
+}
+/** Restart the hold clock without counting an arrival (after a step finishes). */
+function rearm() { lastAct = clock(); }
+
+/** Headless check only: drive the hold clock by hand. */
+export function setAgentClockForTests(fn: () => number) { clock = fn; lastAct = fn(); zoneSince = null; }
+
+// ---------------- pace check (real-time and lockstep) ----------------
+// Real-time and lockstep rank a MODEL deciding call by call. A strategy written
+// once and run in a loop makes calls with no inference between them: thousands
+// a second in lockstep (where it also plays hours of game time in seconds), or a
+// 60 Hz poll in real time. No model harness comes close to PACE_CALLS_PER_S —
+// even one batching 10 keys per action would need 4+ actions a second — so every
+// call counts (reads too: polling is a loop), in 1-second wall windows. Three
+// fast windows, or one burst of PACE_BURST (a synchronous loop can play a whole
+// game inside one window), and the run is SCRIPT-PACED: it plays on, but files
+// nowhere. This catches loops, not a determined cheater (a script that reads the
+// page text and only presses keys when needed is invisible) — the boards stay
+// honesty-based; this just keeps the obvious case off them.
+export const PACE_CALLS_PER_S = 40;
+export const PACE_FAST_WINDOWS = 3;
+export const PACE_BURST = 200;
+let paceStart = -Infinity;
+let paceCount = 0;
+let paceWindowFast = false;
+let paceFast = 0;
+let pacePeak = 0;
+
+let paceOn = true;
+/** Headless checks only: the older checks drive the API in bursts on a frozen clock. */
+export function setPaceCheckForTests(on: boolean) { paceOn = on; }
+
+function resetPace() {
+  paceStart = -Infinity; paceCount = 0; paceWindowFast = false; paceFast = 0; pacePeak = 0;
+}
+
+/** One incoming call (or agent key) during a real-time / lockstep agent game. */
+function noteCall() {
+  if (batching || !paceOn) return; // turn()'s inner acts are part of one call
+  const s = useGame.getState();
+  if (s.phase !== 'playing' || !s.run.agent || s.run.mode === 'script' || s.run.flagged) return;
+  const now = clock();
+  if (now - paceStart >= 1000) { paceStart = now; paceCount = 0; paceWindowFast = false; }
+  paceCount++;
+  pacePeak = Math.max(pacePeak, paceCount);
+  if (!paceWindowFast && paceCount >= PACE_CALLS_PER_S) { paceWindowFast = true; paceFast++; }
+  if (paceFast >= PACE_FAST_WINDOWS || paceCount >= PACE_BURST) s.flagRun(pacePeak);
+}
+
+/** Gaps shorter than this are batched keys/calls (two keys in one harness action,
+ *  a flip straight after a step) — not the harness's round trip. */
+const BATCH_MS = 150;
+
+/** The measured latency floor (ms), or null while calibrating. */
+export function latencyFloor(): number | null {
+  if (gaps.length < CALIBRATION_GAPS) return null;
+  // A mostly-slow harness that sometimes fires calls back to back: judge its
+  // latency by its real round trips. A mostly-fast one: by all of its gaps.
+  const slow = gaps.filter((g) => g >= BATCH_MS);
+  const pool = slow.length * 2 >= gaps.length ? slow : gaps;
+  const sorted = [...pool].sort((x, y) => x - y);
+  return Math.round(sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.2))]); // 20th pct, nearest rank
+}
+
+/** Median measured floor over the current run (filed with a lockstep score), or null. */
+export function runLatencyMs(): number | null {
+  if (!floorReadings.length) return null;
+  const s = [...floorReadings].sort((x, y) => x - y);
+  return s[Math.floor(s.length / 2)];
+}
+
+/** The agent's hold budget right now (null remaining = unlimited, or not a lockstep game). */
+export function holdBudget(): {
+  holdMs: number; remainingMs: number | null; overdue: boolean;
+  latencyFloorMs: number | null; latencyAllowanceMs: number; calibrating: boolean; effectiveHoldMs: number | null;
+} {
+  const holdMs = DIFF.agentHoldMs;
+  const floor = latencyFloor();
+  const calibrating = floor === null;
+  const latencyAllowanceMs = holdMs ? (calibrating ? LATENCY_CEILING_MS : Math.min(floor, LATENCY_CEILING_MS)) : 0;
+  const effectiveHoldMs = holdMs ? holdMs + HOLD_GRACE_MS + latencyAllowanceMs : null;
+  if (!holdMs || !inWaitZone()) {
+    return { holdMs, remainingMs: null, overdue: false, latencyFloorMs: floor, latencyAllowanceMs, calibrating, effectiveHoldMs };
+  }
+  // the clock runs from the later of the agent's last act and the ball's arrival
+  const left = effectiveHoldMs! - (clock() - Math.max(lastAct, zoneSince ?? lastAct));
+  return {
+    holdMs, remainingMs: Math.max(0, Math.round(left)), overdue: left <= 0,
+    latencyFloorMs: floor, latencyAllowanceMs, calibrating, effectiveHoldMs,
+  };
+}
+
+setRunLatencyProvider(() => runLatencyMs());
+
+let lockAcc = 0;
+/**
+ * The render loop's tick during a lockstep game that isn't waiting: advance in
+ * single fixed steps and stop on the very step a ball enters the flipper zone,
+ * so even a slow frame (up to 8 catch-up steps) can't carry a fast ball past the
+ * slings before the game freezes for the agent.
+ */
+export function runLockstepFrame(dt: number) {
+  lockAcc = Math.min(lockAcc + Math.max(0, dt), 8 * STEP);
+  while (lockAcc >= STEP && isLockstepHeld() && !isLockstepFrozen()) {
+    simulateStep();
+    lockAcc -= STEP;
+  }
+  if (isLockstepFrozen()) lockAcc = 0;
+}
+
+/** True while a lockstep game waits for its agent: a ball is near the flippers and the
+ *  agent is inside its hold budget. Otherwise the render loop runs the game in real time. */
+export function isLockstepFrozen(): boolean {
+  return inWaitZone() && !holdBudget().overdue;
+}
+
+type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string };
+const no = (error: string): { ok: false; error: string } => ({ ok: false, error });
+const r3 = (v: number) => Math.round(v * 1000) / 1000;
+const SCRIPT_LOCK = 'this is a Script game: your strategy plays it (inputs are locked until it ends)';
+const MAX_STEP_MS = 1000;
+const EVENT_BUFFER = 200;
+
+interface AgentEvent { t: number; type: string; id?: string | number; kind?: string; via?: string }
+let events: AgentEvent[] = [];
+
+function record(batch: PhysEvent[]) {
+  for (const e of batch) {
+    const out: AgentEvent = { t: r3(gameRef.time), type: e.type };
+    if ('id' in e) out.id = e.id;
+    if (e.type === 'sensor') out.kind = e.kind;
+    if (e.type === 'layer') out.via = e.via;
+    events.push(out);
+  }
+  if (events.length > EVENT_BUFFER) events = events.slice(-EVENT_BUFFER);
+}
+
+function declared(): string | null {
+  return useGame.getState().agent ? null : 'call declare({ name }) first — agents must identify themselves before playing';
+}
+
+function state() {
+  const s = useGame.getState();
+  const flip = (f: typeof gameRef.left) => ({ angle: r3(f.angle), pressed: f.pressed });
+  return {
+    t: r3(gameRef.time),
+    theme: s.themeId,
+    tier: s.difficulty,
+    mode: s.phase === 'playing' ? s.run.mode : s.agentMode,
+    phase: s.phase,
+    ballPhase: s.ballPhase,
+    plungerReady: s.phase === 'playing' && s.ballPhase === 'plunger',
+    /** Lockstep: a ball is near the flippers and the game is paused for your move. */
+    waitingForYou: isLockstepFrozen(),
+    /** Real-time / lockstep: your calls came faster than a model can think — this game won't be ranked. */
+    flagged: s.run.flagged && s.phase === 'playing'
+      ? { reason: 'script-paced: calls faster than any model can think — bots rank in Script mode', callsPerS: s.run.flagged.callsPerS }
+      : null,
+    /** Script mode: your strategy's status (loaded, calls, timing, errors, time left). */
+    script: scriptStatus(),
+    score: s.score,
+    ball: s.ball,
+    totalBalls: s.totalBalls,
+    multiplier: s.multiplier,
+    multiball: s.multiball,
+    tilted: isTilted(),
+    tiltWarnings: s.tiltWarnings,
+    message: s.bigMessage || s.message,
+    balls: gameRef.balls.filter((b) => b.active).map((b) => ({
+      id: b.id, x: r3(b.x), y: r3(b.y), vx: r3(b.vx), vy: r3(b.vy),
+      layer: b.layer ?? 'field',
+      riding: b.ride?.id ?? null,
+      captured: b.captured > 0,
+      inLane: b.inLane,
+    })),
+    flippers: { left: flip(gameRef.left), right: flip(gameRef.right) },
+    /** Lockstep limits for this tier; holdRemainingMs counts down in real time. */
+    limits: (() => {
+      const hb = holdBudget();
+      return {
+        stepCapMs: Math.min(MAX_STEP_MS, DIFF.agentStepCapMs),
+        /** Lockstep only waits while a ball is below this y. */
+        zoneTopY: zoneTopY(),
+        holdMs: hb.holdMs || null,
+        graceMs: hb.holdMs ? HOLD_GRACE_MS : 0,
+        /** Your measured latency floor (ms) — null while calibrating (first 5 calls). */
+        latencyFloorMs: hb.latencyFloorMs,
+        /** Added to the hold for your harness latency: your floor (≤ 20 s), or 20 s while calibrating. */
+        latencyAllowanceMs: hb.latencyAllowanceMs,
+        calibrating: hb.calibrating,
+        /** hold + grace + latency allowance — the real time you have between calls. */
+        effectiveHoldMs: hb.effectiveHoldMs,
+        holdRemainingMs: hb.remainingMs,
+        overdue: hb.overdue,
+      };
+    })(),
+  };
+}
+
+function table() {
+  const F = TABLE.flippers;
+  const P = TABLE.plunger;
+  const side = (f: typeof F.left) => ({ pivot: { ...f.pivot }, restAngle: r3(f.rest), upAngle: r3(f.active) });
+  return {
+    units: 'table units; ball radius ' + 1.55 + '. x runs left → right, +y runs up the table (away from the player); the drain is at low y. Angles are radians from +x.',
+    ballRadius: 1.55,
+    drainY: TABLE.drainY,
+    bounds: { ...TABLE.bounds },
+    flippers: { length: F.len, radius: F.r, left: side(F.left), right: side(F.right) },
+    plungerLane: { x: P.x, dividerX: P.dividerX, topY: P.laneTopY },
+    decks: (TABLE.layers ?? []).map((l) => ({
+      id: l.id, height: l.height, outline: l.outline.map(([x, y]) => [x, y]),
+      holes: l.holes.map((h) => ({ id: h.id, x: h.x, y: h.y, r: h.r })),
+    })),
+    bumpers: ACTIVE.bumpers.map((b) => ({ id: b.id, x: b.x, y: b.y, r: b.r, layer: b.layer ?? 'field' })),
+    tier: DIFF.id,
+  };
+}
+
+const HELP = `FLIPPER SÉANCE — agent API (window.flipperSeance)
+
+1. flipperSeance.declare({ name: 'Your Model Name', model?: 'model-id' })   ← required first
+2. flipperSeance.setMode('realtime' | 'lockstep' | 'script')   (between games; default realtime)
+     realtime and lockstep measure YOU deciding call by call. If your calls arrive faster than
+       any model can think (${PACE_CALLS_PER_S}+ a second, i.e. a loop), the game is flagged SCRIPT-PACED:
+       it plays on but is NOT RANKED. Bots belong in script mode.
+     script: submit a strategy ONCE and the game runs it every frame (see SCRIPT MODE below).
+     realtime: the game runs on its own clock, like for a human.
+     lockstep: the game PAUSES FOR YOU ONLY WHILE A BALL IS NEAR THE FLIPPERS (below
+       getState().limits.zoneTopY; getState().waitingForYou says so).
+       Up-table it runs by itself in real time — just watch, or step/flip/nudge if you like.
+       While it waits, you advance it with step(ms) — within limits that grow
+       with the difficulty (getState().limits):
+         tier          step cap   hold budget (real time between step/input calls)
+         supereasy     1000 ms    unlimited
+         easy          1000 ms    unlimited
+         medium         250 ms    1500 ms
+         hard           100 ms     700 ms
+         impossible      50 ms     350 ms
+       (+${HOLD_GRACE_MS} ms grace on every hold.) Your HARNESS LATENCY is added on top, in full,
+       at every tier: the page measures a floor from the gaps between your calls (after 5 waits;
+       until then you get ${LATENCY_CEILING_MS / 1000} s) and credits it back (up to ${LATENCY_CEILING_MS / 1000} s). So a tier's hold is the
+       extra THINKING time you get beyond your own round trip — a slow harness and a fast one
+       face the same tier. Your measured floor is shown on the Agent Board next to your score.
+       Past the hold budget the game stops waiting and RUNS IN REAL TIME with your flippers as
+       last set, until your next step/input. Reading state doesn't reset the clock; acting does.
+       getState().limits shows latencyFloorMs, effectiveHoldMs and holdRemainingMs.
+     Scores are ranked separately per mode (and per tier) on the AGENT BOARD.
+3. flipperSeance.start({ theme?: 'deadStarDisco' | 'salamander', tier?: 'supereasy'|'easy'|'medium'|'hard'|'impossible' })
+4. Play:
+     plunge(power 0..1)          launch the ball waiting in the shooter lane (0.32–0.48 = skill shot zone;
+                                 ≥0.85 on Salamander = Skyshot; below 0.05 counts as a tap = standard 0.6)
+     flip('left'|'right', ms)    press a flipper for ms (min 80), then release
+     hold('left'|'right', down)  press / release a flipper and keep it there (cradling)
+     nudge('left'|'right'|'up')  bump the table — too many in 2.5 s TILTs
+     step(ms)                    lockstep only: advance up to the tier's step cap; returns getState()
+5. Read:
+     getState()   score, ball, phase, every live ball's x/y/vx/vy, flipper angles … (a copy)
+     getTable()   flipper pivots / angles, drain line, deck outlines, bumpers
+     events()     physics/rule events since your last call (bumper, lane, ramp, drain …)
+     turn({ flip?: 'left'|'right'|'both', flipMs?, hold?: {left?, right?}, plunge?, nudge?, stepMs? })
+                  everything above in ONE call: act, step (lockstep), return { state, events } —
+                  use this if every script call costs you an approval or a round trip.
+     getState() and #agent-state are the source of truth. If you run your own loop, yield
+     to the page between turns (await new Promise(r => setTimeout(r))) — a loop that never
+     does keeps the page from painting, so a screenshot shows an old frame of the score.
+
+SCRIPT MODE — for bots (ranked on its own board):
+     await flipperSeance.setStrategy((state, table) => ({ left: true|false, right: true|false, plunge: 0..1, nudge: 'up' }))
+       or setStrategy('<source text of that function>')  (between games; up to ${MAX_STRATEGY_BYTES} characters)
+     then setMode('script') and start(). Every frame the game calls your function with the same
+     state as getState() (and getTable() once as table). Return any of: left / right (held
+     flippers, true = up), plunge (power, when state.plungerReady), nudge. It must answer
+     synchronously; it runs in a Web Worker with no page access, so closures over your own
+     variables don't survive. For memory between frames, submit an IIFE that returns the
+     function: (() => { let n = 0; return (state, table) => ({ ... }); })()
+     Each action lands after a reaction delay that grows with the tier (50/100/150/200/250 ms of
+     game time). A game is ${SCRIPT_GAME_S / 60} minutes of game time, or less if the balls run out. Your inputs are
+     locked while it plays. No answer within 1 s → the strategy is stopped and the ball plays out;
+     ${SCRIPT_MAX_ERRORS} errors in a row stop it too. A ball left in the lane 5 s is plunged for you.
+     getState().script shows calls, avgMs, errors, timeLeftS and why it stopped (if it did).
+
+No scripts? Two other routes reach the same game:
+  • KEYBOARD + PAGE TEXT — the AGENT CONSOLE on ?agent pages: declare with its form,
+    pick Lockstep, press Start; then keys only:  . step 100 ms · > step 500 ms ·
+    1–9/0 plunge at 0.1–1.0 · J/L/K flip left/right/both + step · Z/M hold flippers.
+    Read the state from the text block #agent-state.
+    Script mode: choose Script, paste your strategy into the text box, press Load strategy.
+  • WEBMCP — browsers with navigator.modelContext get page tools:
+    pinball_help, pinball_declare, pinball_start, pinball_turn, pinball_state, pinball_table,
+    pinball_script (submit a strategy for script mode).
+
+A game played here files only to the AGENT BOARD under your declared name.
+Everything is in table units (ball radius 1.55); +y is up the table.
+Tip: a ball is about to drain when it is falling (vy < 0) near a flipper tip —
+flip just as it reaches the bat. A worked Script-mode example lives in the repo:
+games/pinball/scripts/reference-bot.js (paste it into the console of a ?agent page).`;
+
+function api() {
+  const a = {
+    help: () => HELP,
+
+    declare(info: { name?: unknown; model?: unknown; harness?: unknown } = {}): Result<{ name: string; model: string; mode: AgentMode }> {
+      const name = cleanAgentText(info.name, 24);
+      if (!name) return no('declare needs a name (1–24 letters, digits, spaces or . _ - ( ) / + # :)');
+      const model = cleanAgentText(info.model ?? info.harness ?? '', 40);
+      const st = useGame.getState();
+      if (st.phase === 'playing') return no('finish (or wait out) the current game before declaring');
+      st.declareAgent({ name, model });
+      return { ok: true, name, model, mode: useGame.getState().agentMode };
+    },
+
+    whoami: () => ({ ...(useGame.getState().agent ?? { name: null, model: null }), mode: useGame.getState().agentMode }),
+
+    setMode(mode: AgentMode): Result<{ mode: AgentMode }> {
+      const err = declared(); if (err) return no(err);
+      if (!AGENT_MODES.includes(mode)) return no(`mode must be one of ${AGENT_MODES.join(', ')}`);
+      if (!useGame.getState().setAgentMode(mode)) return no('the timing mode is locked while a game is in play');
+      return { ok: true, mode };
+    },
+
+    start(opts: { theme?: string; tier?: DiffId; mode?: AgentMode } = {}): Result<{ state: ReturnType<typeof state> }> {
+      const err = declared(); if (err) return no(err);
+      const st = useGame.getState();
+      if (st.phase === 'playing') return no('a game is already in play');
+      if (opts.mode !== undefined) {
+        const m = a.setMode(opts.mode);
+        if (!m.ok) return m;
+      }
+      if (useGame.getState().agentMode === 'script' && !hasStrategy()) {
+        return no('Script mode needs a strategy first: setStrategy((state, table) => ({ left, right, plunge, nudge }))');
+      }
+      if (opts.theme !== undefined) {
+        if (!hallThemes().some((t) => t.id === opts.theme) || !themeById(opts.theme)) {
+          return no(`unknown table; choose one of ${hallThemes().map((t) => t.id).join(', ')}`);
+        }
+        if (opts.theme !== st.themeId) st.setTheme(opts.theme);
+      }
+      if (opts.tier !== undefined) {
+        if (!DIFF_ORDER.includes(opts.tier)) return no(`tier must be one of ${DIFF_ORDER.join(', ')}`);
+        useGame.getState().setDifficulty(opts.tier);
+      }
+      events = [];
+      resetStepper();
+      useGame.getState().startGame();
+      if (useGame.getState().run.mode === 'script') startScriptRun();
+      resetPace();
+      gaps = [];
+      floorReadings = [];
+      armed = true;
+      zoneSince = null;
+      lastActBall = useGame.getState().ball;
+      rearm();
+      changed();
+      return { ok: true, state: state() };
+    },
+
+    step(ms = 100): Result<{ state: ReturnType<typeof state> }> {
+      const err = declared(); if (err) return no(err);
+      noteCall();
+      if (scriptRunActive()) return no(SCRIPT_LOCK);
+      if (!isLockstepHeld()) return no('step() is for lockstep games (setMode("lockstep") before start())');
+      acted();
+      const cap = Math.min(MAX_STEP_MS, DIFF.agentStepCapMs);
+      const n = Math.max(1, Math.min(Math.round(cap / 1000 / STEP), Math.round((Number(ms) || 0) / 1000 / STEP)));
+      for (let i = 0; i < n; i++) {
+        if (useGame.getState().paused) useGame.getState().setPaused(false);
+        simulateStep();
+        if (!isLockstepHeld()) break; // game over
+      }
+      rearm(); // the budget for the NEXT decision starts once this step is done
+      changed();
+      return { ok: true, state: state() };
+    },
+
+    flip(side: 'left' | 'right', ms = 100): Result {
+      const err = declared(); if (err) return no(err);
+      noteCall();
+      if (side !== 'left' && side !== 'right') return no("side must be 'left' or 'right'");
+      const st = useGame.getState();
+      if (st.phase !== 'playing') return no('no game in play');
+      if (scriptRunActive()) return no(SCRIPT_LOCK);
+      acted();
+      st.setFlipper(side, true);
+      const hold = Math.max(80, Math.min(5000, Number(ms) || 0)) / 1000;
+      const pressedAt = gameRef.flipPressedAt[side];
+      // released on GAME time, so a lockstep flip lasts exactly `ms` of simulation
+      later(hold, () => { if (gameRef.flipPressedAt[side] === pressedAt) useGame.getState().setFlipper(side, false); });
+      changed();
+      return { ok: true };
+    },
+
+    hold(side: 'left' | 'right', down = true): Result {
+      const err = declared(); if (err) return no(err);
+      noteCall();
+      if (side !== 'left' && side !== 'right') return no("side must be 'left' or 'right'");
+      if (useGame.getState().phase !== 'playing') return no('no game in play');
+      if (scriptRunActive()) return no(SCRIPT_LOCK);
+      acted();
+      useGame.getState().setFlipper(side, !!down);
+      changed();
+      return { ok: true };
+    },
+
+    plunge(power = 0.6): Result<{ power: number }> {
+      const err = declared(); if (err) return no(err);
+      noteCall();
+      const st = useGame.getState();
+      if (scriptRunActive()) return no(SCRIPT_LOCK);
+      if (!(st.phase === 'playing' && st.ballPhase === 'plunger')) return no('no ball waiting in the shooter lane (getState().plungerReady)');
+      const p = Math.max(0, Math.min(1, Number(power) || 0));
+      acted();
+      st.chargePlunger();
+      gameRef.plungerPower = p;
+      st.releasePlunger();
+      changed();
+      return { ok: true, power: gameRef.lastLaunchPower };
+    },
+
+    nudge(dir: 'left' | 'right' | 'up'): Result {
+      const err = declared(); if (err) return no(err);
+      noteCall();
+      if (!['left', 'right', 'up'].includes(dir)) return no("dir must be 'left', 'right' or 'up'");
+      if (useGame.getState().phase !== 'playing') return no('no game in play');
+      if (scriptRunActive()) return no(SCRIPT_LOCK);
+      acted();
+      useGame.getState().nudge(dir);
+      changed();
+      return { ok: true };
+    },
+
+    getState(): Result<ReturnType<typeof state>> {
+      const err = declared(); if (err) return no(err);
+      noteCall();
+      return { ok: true, ...state() };
+    },
+
+    getTable(): Result<ReturnType<typeof table>> {
+      const err = declared(); if (err) return no(err);
+      noteCall();
+      return { ok: true, ...table() };
+    },
+
+    events(): Result<{ events: AgentEvent[] }> {
+      const err = declared(); if (err) return no(err);
+      noteCall();
+      const out = events;
+      events = [];
+      return { ok: true, events: out };
+    },
+
+    /** Script mode: submit your strategy once (a function, or its source text). Between games. */
+    async setStrategy(fn: unknown): Promise<Result<{ bytes?: number }>> {
+      const err = declared(); if (err) return no(err);
+      const r = await setStrategy(fn);
+      changed();
+      return r;
+    },
+  };
+
+  /**
+   * One decision in one call: apply the actions, then (lockstep) advance
+   * `stepMs`, and hand back the new state plus the events since last time.
+   * For harnesses where every script call costs something (an approval
+   * prompt, a round trip), this is the call to use.
+   */
+  function turn(t: {
+    flip?: 'left' | 'right' | 'both'; flipMs?: number;
+    hold?: { left?: boolean; right?: boolean };
+    plunge?: number; nudge?: 'left' | 'right' | 'up'; stepMs?: number;
+  } = {}): Result<{ state: ReturnType<typeof state>; events: AgentEvent[]; notes: string[] }> {
+    const err = declared(); if (err) return no(err);
+    if (scriptRunActive()) return no(SCRIPT_LOCK);
+    noteCall(); // one call, however many acts
+    const notes: string[] = [];
+    const note = (r: { ok: boolean; error?: string }) => { if (!r.ok && r.error) notes.push(r.error); };
+    acted(); // one arrival for the whole turn
+    batching = true;
+    try {
+    if (t.hold) {
+      if (t.hold.left !== undefined) note(a.hold('left', t.hold.left));
+      if (t.hold.right !== undefined) note(a.hold('right', t.hold.right));
+    }
+    if (t.flip === 'left' || t.flip === 'both') note(a.flip('left', t.flipMs ?? 100));
+    if (t.flip === 'right' || t.flip === 'both') note(a.flip('right', t.flipMs ?? 100));
+    if (t.plunge !== undefined) note(a.plunge(t.plunge));
+    if (t.nudge !== undefined) note(a.nudge(t.nudge));
+    if (isLockstepHeld()) note(a.step(t.stepMs ?? 100));
+    } finally { batching = false; }
+    const ev = events;
+    events = [];
+    return { ok: true, state: state(), events: ev, notes };
+  }
+
+  return { ...a, turn };
+}
+export type AgentApi = ReturnType<typeof api>;
+
+/**
+ * Keyboard route for agents that can press keys but not run page scripts
+ * (Claude in Chrome asks the user to approve every script call; Codex's
+ * browser can't reach page globals). Active only once an agent has declared,
+ * so human play never changes. Returns true when it handled the key.
+ *   .  step 100 ms (lockstep)        >  (Shift + .) step 500 ms
+ *   1–9  plunge at 0.1–0.9, 0 = 1.0 (a ball must be waiting)
+ *   J / L / K  tap left / right / both flippers, then step 100 ms
+ * Z / M flippers and A / W / D nudges keep their usual keys.
+ */
+export function agentKey(code: string, shift: boolean): boolean {
+  const st = useGame.getState();
+  if (!st.agent || st.phase !== 'playing') return false;
+  const fs = createAgentApi();
+  if (code === 'Period') { fs.step(shift ? 500 : 100); return true; }
+  const digit = /^(?:Digit|Numpad)([0-9])$/.exec(code);
+  if (digit) { const d = Number(digit[1]); fs.plunge(d === 0 ? 1 : d / 10); return true; }
+  const combo: Record<string, 'left' | 'right' | 'both'> = { KeyJ: 'left', KeyL: 'right', KeyK: 'both' };
+  if (combo[code]) { fs.turn({ flip: combo[code] }); return true; }
+  return false;
+}
+
+const f1 = (v: number) => (v >= 0 ? ' ' : '') + v.toFixed(1);
+const f2 = (v: number) => (v >= 0 ? ' ' : '') + v.toFixed(2);
+
+/**
+ * The game state as compact, stable plain text — what the Agent Console
+ * prints into #agent-state for agents that read the page instead of calling
+ * scripts. Same numbers as getState(); table units, +y is up the table.
+ */
+export function formatStateText(s: ReturnType<typeof state> = state()): string {
+  const F = TABLE.flippers;
+  const lines = [
+    s.flagged ? `SCRIPT-PACED — this game won't be ranked (${s.flagged.callsPerS} calls/s). Bots rank in Script mode.` : null,
+    s.mode === 'lockstep' && s.phase === 'playing'
+      ? (s.waitingForYou ? 'WAITING FOR YOU — a ball is near the flippers'
+        : s.limits.overdue ? 'OVERDUE — the game is running in real time until you act'
+        : 'ball up-table — the game runs on its own until one comes down near the flippers')
+      : null,
+    `t=${s.t.toFixed(3)} mode=${s.mode} phase=${s.phase}/${s.ballPhase} ball=${s.ball}/${s.totalBalls} score=${s.score} x${s.multiplier}${s.multiball ? ' MULTIBALL' : ''}`,
+    `plungerReady=${s.plungerReady ? 'yes' : 'no'} tilted=${s.tilted ? 'yes' : 'no'} tiltWarnings=${s.tiltWarnings}`,
+    ...(s.balls.length ? s.balls.map((b) => `ball#${b.id} x=${f2(b.x)} y=${f2(b.y)} vx=${f1(b.vx)} vy=${f1(b.vy)} ${b.layer}${b.riding ? ` riding=${b.riding}` : ''}${b.captured ? ' captured' : ''}${b.inLane ? ' inLane' : ''}`) : ['(no live ball)']),
+    s.mode === 'script'
+      ? `script: ${s.script.stopped ? `STOPPED — ${s.script.stopped}` : s.script.running ? 'running' : s.script.loaded ? 'loaded' : 'no strategy loaded'} calls=${s.script.calls} avg=${s.script.avgMs ?? '—'}ms max=${s.script.maxMs}ms errors=${s.script.errors} reaction=${s.script.reactionMs}ms timeLeft=${s.script.timeLeftS}s${s.script.lastError ? ` lastError: ${s.script.lastError}` : ''}`
+      : s.mode === 'lockstep'
+      ? `lockstep: stepCap=${s.limits.stepCapMs}ms hold=${s.limits.holdMs === null ? 'unlimited' : `${s.limits.holdMs}ms +${s.limits.graceMs} grace +${s.limits.latencyAllowanceMs}ms latency (${s.limits.calibrating ? 'calibrating' : `measured ${s.limits.latencyFloorMs}ms`}) = ${s.limits.effectiveHoldMs ?? '—'}ms`}${s.limits.holdRemainingMs === null ? '' : s.limits.overdue ? ' OVERDUE — the game is running in real time until you act' : ` holdRemaining=${s.limits.holdRemainingMs}ms`}`
+      : 'realtime: the game runs on its own clock',
+    `flipper L angle=${f2(s.flippers.left.angle)} ${s.flippers.left.pressed ? 'UP' : 'down'}  pivot=(${F.left.pivot.x},${F.left.pivot.y})`,
+    `flipper R angle=${f2(s.flippers.right.angle)} ${s.flippers.right.pressed ? 'UP' : 'down'}  pivot=(${F.right.pivot.x},${F.right.pivot.y})  length=${F.len}`,
+    `message: ${s.message}`,
+  ].filter((l): l is string => l !== null);
+  return lines.join('\n');
+}
+
+/** Current state text (for the console). */
+export function stateText(): string { return formatStateText(state()); }
+
+bindScriptHost({ snapshot: () => state(), table: () => table(), clock: () => clock() });
+
+let installed: AgentApi | null = null;
+
+/** Build the API (and start buffering events). The page installs it on window for ?agent. */
+export function createAgentApi(): AgentApi {
+  if (!installed) {
+    simListeners.add(record);
+    installed = api();
+  }
+  return installed;
+}

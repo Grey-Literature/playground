@@ -10,8 +10,30 @@ export type DiffId = 'supereasy' | 'easy' | 'medium' | 'hard' | 'impossible';
 export interface Pt { x: number; y: number }
 export interface PathPt { x: number; y: number; h: number }
 
-/** Anything that only exists from a given difficulty tier upward. */
-interface Gated { minTier?: DiffId }
+/**
+ * Anything that only exists from a given difficulty tier upward, and on a
+ * given playfield layer. `layer` omitted = 'field' (the main playfield).
+ */
+interface Gated { minTier?: DiffId; layer?: string }
+
+/** Layer id of the main playfield. */
+export const FIELD = 'field';
+
+/**
+ * A raised deck the ball can roll ON while other balls roll UNDER it.
+ * The ball stays on the deck while its centre is inside `outline` and not in
+ * a hole; leaving the outline anywhere without a rail (a "waterfall" gap) or
+ * entering a hole drops it to the field. Rails are ordinary walls with
+ * `layer: <deck id>`. Balls reach a deck via a ride with `exitLayer`.
+ */
+export interface LayerDef {
+  id: string;
+  /** Render height of the deck surface above the playfield. */
+  height: number;
+  /** Deck footprint polygon (physics x,y), any winding. */
+  outline: [number, number][];
+  holes: { id: string; x: number; y: number; r: number }[];
+}
 
 export interface WallSeg extends Gated {
   ax: number; ay: number; bx: number; by: number;
@@ -44,6 +66,12 @@ export interface Sensor extends Gated {
   id: string;
   /** Ignore balls slower than this (e.g. orbit shots). */
   minSpeed?: number;
+  /**
+   * Blast pad: on entry (if recharged) the ball's velocity is REPLACED by a
+   * blast of `speed` along `angle` ± spread/2 (radians, 0 = +x, π/2 = up-table),
+   * then the pad needs `cooldown` seconds to recharge. Emits a `blast` event.
+   */
+  blast?: { speed: number; angle: number; spread: number; cooldown: number };
 }
 
 /**
@@ -57,9 +85,31 @@ export interface RideDef extends Gated {
   path: PathPt[];
   dur: number;
   exit: { vx: number; vy: number };
-  gate: { minSpeed?: number; maxSpeed?: number; minVy?: number };
+  gate: {
+    minSpeed?: number; maxSpeed?: number; minVy?: number;
+    /** Only the ball just plunged (skill window open) at ≥ this plunger power (0..1). */
+    minLaunchPower?: number;
+  };
+  /** Never auto-entered — only started by `ejectIntoRide` from a capture. */
+  internal?: boolean;
   /** Hide the ball while riding (opaque pipes) — the scene draws a trail instead. */
   hideBall?: boolean;
+  /**
+   * Render hint: 'wire' (railed ramp — `RideWires` draws it, and `wires.check`
+   * keeps its rails out of the shooter lane and off other wires), 'pipe'
+   * (opaque tube) or 'fire' (a flaming arc, no rails). Unset = wire unless
+   * `hideBall`.
+   */
+  art?: 'wire' | 'pipe' | 'fire';
+  /** Layer the ball lands on when the ride ends (default: the entry layer). */
+  exitLayer?: string;
+  /**
+   * Keep momentum: the ride runs at clamp(entrySpeed × keep, min, max) u/s
+   * instead of the fixed `dur`, and the ball leaves along the path's end
+   * tangent at that speed (`exit` is then unused). Rules-started rides enter
+   * at 0, so they run at `min`.
+   */
+  carry?: { keep: number; min: number; max: number };
 }
 
 /** Saucer / scoop: holds the ball, then kicks it out. */
@@ -72,13 +122,23 @@ export interface CaptureDef extends Gated {
   eject: { angle: number; spread: number; speed: number; speedJitter: number };
 }
 
-/** Moving obstacle driven by the simulation clock. */
+/**
+ * Moving obstacle driven by the simulation clock.
+ *   bar + spin   — rotates about (cx, cy) at `speed` rad/s
+ *   bar + swing  — angle = base + amp·sin(speed·t): a pendulum / flapper
+ *   orbiter      — a post of radius r circling (cx, cy) at `orbit`, from `phase`
+ */
 export interface KinematicDef extends Gated {
   id: string;
-  kind: 'bar';
+  kind: 'bar' | 'orbiter';
+  motion?: 'spin' | 'swing';
   cx: number; cy: number;
-  half: number;   // half-length of the bar
-  r: number;      // bar thickness radius
+  half?: number;  // bar half-length
+  r: number;      // bar thickness radius / orbiter radius
+  amp?: number;   // swing amplitude (rad)
+  base?: number;  // swing centre angle (rad)
+  orbit?: number; // orbiter path radius
+  phase?: number; // orbiter start angle (rad)
   /** Angular speed (rad/s) per tier; `default` covers unlisted tiers. */
   speed: Partial<Record<DiffId, number>> & { default: number };
   rest: number;
@@ -139,6 +199,8 @@ export interface TableDef {
   camera: { clampX: number; minY: number; maxY: number };
   /** Flash decay rates per flash-key prefix (before ':'). Default 2.5/s. */
   flashDecay?: Record<string, number>;
+  /** Raised decks (see LayerDef). Omit for a single-level table. */
+  layers?: LayerDef[];
 }
 
 export interface BallState {
@@ -157,7 +219,10 @@ export interface BallState {
   h?: number;
   stuck?: number;
   autoLaunch?: number;
-  ride?: { id: string; t: number };
+  /** `speed` (u/s along the path) is set for `carry` rides. */
+  ride?: { id: string; t: number; speed?: number };
+  /** Layer the ball is on; undefined = FIELD. */
+  layer?: string;
 }
 
 export interface FlipperState {
@@ -179,4 +244,6 @@ export type PhysEvent =
   | { type: 'rideEnter'; id: string; x: number; y: number; speed: number }
   | { type: 'rideExit'; id: string; x: number; y: number }
   | { type: 'drain'; id: number; x: number; y: number }
+  | { type: 'blast'; id: string; x: number; y: number }
+  | { type: 'layer'; id: string; from: string; to: string; via: 'hole' | 'edge' | 'ride'; x: number; y: number }
   | { type: 'autoLaunch'; x: number; y: number };
