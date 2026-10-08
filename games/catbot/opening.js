@@ -17,9 +17,9 @@ const OPEN = (() => {
   const LINES = [
     [0.8, 3.6, 'A small shuttle tumbles out of the dark.'],
     [3.8, 5.6, 'It is already dying.'],
-    [5.8, 8.6, 'One engine flickers. Another is gone entirely.'],
+    [5.8, 8.6, 'One engine flickers. The other is already out.'],
     [8.8, 12.6, 'Loose panels tear away as the ship spins toward the surface below.'],
-    [13.2, 16.2, 'Inside, warning lights flash over an empty cabin.', 'fb'],
+    [13.2, 16.2, 'Inside, warning lights flash over an almost empty cabin.', 'fb'],
     [16.4, 17.8, 'Storage bins burst open.', 'snd'],
     [17.8, 21.4, 'Tools, crates, gears, and stranger pieces scatter across the deck.', 'snd'],
     [21.6, 24.8, 'Something round and tightly wound rolls beneath a bench.', 'fb'],
@@ -31,7 +31,7 @@ const OPEN = (() => {
     [35.6, 37.6, 'A faint mechanical click.', 'snd'],
     [37.8, 42.6, 'In the wreckage sits a small clockwork repair droid, folded awkwardly where the impact threw it.', 'fb'],
     [42.8, 44.6, 'Brass body. Copper joints.', 'fb'],
-    [44.8, 47.4, 'Cat ears that serve no obvious engineering purpose.', 'fb'],
+    [44.8, 47.4, 'Catbot tries to get up.', 'fb'],
     [47.6, 49.4, 'Its winding key turns once.'],
     [49.6, 50.8, 'Stops.', 'snd'],
   ];

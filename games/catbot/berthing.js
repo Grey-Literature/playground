@@ -42,11 +42,15 @@ ROOMS.push({
        you can follow across), so gap 3 is the one you have to freeze in: step out while B looks at the
        far end, hold still as it passes over you, go behind it. */
     lamps: [
-      { rail: [600, 1560], tint: '255,198,135', ph0: 12, path: [
-        { x: 1140, dwell: 2.2 }, { x: 1470, dwell: 2.6 }, { x: 1300, dwell: .3 }, { x: 1460, dwell: .3 },
-        { x: 780, dwell: 2.6 }, { x: 980, dwell: .3 } ] },
-      { rail: [1200, 2800], tint: '200,218,255', ph0: 12, path: [
-        { x: 1780, dwell: .3 }, { x: 2050, dwell: 2.6 }, { x: 1900, dwell: .3 }, { x: 2400, dwell: 2.8 }, { x: 2150, dwell: 2.2 } ] }
+      {
+        rail: [600, 1560], tint: '255,198,135', ph0: 12, path: [
+          { x: 1140, dwell: 2.2 }, { x: 1470, dwell: 2.6 }, { x: 1300, dwell: .3 }, { x: 1460, dwell: .3 },
+          { x: 780, dwell: 2.6 }, { x: 980, dwell: .3 }]
+      },
+      {
+        rail: [1200, 2800], tint: '200,218,255', ph0: 12, path: [
+          { x: 1780, dwell: .3 }, { x: 2050, dwell: 2.6 }, { x: 1900, dwell: .3 }, { x: 2400, dwell: 2.8 }, { x: 2150, dwell: 2.2 }]
+      }
     ]
   },
   covers: [{ x: 380, w: 240 }, { x: 900, w: 200 }, { x: 1520, w: 300 }, { x: 2420, w: 220 }],
@@ -57,10 +61,10 @@ ROOMS.push({
   exit: { x: 3120 },
   noCart: [[380, 3400]],
   captions: [
-    { on: 'seen', text: 'It saw you move.' },
-    { on: 'spot', text: 'Hold still. It only sees what moves.' },
-    { on: 'creak', text: 'The grating rings. The lamp heard that.' },
-    { on: 'power', text: 'The breaker catches. The lights come back, and the lamps stand down.' }
+    { on: 'seen', text: 'It saw you move. 🔦' },
+    { on: 'spot', text: 'Hold still. It only sees what moves. 🪨' },
+    { on: 'creak', text: 'The grating rings. The lamp heard that. 🔔' },
+    { on: 'power', text: 'The breaker catches. The lights come back, and the lamps stand down. 💡' }
   ]
 });
 
@@ -293,7 +297,7 @@ window.BERTH = (function () {
   function update(dt, c) {
     if (!on()) return;
     const R = room;
-    if (!S.eggEyes && rig.x > R.covers[1].x - 80) { S.eggEyes = true; console.log('%cBERTHING EYES (under bed 2) · Mistral Medium 3.5 via Vibe Code', 'color:#5fd0ff'); }
+    if (!S.eggEyes && rig.x > R.covers[1].x - 80) { S.eggEyes = true; console.log('%cBERTHING EYES (under bed 2) · Mistral Medium 3.5 via Vibe', 'color:#5fd0ff'); }
 
     lurk(R, dt);
     breaker(R, dt);
@@ -311,7 +315,8 @@ window.BERTH = (function () {
     if (ev.doodle) {                             // the egg: anchored on the wall where you can see it, pointing back at Vibe's drawer
       S.doodle.x = clamp(rig.x - 150, camX + 30, camX + W - 290);
       S.doodle.dir = Math.sign(R.covers[1].x + R.covers[1].w / 2 - (S.doodle.x + 130)) || -1;
-      console.log('%cLASER DOODLE · Claude Opus 5.5 (claude-opus-5-5) in Claude Code · hi, Vibe', 'color:#ff5a5a');
+      console.log('%cLASER DOODLE · Claude Opus 5.5 in Claude Code · debugged, Vibe', 'color:#ff5a5a');
+      typeof EGGS !== 'undefined' && EGGS.mark('doodle');                     // the all-eggs bonus (index.html: EGGS)
     }
     if (ev.pounce != null) {                     // it couldn't help itself
       const f = rig.facing, d = Math.abs(ev.pounce + f * 30 - rig.x);
@@ -320,8 +325,10 @@ window.BERTH = (function () {
     }
     if (S.tempt > 0 && S.flee == null && S.hunker <= 0 && !rig.air) {   // the tell: tail tip twitching, ears up, eyes on the dot, and at the end the rump wiggle
       const k = clamp(S.tempt / TEMPT, 0, 1), hx = rig.toWorld({ x: rig.hx, y: rig.hy }).x;
-      Object.assign(c, { wagTip: 8 + 18 * k, tipFreq: 3 + 5 * k, tailBase: 170, earL: -10 * k, earR: -8 * k, pupil: .5 + .5 * k, lid: 0,
-        lookX: clamp((S.temptX - hx) * rig.facing / 120, -1, 1), lookY: -.4, earFlick: false });
+      Object.assign(c, {
+        wagTip: 8 + 18 * k, tipFreq: 3 + 5 * k, tailBase: 170, earL: -10 * k, earR: -8 * k, pupil: .5 + .5 * k, lid: 0,
+        lookX: clamp((S.temptX - hx) * rig.facing / 120, -1, 1), lookY: -.4, earFlick: false
+      });
       if (k > .7) { c.crouch = .3 * seg(k, .7, .85); c.hipLift = (k - .7) * 20 + Math.sin(T * 24) * 2.5; }
     }
     if (ev.spot) {
@@ -434,7 +441,7 @@ window.BERTH = (function () {
     }
   }
 
-  /* easter egg (Mistral Vibe placed it as two ovals; Claude Sonnet 5.5 made them eyes; made lurkier in pass 2
+  /* easter egg (Mistral Vibe placed it as two ovals; Claude Sonnet 5.5 made the eyes; made lurkier in pass 2
      at Tasha's request): something lives in the half-open drawer under bunk 2. Same grammar as catbot's own
      eyes (almond, slit pupil, glint), smaller and dimmer. It watches from the dark crack once catbot has been past bunk 2, follows it with its eyes, shuts
      them when light comes near, withdraws when catbot comes close, and now and then just isn't there. Wait
@@ -451,6 +458,7 @@ window.BERTH = (function () {
     L.p = damp(L.p, pairT, pairT > L.p ? .9 : 6, dt);                                       // slow to open, quick to shut
     L.peek = damp(L.peek, peekT, peekT > L.peek ? .7 : 8, dt);
     L.sig = damp(L.sig, under && L.still > 2.5 ? 1 : 0, 1.5, dt);
+    if ((L.peek > .5 || L.sig > .5) && typeof EGGS !== 'undefined') EGGS.mark('eyes');                                // the all-eggs bonus: the single eye, or the scratch read (index.html: EGGS)
   }
   function eggSpots(R) {      // the pair's drawer, the drawer away from catbot (the peek), the eye line, the scratch
     const cv = R.covers[1], k = cabinet(cv), cx = cv.x + cv.w / 2;
@@ -487,7 +495,7 @@ window.BERTH = (function () {
     if (L.peek > .02) eye(g, e.peek, e.y - 1, rig.x > e.peek ? 1 : -1, L.peek, clamp((rig.x - e.peek) / 120, -1, 1), (T % 4.3 < .2) ? 1 : 0);
     if (L.sig > .02) {
       g.save(); g.font = '500 5px Inter,sans-serif'; g.textAlign = 'left';
-      g.fillStyle = `rgba(205,190,165,${.55 * L.sig})`; g.fillText('Mistral Medium 3.5 via Vibe Code', e.sx, GY - 1.5);
+      g.fillStyle = `rgba(250, 80, 15,${.55 * L.sig})`; g.fillText('Mistral Medium 3.5 via Vibe', e.sx, GY - 1.5);
       g.restore();
     }
   }
@@ -638,9 +646,11 @@ window.BERTH = (function () {
     let len = 0; for (const p of st) for (let k = 1; k < p.length; k++) len += Math.hypot(p[k][0] - p[k - 1][0], p[k][1] - p[k - 1][1]);
     return { st, len };
   })();
-  const SIG_TXT = 'Claude Opus 5.5 · hi, Vibe', DY = 58;      // DY: the doodle's top, in screen y (the wall above the bunks)
-  const dPhase = t => ({ face: clamp((t - .4) / 1.6, 0, 1), text: clamp((t - 2.1) / 2.6, 0, 1), arrow: clamp((t - 4.8) / .5, 0, 1),
-    a: t < 7.6 ? 1 : clamp(1 - (t - 7.6) / 1.6, 0, 1) });
+  const SIG_TXT = 'Claude Opus 5.5 · Debugged Vibe', DY = 58;      // DY: the doodle's top, in screen y (the wall above the bunks)
+  const dPhase = t => ({
+    face: clamp((t - .4) / 1.6, 0, 1), text: clamp((t - 2.1) / 2.6, 0, 1), arrow: clamp((t - 4.8) / .5, 0, 1),
+    a: t < 7.6 ? 1 : clamp(1 - (t - 7.6) / 1.6, 0, 1)
+  });
   function facePoint(u) {                       // where the pen is after u (0..1) of the face
     let want = u * FACE.len;
     for (const p of FACE.st) for (let k = 1; k < p.length; k++) {
