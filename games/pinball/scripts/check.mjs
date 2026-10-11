@@ -8,7 +8,7 @@
 import { build } from 'esbuild';
 import { readdirSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -28,7 +28,7 @@ for (const f of checks) {
   });
   console.log(`\n━━━ ${f} ━━━`);
   const t0 = Date.now();
-  const r = spawnSync(process.execPath, [pathToFileURL(outfile).pathname], { stdio: 'inherit' });
+  const r = spawnSync(process.execPath, [outfile], { stdio: 'inherit' });
   const secs = ((Date.now() - t0) / 1000).toFixed(1);
   if (r.status !== 0) { failed++; console.log(`✗ ${f} FAILED (${secs}s)`); }
   else console.log(`✓ ${f} passed (${secs}s)`);
