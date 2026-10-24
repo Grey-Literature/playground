@@ -17,6 +17,8 @@
  *   enclosures  optional: draw a fixed block as hollow walls with a doorway (a room the model put
  *           INSIDE the main floor). {id:{door:{side:'n|s|e|w', w:ft, at:ftOffFromMiddle}, skip:['n',..]}},
  *           rot 0 only. `skip` omits sides that are already shop walls (avoids z-fighting).
+ *   planRooms  optional: room ids that share one plan view (shop + tool room). Standing in a room outside
+ *           the list (a far-off yard) frames just that room. Rooms may set outdoor:true (no ceiling).
  *   planLabels  optional: fixed ids whose labels also show in plan view (structure, e.g. classrooms).
  *   note    optional: caveat text shown in the menu (what the model guessed, what we added).
  * Models are shown as they described the shop — never merged or normalized — so each has its own
@@ -3476,6 +3478,1136 @@ window.SHOP_DATA = {
          "w": 3.0,
          "d": 2.0,
          "h": 2.5,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        }
+       ]
+      }
+     }
+    },
+    gpt: {
+     "label": "ChatGPT",
+     "frame": {
+      "units": "feet",
+      "coordinate_system": "right-handed XZ ground plane, Y vertical",
+      "rotation_convention": "degrees clockwise viewed from above",
+      "object_anchor": "center of ground footprint",
+      "height_anchor": "bottom edge measured from floor",
+      "main_shop": {
+       "x_zero_wall": "west end wall, estimated",
+       "x_positive": "east along the 100-foot shop length",
+       "z_zero_wall": "south long wall, estimated",
+       "z_positive": "north across the 50-foot shop width",
+       "bounds": {
+        "x_min": 0,
+        "x_max": 100,
+        "z_min": 0,
+        "z_max": 50
+       },
+       "width": 100,
+       "depth": 50
+      },
+      "tool_room": {
+       "coordinate_system": "same XZ axes as main shop",
+       "bounds": {
+        "x_min": 110,
+        "x_max": 120,
+        "z_min": 0,
+        "z_max": 14
+       },
+       "width": 10,
+       "depth": 14,
+       "est": true,
+       "note": "Represented as a separate room east of the main shop for walkthrough purposes. Actual physical adjacency is unverified."
+      },
+      "tool_room_sidebox": {
+       "coordinate_system": "same XZ axes as main shop",
+       "bounds": {
+        "x_min": 122,
+        "x_max": 129.5,
+        "z_min": 0,
+        "z_max": 10
+       },
+       "width": 7.5,
+       "depth": 10,
+       "est": true,
+       "note": "Represented separately. Actual entrance and adjacency require confirmation."
+      },
+      "yard": {
+       "coordinate_system": "same XZ axes",
+       "bounds": {
+        "x_min": 0,
+        "x_max": 253,
+        "z_min": 100,
+        "z_max": 198
+       },
+       "width": 253,
+       "depth": 98,
+       "est": true,
+       "note": "Conceptual exterior scene, not geographically registered to the building."
+      },
+      "model_notes": [
+       "All coordinates and footprints marked est are visual approximations.",
+       "The source photographs do not establish a surveyed floor plan.",
+       "The booth rows are represented as continuous fixed rectangular envelopes rather than individually modeled cubicles.",
+       "Rows are assumed to contain approximately 12 to 16 booths each; the exact count is not asserted.",
+       "The clear central area is modeled between z=18 and z=32.",
+       "The primary circulation paths are approximately z=18 to 23 and z=27 to 32.",
+       "Movable equipment in the central zone is restricted to z=23 through z=27 in the after layout.",
+       "Before and after objects use identical dimensions and identifiers.",
+       "Aisle widths refer to modeled floor footprints, not verified existing conditions.",
+       "Cylinder locations and grinding operations remain conditional on safety review.",
+       "Fixed equipment and utility positions are illustrative, not approved installation coordinates.",
+       "No intentional modeled object footprint overlaps are present."
+      ]
+     },
+     "note": "ChatGPT's reorg with coordinates. Its z axis ran north and the viewer's runs south, so z is flipped (z becomes 50 - z) to keep left and right as ChatGPT described them. It put the tool room, side box and yard as separate spaces with no connection to the shop: use Next room to visit them. Booths are drawn as 16 per row (ChatGPT said 12 to 16 and did not pick). All estimates.",
+     "rooms": [
+      {
+       "id": "main",
+       "name": "Main floor",
+       "x0": 0,
+       "z0": 0,
+       "w": 100,
+       "d": 50,
+       "h": 16,
+       "spawn": {
+        "x": 4,
+        "z": 25,
+        "yaw": 90
+       }
+      },
+      {
+       "id": "toolroom",
+       "name": "Tool room",
+       "x0": 110,
+       "z0": 36,
+       "w": 10,
+       "d": 14,
+       "h": 9,
+       "spawn": {
+        "x": 115,
+        "z": 47.5,
+        "yaw": 0
+       }
+      },
+      {
+       "id": "sidebox",
+       "name": "Side box",
+       "x0": 122,
+       "z0": 40,
+       "w": 7.5,
+       "d": 10,
+       "h": 9,
+       "spawn": {
+        "x": 125.75,
+        "z": 47.5,
+        "yaw": 0
+       }
+      },
+      {
+       "id": "yard",
+       "name": "Yard",
+       "x0": 0,
+       "z0": -148,
+       "w": 253,
+       "d": 98,
+       "h": 4,
+       "outdoor": true,
+       "spawn": {
+        "x": 50,
+        "z": -58,
+        "yaw": 0
+       }
+      }
+     ],
+     "planRooms": [
+      "main",
+      "toolroom",
+      "sidebox"
+     ],
+     "doors": [
+      "roll-up-door",
+      "pedestrian-exit",
+      "tool-room-door",
+      "sidebox-door"
+     ],
+     "hide": [],
+     "decor": {
+      "booth-row-north": {
+       "type": "booths",
+       "count": 16,
+       "open": "+z"
+      },
+      "booth-row-south": {
+       "type": "booths",
+       "count": 16,
+       "open": "-z"
+      }
+     },
+     "fixed": [
+      {
+       "id": "booth-row-south",
+       "name": "Fixed South Welding Booth Row",
+       "space": "main_shop",
+       "x": 50,
+       "z": 38,
+       "w": 80,
+       "d": 12,
+       "h": 8,
+       "y": 0,
+       "rot": 0,
+       "est": true,
+       "source_photos": [
+        "9875",
+        "9879",
+        "9886"
+       ],
+       "notes": "Blue steel booth frames, orange curtains, fixed welding infrastructure. Existing booth row retained."
+      },
+      {
+       "id": "booth-row-north",
+       "name": "Fixed North Welding Booth Row",
+       "space": "main_shop",
+       "x": 50,
+       "z": 12,
+       "w": 80,
+       "d": 12,
+       "h": 8,
+       "y": 0,
+       "rot": 0,
+       "est": true,
+       "source_photos": [
+        "9875",
+        "9879",
+        "9886"
+       ],
+       "notes": "Second fixed booth row retained."
+      },
+      {
+       "id": "electrical-panel-bank-west",
+       "name": "West Electrical Panel Bank",
+       "space": "main_shop",
+       "x": 5,
+       "z": 0.25,
+       "w": 4,
+       "d": 0.5,
+       "h": 6,
+       "y": 1,
+       "rot": 0,
+       "est": true,
+       "source_photos": [
+        "9883"
+       ],
+       "notes": "Location estimated. Reserve a minimum 3-foot clear working depth, plus other required working-space dimensions."
+      },
+      {
+       "id": "electrical-panel-bank-east",
+       "name": "East Electrical Distribution",
+       "space": "main_shop",
+       "x": 95,
+       "z": 0.25,
+       "w": 4,
+       "d": 0.5,
+       "h": 6,
+       "y": 1,
+       "rot": 0,
+       "est": true,
+       "source_photos": [
+        "9883"
+       ],
+       "notes": "Illustrative position; actual panel count and placement must be verified."
+      },
+      {
+       "id": "roll-up-door",
+       "name": "Main Roll-Up Door",
+       "space": "main_shop",
+       "x": 5,
+       "z": 50,
+       "w": 9,
+       "d": 0,
+       "h": 12,
+       "y": 0,
+       "rot": 0,
+       "est": true,
+       "source_photos": [
+        "9896"
+       ],
+       "notes": "Wall assignment and opening width estimated. Maintain clear approach and full operation."
+      },
+      {
+       "id": "pedestrian-exit",
+       "name": "Pedestrian Exit",
+       "space": "main_shop",
+       "x": 96,
+       "z": 50,
+       "w": 3,
+       "d": 0,
+       "h": 7,
+       "y": 0,
+       "rot": 0,
+       "est": true,
+       "source_photos": [
+        "9894"
+       ],
+       "notes": "Exit position estimated from imagery. All actual exits require field verification."
+      },
+      {
+       "id": "overhead-gas-line-south",
+       "name": "South Booth Gas and Air Distribution",
+       "space": "main_shop",
+       "x": 50,
+       "z": 38,
+       "w": 80,
+       "d": 0.5,
+       "h": 0.5,
+       "y": 11,
+       "rot": 0,
+       "est": true,
+       "source_photos": [
+        "9875",
+        "9879"
+       ],
+       "notes": "Elevated fixed utility representation. Not to be relocated."
+      },
+      {
+       "id": "overhead-gas-line-north",
+       "name": "North Booth Gas and Air Distribution",
+       "space": "main_shop",
+       "x": 50,
+       "z": 12,
+       "w": 80,
+       "d": 0.5,
+       "h": 0.5,
+       "y": 11,
+       "rot": 0,
+       "est": true,
+       "source_photos": [
+        "9875",
+        "9879"
+       ],
+       "notes": "Elevated fixed utility representation."
+      },
+      {
+       "id": "overhead-ducting",
+       "name": "Overhead Ventilation Duct",
+       "space": "main_shop",
+       "x": 50,
+       "z": 4,
+       "w": 75,
+       "d": 2,
+       "h": 2,
+       "y": 13,
+       "rot": 0,
+       "est": true,
+       "source_photos": [
+        "9883",
+        "9886"
+       ],
+       "notes": "Conceptual elevated duct envelope."
+      },
+      {
+       "id": "fixed-hose-reel-south",
+       "name": "Fixed Hose Reel South",
+       "space": "main_shop",
+       "x": 8,
+       "z": 44,
+       "w": 2,
+       "d": 1,
+       "h": 2,
+       "y": 8,
+       "rot": 0,
+       "est": true,
+       "source_photos": [
+        "9875"
+       ]
+      },
+      {
+       "id": "fixed-hose-reel-north",
+       "name": "Fixed Hose Reel North",
+       "space": "main_shop",
+       "x": 8,
+       "z": 6,
+       "w": 2,
+       "d": 1,
+       "h": 2,
+       "y": 8,
+       "rot": 0,
+       "est": true,
+       "source_photos": [
+        "9875"
+       ]
+      },
+      {
+       "id": "ceiling-light-south",
+       "name": "South Row Overhead Lighting",
+       "space": "main_shop",
+       "x": 50,
+       "z": 38,
+       "w": 70,
+       "d": 1,
+       "h": 0.5,
+       "y": 15,
+       "rot": 0,
+       "est": true
+      },
+      {
+       "id": "ceiling-light-north",
+       "name": "North Row Overhead Lighting",
+       "space": "main_shop",
+       "x": 50,
+       "z": 12,
+       "w": 70,
+       "d": 1,
+       "h": 0.5,
+       "y": 15,
+       "rot": 0,
+       "est": true
+      },
+      {
+       "id": "fire-extinguisher-west",
+       "name": "Wall-Mounted Fire Extinguisher West",
+       "space": "main_shop",
+       "x": 2,
+       "z": 4,
+       "w": 0.75,
+       "d": 0.75,
+       "h": 2,
+       "y": 2,
+       "rot": 0,
+       "est": true,
+       "source_photos": [
+        "9883"
+       ],
+       "notes": "Illustrative position. Preserve accessible mounting and clear approach."
+      },
+      {
+       "id": "fire-extinguisher-east",
+       "name": "Wall-Mounted Fire Extinguisher East",
+       "space": "main_shop",
+       "x": 98,
+       "z": 4,
+       "w": 0.75,
+       "d": 0.75,
+       "h": 2,
+       "y": 2,
+       "rot": 0,
+       "est": true
+      },
+      {
+       "id": "tool-room-door",
+       "name": "Tool Room Entrance",
+       "space": "tool_room",
+       "x": 115,
+       "z": 50,
+       "w": 3,
+       "d": 0,
+       "h": 7,
+       "y": 0,
+       "rot": 0,
+       "est": true,
+       "notes": "Invented doorway placement for navigation; not photo-verified."
+      },
+      {
+       "id": "sidebox-door",
+       "name": "Tool Room Sidebox Entrance",
+       "space": "tool_room_sidebox",
+       "x": 125.75,
+       "z": 50,
+       "w": 3,
+       "d": 0,
+       "h": 7,
+       "y": 0,
+       "rot": 0,
+       "est": true,
+       "notes": "Invented doorway placement for navigation."
+      }
+     ],
+     "layouts": {
+      "before": {
+       "label": "Before (current shop)",
+       "objects": [
+        {
+         "id": "fabrication-bench-01",
+         "name": "Heavy Fabrication Workbench",
+         "space": "main_shop",
+         "x": 22,
+         "z": 25,
+         "w": 6,
+         "d": 3,
+         "h": 3,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "fabrication-bench-02",
+         "name": "Secondary Fabrication Bench",
+         "space": "main_shop",
+         "x": 34,
+         "z": 25,
+         "w": 5,
+         "d": 3,
+         "h": 3,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "instructor-station",
+         "name": "Instructor Standing Station",
+         "space": "main_shop",
+         "x": 48,
+         "z": 25,
+         "w": 3,
+         "d": 2,
+         "h": 3.5,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "wire-spool-rack",
+         "name": "Rolling Wire Spool Rack",
+         "space": "main_shop",
+         "x": 60,
+         "z": 25,
+         "w": 4,
+         "d": 3,
+         "h": 5,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "utility-cart-01",
+         "name": "Rolling Utility Cart 1",
+         "space": "main_shop",
+         "x": 70,
+         "z": 25,
+         "w": 3,
+         "d": 2,
+         "h": 3,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "utility-cart-02",
+         "name": "Rolling Utility Cart 2",
+         "space": "main_shop",
+         "x": 79,
+         "z": 25,
+         "w": 3,
+         "d": 2,
+         "h": 3,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "gas-cart-01",
+         "name": "Portable Gas Cylinder Cart 1",
+         "space": "main_shop",
+         "x": 6,
+         "z": 28,
+         "w": 2,
+         "d": 2,
+         "h": 5,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "gas-cart-02",
+         "name": "Portable Gas Cylinder Cart 2",
+         "space": "main_shop",
+         "x": 94,
+         "z": 25,
+         "w": 2,
+         "d": 2,
+         "h": 5,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "grinder-01",
+         "name": "Pedestal Grinder 1",
+         "space": "main_shop",
+         "x": 18,
+         "z": 4,
+         "w": 2,
+         "d": 2,
+         "h": 4,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "grinder-02",
+         "name": "Pedestal Grinder 2",
+         "space": "main_shop",
+         "x": 29,
+         "z": 4,
+         "w": 2,
+         "d": 2,
+         "h": 4,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "grinder-03",
+         "name": "Pedestal Grinder 3",
+         "space": "main_shop",
+         "x": 40,
+         "z": 4,
+         "w": 2,
+         "d": 2,
+         "h": 4,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "lockers-01",
+         "name": "Blue Steel Student Lockers",
+         "space": "main_shop",
+         "x": 54,
+         "z": 3,
+         "w": 5,
+         "d": 2,
+         "h": 7,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "floor-fan-01",
+         "name": "Industrial Floor Fan 1",
+         "space": "main_shop",
+         "x": 64,
+         "z": 3,
+         "w": 3,
+         "d": 3,
+         "h": 4,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "floor-fan-02",
+         "name": "Industrial Floor Fan 2",
+         "space": "main_shop",
+         "x": 74,
+         "z": 3,
+         "w": 3,
+         "d": 3,
+         "h": 4,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "floor-fan-03",
+         "name": "Industrial Floor Fan 3",
+         "space": "main_shop",
+         "x": 84,
+         "z": 3,
+         "w": 3,
+         "d": 3,
+         "h": 4,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "equipment-cart-01",
+         "name": "Welding Equipment Transport Cart",
+         "space": "main_shop",
+         "x": 95,
+         "z": 13,
+         "w": 3,
+         "d": 2,
+         "h": 4,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "consumable-cabinet",
+         "name": "Freestanding Consumable Cabinet",
+         "space": "main_shop",
+         "x": 95,
+         "z": 38,
+         "w": 4,
+         "d": 2,
+         "h": 6,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "material-rack-01",
+         "name": "Small Material Storage Rack",
+         "space": "main_shop",
+         "x": 95,
+         "z": 32,
+         "w": 4,
+         "d": 2,
+         "h": 6,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "tool-shelf-01",
+         "name": "Tool Room Steel Shelf 1",
+         "space": "tool_room",
+         "x": 112,
+         "z": 39,
+         "w": 2,
+         "d": 4,
+         "h": 7,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "tool-shelf-02",
+         "name": "Tool Room Steel Shelf 2",
+         "space": "tool_room",
+         "x": 118,
+         "z": 39,
+         "w": 2,
+         "d": 4,
+         "h": 7,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "parts-bin-rack",
+         "name": "Small Parts Bin Rack",
+         "space": "tool_room",
+         "x": 115,
+         "z": 37.5,
+         "w": 3,
+         "d": 1.5,
+         "h": 6,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "tool-worktable",
+         "name": "Tool Room Worktable",
+         "space": "tool_room",
+         "x": 115,
+         "z": 44,
+         "w": 4,
+         "d": 2,
+         "h": 3,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "hose-rack",
+         "name": "Freestanding Hose Storage Rack",
+         "space": "tool_room_sidebox",
+         "x": 124,
+         "z": 43,
+         "w": 2,
+         "d": 3,
+         "h": 6,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "regulator-cabinet",
+         "name": "Regulator and Fittings Cabinet",
+         "space": "tool_room_sidebox",
+         "x": 127.5,
+         "z": 43,
+         "w": 2,
+         "d": 2,
+         "h": 6,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "steel-stock-rack",
+         "name": "Steel Stock Ground Rack",
+         "space": "yard",
+         "x": 60,
+         "z": -75,
+         "w": 20,
+         "d": 4,
+         "h": 3,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "yard-scrap-bin",
+         "name": "Steel Scrap Collection Bin",
+         "space": "yard",
+         "x": 95,
+         "z": -75,
+         "w": 8,
+         "d": 6,
+         "h": 4,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        }
+       ]
+      },
+      "after": {
+       "label": "After (ChatGPT)",
+       "objects": [
+        {
+         "id": "fabrication-bench-01",
+         "name": "Heavy Fabrication Workbench",
+         "space": "main_shop",
+         "x": 22,
+         "z": 25,
+         "w": 6,
+         "d": 3,
+         "h": 3,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "fabrication-bench-02",
+         "name": "Secondary Fabrication Bench",
+         "space": "main_shop",
+         "x": 34,
+         "z": 25,
+         "w": 5,
+         "d": 3,
+         "h": 3,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "instructor-station",
+         "name": "Instructor Standing Station",
+         "space": "main_shop",
+         "x": 50,
+         "z": 25,
+         "w": 3,
+         "d": 2,
+         "h": 3.5,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "wire-spool-rack",
+         "name": "Rolling Wire Spool Rack",
+         "space": "main_shop",
+         "x": 65,
+         "z": 25,
+         "w": 4,
+         "d": 3,
+         "h": 5,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "utility-cart-01",
+         "name": "Rolling Utility Cart 1",
+         "space": "main_shop",
+         "x": 75,
+         "z": 25,
+         "w": 3,
+         "d": 2,
+         "h": 3,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "utility-cart-02",
+         "name": "Rolling Utility Cart 2",
+         "space": "main_shop",
+         "x": 84,
+         "z": 25,
+         "w": 3,
+         "d": 2,
+         "h": 3,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "gas-cart-01",
+         "name": "Portable Gas Cylinder Cart 1",
+         "space": "main_shop",
+         "x": 5,
+         "z": 33,
+         "w": 2,
+         "d": 2,
+         "h": 5,
+         "y": 0,
+         "rot": 0,
+         "est": true,
+         "placement_notes": "Conditional secured cylinder location; verify gas type, protection, ventilation, and safe access."
+        },
+        {
+         "id": "gas-cart-02",
+         "name": "Portable Gas Cylinder Cart 2",
+         "space": "main_shop",
+         "x": 5,
+         "z": 17,
+         "w": 2,
+         "d": 2,
+         "h": 5,
+         "y": 0,
+         "rot": 0,
+         "est": true,
+         "placement_notes": "Conditional secured location for cylinders in use; not designated bulk cylinder storage."
+        },
+        {
+         "id": "grinder-01",
+         "name": "Pedestal Grinder 1",
+         "space": "main_shop",
+         "x": 20,
+         "z": 3,
+         "w": 2,
+         "d": 2,
+         "h": 4,
+         "y": 0,
+         "rot": 0,
+         "est": true,
+         "placement_notes": "Conditional grinding zone. Relocate only if not anchored or after qualified disconnection and reinstallation."
+        },
+        {
+         "id": "grinder-02",
+         "name": "Pedestal Grinder 2",
+         "space": "main_shop",
+         "x": 29,
+         "z": 3,
+         "w": 2,
+         "d": 2,
+         "h": 4,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "grinder-03",
+         "name": "Pedestal Grinder 3",
+         "space": "main_shop",
+         "x": 38,
+         "z": 3,
+         "w": 2,
+         "d": 2,
+         "h": 4,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "lockers-01",
+         "name": "Blue Steel Student Lockers",
+         "space": "main_shop",
+         "x": 56,
+         "z": 3,
+         "w": 5,
+         "d": 2,
+         "h": 7,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "floor-fan-01",
+         "name": "Industrial Floor Fan 1",
+         "space": "main_shop",
+         "x": 68,
+         "z": 3,
+         "w": 3,
+         "d": 3,
+         "h": 4,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "floor-fan-02",
+         "name": "Industrial Floor Fan 2",
+         "space": "main_shop",
+         "x": 79,
+         "z": 3,
+         "w": 3,
+         "d": 3,
+         "h": 4,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "floor-fan-03",
+         "name": "Industrial Floor Fan 3",
+         "space": "main_shop",
+         "x": 89,
+         "z": 3,
+         "w": 3,
+         "d": 3,
+         "h": 4,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "equipment-cart-01",
+         "name": "Welding Equipment Transport Cart",
+         "space": "main_shop",
+         "x": 95,
+         "z": 12,
+         "w": 3,
+         "d": 2,
+         "h": 4,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "consumable-cabinet",
+         "name": "Freestanding Consumable Cabinet",
+         "space": "main_shop",
+         "x": 95,
+         "z": 38,
+         "w": 4,
+         "d": 2,
+         "h": 6,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "material-rack-01",
+         "name": "Small Material Storage Rack",
+         "space": "main_shop",
+         "x": 95,
+         "z": 31,
+         "w": 4,
+         "d": 2,
+         "h": 6,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "tool-shelf-01",
+         "name": "Tool Room Steel Shelf 1",
+         "space": "tool_room",
+         "x": 112,
+         "z": 39,
+         "w": 2,
+         "d": 4,
+         "h": 7,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "tool-shelf-02",
+         "name": "Tool Room Steel Shelf 2",
+         "space": "tool_room",
+         "x": 118,
+         "z": 39,
+         "w": 2,
+         "d": 4,
+         "h": 7,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "parts-bin-rack",
+         "name": "Small Parts Bin Rack",
+         "space": "tool_room",
+         "x": 115,
+         "z": 37.5,
+         "w": 3,
+         "d": 1.5,
+         "h": 6,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "tool-worktable",
+         "name": "Tool Room Worktable",
+         "space": "tool_room",
+         "x": 115,
+         "z": 44,
+         "w": 4,
+         "d": 2,
+         "h": 3,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "hose-rack",
+         "name": "Freestanding Hose Storage Rack",
+         "space": "tool_room_sidebox",
+         "x": 124,
+         "z": 43,
+         "w": 2,
+         "d": 3,
+         "h": 6,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "regulator-cabinet",
+         "name": "Regulator and Fittings Cabinet",
+         "space": "tool_room_sidebox",
+         "x": 127.5,
+         "z": 43,
+         "w": 2,
+         "d": 2,
+         "h": 6,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "steel-stock-rack",
+         "name": "Steel Stock Ground Rack",
+         "space": "yard",
+         "x": 45,
+         "z": -75,
+         "w": 20,
+         "d": 4,
+         "h": 3,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "yard-scrap-bin",
+         "name": "Steel Scrap Collection Bin",
+         "space": "yard",
+         "x": 80,
+         "z": -75,
+         "w": 8,
+         "d": 6,
+         "h": 4,
          "y": 0,
          "rot": 0,
          "est": true

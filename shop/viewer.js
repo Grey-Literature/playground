@@ -321,11 +321,14 @@ function loadModel(key) {
     tex.repeat.set(r.w / 4, r.d / 4);                // one cell = 4 ft, so you can eyeball distances
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(r.w, r.d), new THREE.MeshLambertMaterial({ map: tex }));
     floor.rotation.x = -Math.PI / 2; floor.position.set(r.x0 + r.w / 2, 0, r.z0 + r.d / 2); world.add(floor);
-    const ceil = new THREE.Mesh(new THREE.PlaneGeometry(r.w, r.d), ceilMat);
-    ceil.rotation.x = Math.PI / 2; ceil.position.set(r.x0 + r.w / 2, r.h, r.z0 + r.d / 2); world.add(ceil);
-    ceilings.push(ceil);
+    // `outdoor` rooms (a yard) get floor + low fence walls only: no ceiling, no light strips.
+    const nx = r.outdoor ? 0 : Math.max(1, Math.round(r.w / 30)), nz = r.outdoor ? 0 : Math.max(1, Math.round(r.d / 25));
+    if (!r.outdoor) {
+      const ceil = new THREE.Mesh(new THREE.PlaneGeometry(r.w, r.d), ceilMat);
+      ceil.rotation.x = Math.PI / 2; ceil.position.set(r.x0 + r.w / 2, r.h, r.z0 + r.d / 2); world.add(ceil);
+      ceilings.push(ceil);
+    }
     // light strips: a grid on big rooms, one strip on small ones
-    const nx = Math.max(1, Math.round(r.w / 30)), nz = Math.max(1, Math.round(r.d / 25));
     for (let i = 0; i < nx; i++) for (let j = 0; j < nz; j++) {
       const m = addBox(world, r.x0 + r.w * (i + 0.5) / nx, r.h - 0.1, r.z0 + r.d * (j + 0.5) / nz,
         Math.min(6, r.w * 0.6), 0.15, 0.6, lightMat);
@@ -336,7 +339,7 @@ function loadModel(key) {
     bounds.minX = Math.min(bounds.minX, r.x0); bounds.maxX = Math.max(bounds.maxX, r.x0 + r.w);
     bounds.minZ = Math.min(bounds.minZ, r.z0); bounds.maxZ = Math.max(bounds.maxZ, r.z0 + r.d);
   }
-  fitTopCam(bounds);
+  // (plan camera is fitted in setRoom, once we know which room we're in)
 
   // — fixed features —
   const hide = new Set(M.hide || []);
@@ -366,7 +369,9 @@ function loadModel(key) {
         const g = new THREE.Group();
         g.add(new THREE.Mesh(unitBox, new THREE.MeshLambertMaterial({ color: colorFor(f) })));
         g.add(new THREE.LineSegments(unitEdges, edgeMat));
-        g.position.set(f.x, y + f.h / 2, f.z); g.scale.set(f.w, f.h, f.d); g.rotation.y = -(f.rot || 0) * DEG;
+        // A door given zero thickness (ChatGPT: d=0) would be invisible: give it a 0.5 ft panel.
+        const sx = dInfo && dInfo.vertical ? Math.max(f.w, 0.5) : f.w, sz = dInfo && !dInfo.vertical ? Math.max(f.d, 0.5) : f.d;
+        g.position.set(f.x, y + f.h / 2, f.z); g.scale.set(sx, f.h, sz); g.rotation.y = -(f.rot || 0) * DEG;
         world.add(g);
         if (y >= 6) overheadMeshes.push(g);
       }
@@ -494,6 +499,7 @@ function setRoom(i) {
   camera.position.set(pos.x, EYE, pos.z);
   camera.rotation.y = -(s.yaw || 0) * DEG;     // yaw 0 faces -z ("up" the plan), 90 faces +x
   camera.rotation.x = 0;
+  loadBoundsFit();
   if (currentKey) refreshHud(); // during initial load no layout is chosen yet; setLayout refreshes the HUD itself
 }
 
@@ -546,9 +552,13 @@ addEventListener('resize', () => {
   renderer.setSize(window.innerWidth, window.innerHeight);
   if (M) loadBoundsFit();
 });
+// Plan view frames the building, not the whole property: `planRooms` lists the rooms that share one plan
+// (e.g. shop + tool room). Standing in a room outside that list (a far-off yard) frames just that room.
 function loadBoundsFit() {
   const b = { minX: Infinity, maxX: -Infinity, minZ: Infinity, maxZ: -Infinity };
-  for (const r of M.rooms) { b.minX = Math.min(b.minX, r.x0); b.maxX = Math.max(b.maxX, r.x0 + r.w); b.minZ = Math.min(b.minZ, r.z0); b.maxZ = Math.max(b.maxZ, r.z0 + r.d); }
+  const ids = M.planRooms, cur = M.rooms[roomIdx];
+  const list = ids ? (ids.includes(cur.id) ? M.rooms.filter((r) => ids.includes(r.id)) : [cur]) : M.rooms;
+  for (const r of list) { b.minX = Math.min(b.minX, r.x0); b.maxX = Math.max(b.maxX, r.x0 + r.w); b.minZ = Math.min(b.minZ, r.z0); b.maxZ = Math.max(b.maxZ, r.z0 + r.d); }
   fitTopCam(b);
 }
 
