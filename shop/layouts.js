@@ -15,7 +15,9 @@
  *   hide    ids from "fixed" not to draw (e.g. a room-sized "light grid" slab).
  *   decor   optional: draw a fixed block as N booths instead of one slab.
  *   enclosures  optional: draw a fixed block as hollow walls with a doorway (a room the model put
- *           INSIDE the main floor). {id:{door:{side:'n|s|e|w', w:ft, at:ftOffFromMiddle}}}, rot 0 only.
+ *           INSIDE the main floor). {id:{door:{side:'n|s|e|w', w:ft, at:ftOffFromMiddle}, skip:['n',..]}},
+ *           rot 0 only. `skip` omits sides that are already shop walls (avoids z-fighting).
+ *   planLabels  optional: fixed ids whose labels also show in plan view (structure, e.g. classrooms).
  *   note    optional: caveat text shown in the menu (what the model guessed, what we added).
  * Models are shown as they described the shop — never merged or normalized — so each has its own
  * "before" (its reading of the photos) and "after".
@@ -1294,7 +1296,7 @@ window.SHOP_DATA = {
      }
     },
     gemini: {
-     "label": "Gemini",
+     "label": "Gemini · run 1",
      "frame": "Origin (0,0) is the North-West corner of the 100x50 ft main shop floor. x runs East from 0 to 100 ft along the long axis; z runs South from 0 to 50 ft along the short axis (y is height off the floor). The North wall (z=0) contains the electrical panels, tool room enclosure, and student storage alcove; the South wall (z=50) contains the roll-up bay doors.",
      "note": "Gemini put the tool room and side box inside the main floor, along the north wall, and gave them no doors. The doorway on the shop-facing side of each is added by Claude so you can walk in. All positions are Gemini's estimates from photos.",
      "rooms": [
@@ -1949,7 +1951,7 @@ window.SHOP_DATA = {
        ]
       },
       "after": {
-       "label": "After (Gemini)",
+       "label": "After (Gemini run 1)",
        "objects": [
         {
          "id": "engine-stand-fixture",
@@ -2327,6 +2329,1149 @@ window.SHOP_DATA = {
          "id": "toolroom-floor-totes",
          "name": "Mobile tool cases & floor bin stack in tool room (#9912)",
          "x": 55.5,
+         "z": 3.0,
+         "w": 3.0,
+         "d": 2.0,
+         "h": 2.5,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        }
+       ]
+      }
+     }
+    },
+    gemini2: {
+     "label": "Gemini \u00b7 run 2 (dimensions)",
+     "frame": "Origin (0,0) is the North-West corner of the 100x50 ft MAIN shop floor (x: 0..100 East, z: 0..50 South). North of the z=0 wall (z: -23..0) sit Rooms 1-4 (widths 23 + 18.5 + 19.5 + 18 = 79 ft from x=0 to x=79, depth 23 ft) and the DUST BOOTHS bay (x: 78..100, z: -27..0, 22x27 ft). The Tool Room (14x10 ft) and TR Sidebox (7.5x10 ft) sit along the North-West wall inside the main footprint, and the YARD (253x98 ft) lies South of the z=50 roll-up doors.",
+     "note": "Gemini rerun with the real dimensions. Claude's additions: a doorway into the tool room and side box (Gemini gave none), the dust-booth bay drawn 21 ft wide instead of 22 (Gemini's frame overlaps Room 4 by 1 ft), and Rooms 1-4 as solid blocks since no doors were given. Everything is still Gemini's estimate.",
+     "rooms": [
+      {
+       "id": "main",
+       "name": "Main floor",
+       "x0": 0,
+       "z0": 0,
+       "w": 100,
+       "d": 50,
+       "h": 16,
+       "spawn": {
+        "x": 6,
+        "z": 25,
+        "yaw": 90
+       }
+      },
+      {
+       "id": "dust",
+       "name": "Dust booths bay",
+       "x0": 79,
+       "z0": -27,
+       "w": 21,
+       "d": 27,
+       "h": 12,
+       "spawn": {
+        "x": 89,
+        "z": -4,
+        "yaw": 0
+       }
+      }
+     ],
+     "doors": [
+      "exit-door-north",
+      "dust-booth-opening",
+      "rollup-door-1",
+      "rollup-door-2"
+     ],
+     "hide": [
+      "dust-booths-bay"
+     ],
+     "decor": {
+      "booth-row-north": {
+       "type": "booths",
+       "count": 12,
+       "open": "+z"
+      },
+      "booth-row-south": {
+       "type": "booths",
+       "count": 12,
+       "open": "-z"
+      },
+      "booth-row-aux": {
+       "type": "booths",
+       "count": 3,
+       "open": "+z"
+      }
+     },
+     "enclosures": {
+      "tool-room-main": {
+       "door": {
+        "side": "s",
+        "w": 3.5,
+        "at": 0
+       },
+       "skip": [
+        "n",
+        "w"
+       ]
+      },
+      "tool-room-sidebox": {
+       "door": {
+        "side": "s",
+        "w": 3.5,
+        "at": 0
+       },
+       "skip": [
+        "n"
+       ]
+      }
+     },
+     "planLabels": ["room-1","room-2","room-3","room-4","tool-room-main","tool-room-sidebox"],
+     "fixed": [
+      {
+       "id": "room-1",
+       "name": "Room 1 (Classroom/Office, 23x23 ft)",
+       "x": 11.5,
+       "z": -11.5,
+       "w": 23.0,
+       "d": 23.0,
+       "h": 10.0,
+       "y": 0,
+       "rot": 0,
+       "est": true
+      },
+      {
+       "id": "room-2",
+       "name": "Room 2 (Classroom/Office, 18.5x23 ft)",
+       "x": 32.25,
+       "z": -11.5,
+       "w": 18.5,
+       "d": 23.0,
+       "h": 10.0,
+       "y": 0,
+       "rot": 0,
+       "est": true
+      },
+      {
+       "id": "room-3",
+       "name": "Room 3 (Classroom/Office, 19.5x23 ft)",
+       "x": 51.25,
+       "z": -11.5,
+       "w": 19.5,
+       "d": 23.0,
+       "h": 10.0,
+       "y": 0,
+       "rot": 0,
+       "est": true
+      },
+      {
+       "id": "room-4",
+       "name": "Room 4 (Classroom/Office, 18x23 ft)",
+       "x": 70.0,
+       "z": -11.5,
+       "w": 18.0,
+       "d": 23.0,
+       "h": 10.0,
+       "y": 0,
+       "rot": 0,
+       "est": true
+      },
+      {
+       "id": "dust-booths-bay",
+       "name": "Dedicated Dust Booths / Grinding & Fab Bay (22x27 ft)",
+       "x": 89.0,
+       "z": -13.5,
+       "w": 22.0,
+       "d": 27.0,
+       "h": 12.0,
+       "y": 0,
+       "rot": 0,
+       "est": true
+      },
+      {
+       "id": "tool-room-main",
+       "name": "Main Tool Room enclosure (14x10 ft)",
+       "x": 7.0,
+       "z": 5.0,
+       "w": 14.0,
+       "d": 10.0,
+       "h": 9.0,
+       "y": 0,
+       "rot": 0,
+       "est": true
+      },
+      {
+       "id": "tool-room-sidebox",
+       "name": "TR Sidebox enclosure (7.5x10 ft)",
+       "x": 17.75,
+       "z": 5.0,
+       "w": 7.5,
+       "d": 10.0,
+       "h": 9.0,
+       "y": 0,
+       "rot": 0,
+       "est": true
+      },
+      {
+       "id": "tool-shelf-north",
+       "name": "Tool room built-in shelving & parts bins (North wall #9906/#9912)",
+       "x": 7.0,
+       "z": 1.0,
+       "w": 12.0,
+       "d": 2.0,
+       "h": 7.0,
+       "y": 0,
+       "rot": 0,
+       "est": true
+      },
+      {
+       "id": "tool-shelf-west",
+       "name": "Tool room built-in blue parts bin rack (West wall #9906)",
+       "x": 1.0,
+       "z": 5.0,
+       "w": 2.0,
+       "d": 6.0,
+       "h": 7.0,
+       "y": 0,
+       "rot": 0,
+       "est": true
+      },
+      {
+       "id": "tool-shelf-east",
+       "name": "Tool room built-in hose & regulator rack (East wall #9906)",
+       "x": 13.0,
+       "z": 5.0,
+       "w": 2.0,
+       "d": 6.0,
+       "h": 7.0,
+       "y": 0,
+       "rot": 0,
+       "est": true
+      },
+      {
+       "id": "booth-row-north",
+       "name": "North fixed row of 12 welding booths (blue frames, orange curtains, plumbed gas/power)",
+       "x": 55.0,
+       "z": 17.5,
+       "w": 60.0,
+       "d": 5.0,
+       "h": 7.0,
+       "y": 0,
+       "rot": 0,
+       "est": true
+      },
+      {
+       "id": "booth-row-south",
+       "name": "South fixed row of 12 welding booths (blue frames, orange curtains, plumbed gas/power)",
+       "x": 55.0,
+       "z": 32.5,
+       "w": 60.0,
+       "d": 5.0,
+       "h": 7.0,
+       "y": 0,
+       "rot": 0,
+       "est": true
+      },
+      {
+       "id": "booth-row-aux",
+       "name": "Auxiliary 3-booth training bank (#9898)",
+       "x": 92.0,
+       "z": 17.5,
+       "w": 12.0,
+       "d": 5.0,
+       "h": 7.0,
+       "y": 0,
+       "rot": 0,
+       "est": true
+      },
+      {
+       "id": "elec-panels-alcove",
+       "name": "Main electrical panels & switchgear bank (#9883, fixed conduit)",
+       "x": 72.0,
+       "z": 0.5,
+       "w": 10.0,
+       "d": 1.0,
+       "h": 6.5,
+       "y": 1.0,
+       "rot": 0,
+       "est": true
+      },
+      {
+       "id": "elec-panel-mid",
+       "name": "Secondary electrical disconnect & panel (#9886)",
+       "x": 60.0,
+       "z": 0.5,
+       "w": 4.0,
+       "d": 1.0,
+       "h": 5.0,
+       "y": 2.0,
+       "rot": 0,
+       "est": true
+      },
+      {
+       "id": "fire-ext-1",
+       "name": "Wall-mounted fire extinguisher by electrical panels (#9883/#9886)",
+       "x": 65.5,
+       "z": 0.3,
+       "w": 1.0,
+       "d": 0.6,
+       "h": 2.0,
+       "y": 3.5,
+       "rot": 0,
+       "est": true
+      },
+      {
+       "id": "fire-ext-2",
+       "name": "Wall-mounted fire extinguisher by lockers (#9888)",
+       "x": 30.5,
+       "z": 0.3,
+       "w": 1.0,
+       "d": 0.6,
+       "h": 2.0,
+       "y": 3.5,
+       "rot": 0,
+       "est": true
+      },
+      {
+       "id": "exit-door-north",
+       "name": "North corridor/exit door (#9888/#9894)",
+       "x": 27.5,
+       "z": 0.25,
+       "w": 3.5,
+       "d": 0.5,
+       "h": 7.0,
+       "y": 0,
+       "rot": 0,
+       "est": true
+      },
+      {
+       "id": "dust-booth-opening",
+       "name": "Access opening into Dust Booths bay (22x27 ft)",
+       "x": 89.0,
+       "z": 0.0,
+       "w": 10.0,
+       "d": 0.5,
+       "h": 10.0,
+       "y": 0,
+       "rot": 0,
+       "est": true
+      },
+      {
+       "id": "rollup-door-1",
+       "name": "South wall roll-up bay door 1 to Yard (#9896)",
+       "x": 30.0,
+       "z": 49.75,
+       "w": 12.0,
+       "d": 0.5,
+       "h": 12.0,
+       "y": 0,
+       "rot": 0,
+       "est": true
+      },
+      {
+       "id": "rollup-door-2",
+       "name": "South wall roll-up bay door 2 to Yard (#9896)",
+       "x": 46.0,
+       "z": 49.75,
+       "w": 12.0,
+       "d": 0.5,
+       "h": 12.0,
+       "y": 0,
+       "rot": 0,
+       "est": true
+      },
+      {
+       "id": "hose-reel-overhead",
+       "name": "Fixed overhead red hose reel on booth frame (#9875)",
+       "x": 40.0,
+       "z": 17.5,
+       "w": 2.0,
+       "d": 1.5,
+       "h": 2.0,
+       "y": 7.5,
+       "rot": 0,
+       "est": true
+      },
+      {
+       "id": "overhead-duct-north",
+       "name": "Fixed overhead HVAC/exhaust ducting (#9883/#9886)",
+       "x": 65.0,
+       "z": 2.0,
+       "w": 60.0,
+       "d": 2.0,
+       "h": 2.0,
+       "y": 11.0,
+       "rot": 0,
+       "est": true
+      }
+     ],
+     "layouts": {
+      "before": {
+       "label": "Before (current shop)",
+       "objects": [
+        {
+         "id": "engine-stand-fixture",
+         "name": "Heavy weld fixture / engine stand in center aisle (#9875)",
+         "x": 30.0,
+         "z": 25.0,
+         "w": 4.0,
+         "d": 3.0,
+         "h": 3.5,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "gas-cart-1",
+         "name": "Rolling dual-cylinder oxy-fuel/shielding gas cart 1 (#9875)",
+         "x": 38.0,
+         "z": 25.0,
+         "w": 3.0,
+         "d": 2.5,
+         "h": 5.0,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "gas-cart-2",
+         "name": "Rolling dual-cylinder gas cart 2 (#9875)",
+         "x": 45.0,
+         "z": 25.0,
+         "w": 3.0,
+         "d": 2.5,
+         "h": 5.0,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "gas-cart-3",
+         "name": "Rolling dual-cylinder gas cart 3 (#9875)",
+         "x": 52.0,
+         "z": 25.0,
+         "w": 3.0,
+         "d": 2.5,
+         "h": 5.0,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "gas-cart-4",
+         "name": "Rolling dual-cylinder gas cart 4 (#9875)",
+         "x": 60.0,
+         "z": 25.0,
+         "w": 3.0,
+         "d": 2.5,
+         "h": 5.0,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "center-aisle-bench",
+         "name": "Small steel welding bench in center aisle (#9875)",
+         "x": 68.0,
+         "z": 25.0,
+         "w": 4.0,
+         "d": 2.5,
+         "h": 3.0,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "spool-rack-cart",
+         "name": "Red rolling wire-spool rack cart (#9879)",
+         "x": 18.0,
+         "z": 26.0,
+         "w": 5.0,
+         "d": 3.0,
+         "h": 5.0,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "open-steel-table-1",
+         "name": "Square steel worktable with trash can (#9879)",
+         "x": 10.0,
+         "z": 32.0,
+         "w": 4.0,
+         "d": 4.0,
+         "h": 3.0,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "open-steel-table-2",
+         "name": "Yellow-leg steel worktable (#9879)",
+         "x": 10.0,
+         "z": 40.0,
+         "w": 4.0,
+         "d": 3.0,
+         "h": 3.0,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "student-toolbox-group-1",
+         "name": "Cluster of rolling black student toolboxes A (#9883)",
+         "x": 85.0,
+         "z": -10.0,
+         "w": 4.0,
+         "d": 3.0,
+         "h": 3.5,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "student-toolbox-group-2",
+         "name": "Cluster of rolling black student toolboxes B (#9883)",
+         "x": 91.0,
+         "z": -10.0,
+         "w": 4.0,
+         "d": 3.0,
+         "h": 3.5,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "helmet-cubby-rack",
+         "name": "Large steel cubby rack for student helmets/gear (#9883/#9888)",
+         "x": 98.0,
+         "z": -12.0,
+         "w": 6.0,
+         "d": 2.0,
+         "h": 7.0,
+         "y": 0,
+         "rot": 90,
+         "est": true
+        },
+        {
+         "id": "wire-mesh-shelf-1",
+         "name": "Expanded-metal storage shelf 1 (#9883)",
+         "x": 98.0,
+         "z": -4.0,
+         "w": 4.0,
+         "d": 2.0,
+         "h": 6.5,
+         "y": 0,
+         "rot": 90,
+         "est": true
+        },
+        {
+         "id": "wire-mesh-shelf-2",
+         "name": "Expanded-metal storage shelf 2 (#9886)",
+         "x": 54.0,
+         "z": 2.0,
+         "w": 4.0,
+         "d": 2.0,
+         "h": 6.0,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "shopping-cart-1",
+         "name": "Metal shopping cart 1 (#9886)",
+         "x": 58.0,
+         "z": 4.5,
+         "w": 3.0,
+         "d": 2.0,
+         "h": 3.5,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "shopping-cart-2",
+         "name": "Metal shopping cart 2 (#9888)",
+         "x": 76.0,
+         "z": 4.5,
+         "w": 3.0,
+         "d": 2.0,
+         "h": 3.5,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "blue-locker-bank",
+         "name": "Blue ventilated metal locker unit (#9888)",
+         "x": 34.0,
+         "z": 2.0,
+         "w": 5.0,
+         "d": 2.0,
+         "h": 6.0,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "pedestal-grinder-1",
+         "name": "Bench grinder on pedestal stand 1 (#9888)",
+         "x": 41.0,
+         "z": 2.0,
+         "w": 2.0,
+         "d": 2.0,
+         "h": 4.0,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "pedestal-grinder-2",
+         "name": "Bench grinder on pedestal stand 2 (#9888)",
+         "x": 44.0,
+         "z": 2.0,
+         "w": 2.0,
+         "d": 2.0,
+         "h": 4.0,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "pedestal-vise-3",
+         "name": "Red pedestal vise/grinder stand 3 (#9888)",
+         "x": 47.0,
+         "z": 2.0,
+         "w": 2.0,
+         "d": 2.0,
+         "h": 4.0,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "metal-cabinet-black",
+         "name": "Black mesh storage cabinet (#9888)",
+         "x": 50.5,
+         "z": 2.0,
+         "w": 3.0,
+         "d": 2.0,
+         "h": 5.0,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "floor-fan-drum-1",
+         "name": "Black drum floor fan blocking panel (#9883/#9886)",
+         "x": 67.5,
+         "z": 2.0,
+         "w": 2.5,
+         "d": 1.5,
+         "h": 2.5,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "floor-fan-pedestal-1",
+         "name": "Tall pedestal fan 1 (#9886)",
+         "x": 54.0,
+         "z": 5.5,
+         "w": 2.5,
+         "d": 2.5,
+         "h": 5.5,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "floor-fan-pedestal-2",
+         "name": "Tall pedestal fan 2 (#9888)",
+         "x": 34.0,
+         "z": 5.0,
+         "w": 2.5,
+         "d": 2.5,
+         "h": 5.0,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "floor-fan-drum-2",
+         "name": "Large wheeled drum fan (#9888)",
+         "x": 36.5,
+         "z": 7.5,
+         "w": 3.0,
+         "d": 2.0,
+         "h": 3.5,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "floor-fan-orange",
+         "name": "Large orange barrel fan (#9894)",
+         "x": 24.5,
+         "z": 12.0,
+         "w": 3.0,
+         "d": 2.0,
+         "h": 3.5,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "drill-press",
+         "name": "Floor drill press near exit (#9894)",
+         "x": 23.5,
+         "z": 3.0,
+         "w": 2.0,
+         "d": 2.5,
+         "h": 5.5,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "broom-shovel-rack",
+         "name": "Mobile broom, shovel & squeegee rack (#9894)",
+         "x": 26.5,
+         "z": 2.5,
+         "w": 3.5,
+         "d": 2.0,
+         "h": 5.0,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "heavy-press-bench",
+         "name": "Heavy steel table with vise & hydraulic press blocking roll-up door (#9896)",
+         "x": 38.0,
+         "z": 47.0,
+         "w": 8.0,
+         "d": 3.5,
+         "h": 4.5,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "spare-welders-rack",
+         "name": "Low rack with boxed/spare welders (#9898)",
+         "x": 96.0,
+         "z": 8.0,
+         "w": 8.0,
+         "d": 2.5,
+         "h": 3.5,
+         "y": 0,
+         "rot": 90,
+         "est": true
+        },
+        {
+         "id": "loose-cylinder-red",
+         "name": "Unsecured red compressed gas cylinder (#9896)",
+         "x": 25.0,
+         "z": 42.0,
+         "w": 1.0,
+         "d": 1.0,
+         "h": 4.0,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "toolroom-floor-totes",
+         "name": "Mobile tool cases & floor bin stack in tool room (#9912)",
+         "x": 7.0,
+         "z": 5.0,
+         "w": 3.0,
+         "d": 2.0,
+         "h": 2.5,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        }
+       ]
+      },
+      "after": {
+       "label": "After (Gemini run 2)",
+       "objects": [
+        {
+         "id": "pedestal-grinder-1",
+         "name": "Bench grinder on pedestal stand 1 (#9888)",
+         "x": 80.5,
+         "z": -24.0,
+         "w": 2.0,
+         "d": 2.0,
+         "h": 4.0,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "pedestal-grinder-2",
+         "name": "Bench grinder on pedestal stand 2 (#9888)",
+         "x": 85.0,
+         "z": -24.0,
+         "w": 2.0,
+         "d": 2.0,
+         "h": 4.0,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "pedestal-vise-3",
+         "name": "Red pedestal vise/grinder stand 3 (#9888)",
+         "x": 89.5,
+         "z": -24.0,
+         "w": 2.0,
+         "d": 2.0,
+         "h": 4.0,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "drill-press",
+         "name": "Floor drill press near exit (#9894)",
+         "x": 94.5,
+         "z": -24.0,
+         "w": 2.0,
+         "d": 2.5,
+         "h": 5.5,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "heavy-press-bench",
+         "name": "Heavy steel table with vise & hydraulic press blocking roll-up door (#9896)",
+         "x": 97.5,
+         "z": -14.0,
+         "w": 8.0,
+         "d": 3.5,
+         "h": 4.5,
+         "y": 0,
+         "rot": 90,
+         "est": true
+        },
+        {
+         "id": "engine-stand-fixture",
+         "name": "Heavy weld fixture / engine stand in center aisle (#9875)",
+         "x": 81.0,
+         "z": -14.0,
+         "w": 4.0,
+         "d": 3.0,
+         "h": 3.5,
+         "y": 0,
+         "rot": 90,
+         "est": true
+        },
+        {
+         "id": "open-steel-table-1",
+         "name": "Square steel worktable with trash can (#9879)",
+         "x": 89.0,
+         "z": -14.0,
+         "w": 4.0,
+         "d": 4.0,
+         "h": 3.0,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "gas-cart-1",
+         "name": "Rolling dual-cylinder oxy-fuel/shielding gas cart 1 (#9875)",
+         "x": 2.0,
+         "z": 24.0,
+         "w": 3.0,
+         "d": 2.5,
+         "h": 5.0,
+         "y": 0,
+         "rot": 90,
+         "est": true
+        },
+        {
+         "id": "gas-cart-2",
+         "name": "Rolling dual-cylinder gas cart 2 (#9875)",
+         "x": 2.0,
+         "z": 28.5,
+         "w": 3.0,
+         "d": 2.5,
+         "h": 5.0,
+         "y": 0,
+         "rot": 90,
+         "est": true
+        },
+        {
+         "id": "gas-cart-3",
+         "name": "Rolling dual-cylinder gas cart 3 (#9875)",
+         "x": 2.0,
+         "z": 33.0,
+         "w": 3.0,
+         "d": 2.5,
+         "h": 5.0,
+         "y": 0,
+         "rot": 90,
+         "est": true
+        },
+        {
+         "id": "gas-cart-4",
+         "name": "Rolling dual-cylinder gas cart 4 (#9875)",
+         "x": 2.0,
+         "z": 37.5,
+         "w": 3.0,
+         "d": 2.5,
+         "h": 5.0,
+         "y": 0,
+         "rot": 90,
+         "est": true
+        },
+        {
+         "id": "loose-cylinder-red",
+         "name": "Unsecured red compressed gas cylinder (#9896)",
+         "x": 2.0,
+         "z": 42.0,
+         "w": 1.0,
+         "d": 1.0,
+         "h": 4.0,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "spool-rack-cart",
+         "name": "Red rolling wire-spool rack cart (#9879)",
+         "x": 21.0,
+         "z": 17.5,
+         "w": 5.0,
+         "d": 3.0,
+         "h": 5.0,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "center-aisle-bench",
+         "name": "Small steel welding bench in center aisle (#9875)",
+         "x": 21.0,
+         "z": 32.5,
+         "w": 4.0,
+         "d": 2.5,
+         "h": 3.0,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "open-steel-table-2",
+         "name": "Yellow-leg steel worktable (#9879)",
+         "x": 15.0,
+         "z": 32.5,
+         "w": 4.0,
+         "d": 3.0,
+         "h": 3.0,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "blue-locker-bank",
+         "name": "Blue ventilated metal locker unit (#9888)",
+         "x": 35.5,
+         "z": 1.5,
+         "w": 5.0,
+         "d": 2.0,
+         "h": 6.0,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "helmet-cubby-rack",
+         "name": "Large steel cubby rack for student helmets/gear (#9883/#9888)",
+         "x": 42.0,
+         "z": 1.5,
+         "w": 6.0,
+         "d": 2.0,
+         "h": 7.0,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "student-toolbox-group-1",
+         "name": "Cluster of rolling black student toolboxes A (#9883)",
+         "x": 48.0,
+         "z": 2.0,
+         "w": 4.0,
+         "d": 3.0,
+         "h": 3.5,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "student-toolbox-group-2",
+         "name": "Cluster of rolling black student toolboxes B (#9883)",
+         "x": 53.0,
+         "z": 2.0,
+         "w": 4.0,
+         "d": 3.0,
+         "h": 3.5,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "wire-mesh-shelf-1",
+         "name": "Expanded-metal storage shelf 1 (#9883)",
+         "x": 62.0,
+         "z": 48.0,
+         "w": 4.0,
+         "d": 2.0,
+         "h": 6.5,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "wire-mesh-shelf-2",
+         "name": "Expanded-metal storage shelf 2 (#9886)",
+         "x": 67.0,
+         "z": 48.0,
+         "w": 4.0,
+         "d": 2.0,
+         "h": 6.0,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "metal-cabinet-black",
+         "name": "Black mesh storage cabinet (#9888)",
+         "x": 71.5,
+         "z": 48.0,
+         "w": 3.0,
+         "d": 2.0,
+         "h": 5.0,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "broom-shovel-rack",
+         "name": "Mobile broom, shovel & squeegee rack (#9894)",
+         "x": 76.0,
+         "z": 48.0,
+         "w": 3.5,
+         "d": 2.0,
+         "h": 5.0,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "shopping-cart-1",
+         "name": "Metal shopping cart 1 (#9886)",
+         "x": 80.5,
+         "z": 48.0,
+         "w": 3.0,
+         "d": 2.0,
+         "h": 3.5,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "shopping-cart-2",
+         "name": "Metal shopping cart 2 (#9888)",
+         "x": 84.5,
+         "z": 48.0,
+         "w": 3.0,
+         "d": 2.0,
+         "h": 3.5,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "spare-welders-rack",
+         "name": "Low rack with boxed/spare welders (#9898)",
+         "x": 92.0,
+         "z": 48.0,
+         "w": 8.0,
+         "d": 2.5,
+         "h": 3.5,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "floor-fan-drum-1",
+         "name": "Black drum floor fan blocking panel (#9883/#9886)",
+         "x": 86.5,
+         "z": 25.0,
+         "w": 2.5,
+         "d": 1.5,
+         "h": 2.5,
+         "y": 0,
+         "rot": 90,
+         "est": true
+        },
+        {
+         "id": "floor-fan-pedestal-1",
+         "name": "Tall pedestal fan 1 (#9886)",
+         "x": 86.5,
+         "z": 32.5,
+         "w": 2.5,
+         "d": 2.5,
+         "h": 5.5,
+         "y": 0,
+         "rot": 90,
+         "est": true
+        },
+        {
+         "id": "floor-fan-pedestal-2",
+         "name": "Tall pedestal fan 2 (#9888)",
+         "x": 23.5,
+         "z": 12.0,
+         "w": 2.5,
+         "d": 2.5,
+         "h": 5.0,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "floor-fan-drum-2",
+         "name": "Large wheeled drum fan (#9888)",
+         "x": 23.5,
+         "z": 28.0,
+         "w": 3.0,
+         "d": 2.0,
+         "h": 3.5,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "floor-fan-orange",
+         "name": "Large orange barrel fan (#9894)",
+         "x": 81.0,
+         "z": -5.0,
+         "w": 3.0,
+         "d": 2.0,
+         "h": 3.5,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "toolroom-floor-totes",
+         "name": "Mobile tool cases & floor bin stack in tool room (#9912)",
+         "x": 17.75,
          "z": 3.0,
          "w": 3.0,
          "d": 2.0,

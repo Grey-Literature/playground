@@ -259,6 +259,7 @@ function buildEnclosure(parent, f, enc, mat) {
   };
   const door = enc.door || null, LINTEL = 7;                 // ft: wall above this closes the doorway top
   for (const [name, e] of Object.entries(sides)) {
+    if ((enc.skip || []).includes(name)) continue;           // side already is a shop wall: drawing it again would z-fight
     let segs = [[e.a0 - WT / 2, e.a1 + WT / 2]];
     let gap = null;
     if (door && door.side === name) {
@@ -370,7 +371,12 @@ function loadModel(key) {
         if (y >= 6) overheadMeshes.push(g);
       }
     }
-    if (y < 6) addLabel(f.name || f.id, new THREE.Vector3(f.x, y + f.h + 0.8, f.z), true, 14);
+    if (y < 6) {
+      const rec = addLabel(f.name || f.id, new THREE.Vector3(f.x, y + f.h + 0.8, f.z), true, 14);
+      // Plan view normally shows only the movable items' labels. `planLabels` opts structural blocks in
+      // (e.g. classrooms that would otherwise be an unlabeled grey slab).
+      if ((M.planLabels || []).includes(f.id)) rec.fixed = false;
+    }
   }
 
   // — movable objects: one node per id across ALL layouts (union), so a model that forgets one
