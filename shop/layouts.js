@@ -30,6 +30,10 @@
  * photo numbers they came from) and `est` (position or size read off photos, not measured); the viewer
  * ignores both.
  *
+ * Second exception: `opus` is the layout Tasha is running with, so its "after" is Opus's after plus a
+ * tidy-up of the cluttered spots in the photos (new ids that exist only there, like floor-tape zones,
+ * are hidden in the other layouts). Opus's own after is kept unchanged as "afterOpus".
+ *
  * COORDINATES (feet): x/z are an object's CENTER on the floor plan; w runs along x and d along z
  * before rotation; h is height; y is the bottom edge off the floor (0 unless wall-mounted);
  * rot is degrees CLOCKWISE seen from above. Every layout in a model lists the same ids.
@@ -4403,7 +4407,7 @@ window.SHOP_DATA = {
     opus: {
      "label": "Claude Opus",
      "frame": "Main floor: x=0 is the west end wall (front door; office/bulletin end seen at far end of 9875/9879), x runs east 0->100 along the booth rows. z=0 is the north long wall (main panels, lockers, grinders, ducting: 9883/9886/9888), z runs south 0->50 to the wall with the EXIT (9894) and roll-up door (9896). Rows A and B are assumed to open onto the center aisle (z16-34). Tool room is modeled as an annex west of the main floor: x -14..0, z 0..10, side box x -7.5..0, z 10..20, door at x=0 z=5. Based on the two collages only; wall assignments and sizes are estimates. Yard not covered.",
-     "note": "Opus worked from two photo collages only. The shell, doors, panel wall, tool-room annex and every size are estimates. Yard not covered.",
+     "note": "Opus worked from two photo collages only. The shell, doors, panel wall, tool-room annex and every size are estimates. Yard not covered. Layout 2 is Opus's after plus a tidy-up of seven cluttered spots from the photos (grinder corner, fan parking, panel clear zones, toolboxes, side box, EXIT and drill press); yellow floor tape marks keep-clear zones. Layout 3 is Opus's after unchanged.",
      "rooms": [
       {
        "id": "main",
@@ -5329,6 +5333,559 @@ window.SHOP_DATA = {
         {
          "id": "tool-chests",
          "name": "Rolling modular tool chests",
+         "x": 16,
+         "z": 1.25,
+         "w": 6,
+         "d": 2.5,
+         "h": 3,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "cubby-rack",
+         "name": "Cubby/bag shelving",
+         "x": 56,
+         "z": 1,
+         "w": 8,
+         "d": 2,
+         "h": 7,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "bin-shelf",
+         "name": "Parts shelf",
+         "x": 65,
+         "z": 1,
+         "w": 4,
+         "d": 2,
+         "h": 6,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "lockers",
+         "name": "Blue lockers",
+         "x": 47,
+         "z": 0.75,
+         "w": 6,
+         "d": 1.5,
+         "h": 6,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "rusty-cabinet",
+         "name": "Mesh-door cabinet",
+         "x": 30,
+         "z": 1,
+         "w": 3,
+         "d": 1.5,
+         "h": 6,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "caged-cabinet",
+         "name": "Caged grinder cabinet (spark barrier to row C)",
+         "x": 98.5,
+         "z": 16.9,
+         "w": 3,
+         "d": 2,
+         "h": 4,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "grinder-1",
+         "name": "Pedestal grinder",
+         "x": 98.5,
+         "z": 2.5,
+         "w": 2,
+         "d": 2,
+         "h": 4,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "grinder-2",
+         "name": "Pedestal grinder",
+         "x": 98.5,
+         "z": 6.5,
+         "w": 2,
+         "d": 2,
+         "h": 4,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "grinder-3",
+         "name": "Grinder on red stand",
+         "x": 98.5,
+         "z": 10.5,
+         "w": 2,
+         "d": 2,
+         "h": 4,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "grinder-4",
+         "name": "Pedestal grinder",
+         "x": 98.5,
+         "z": 14.5,
+         "w": 2,
+         "d": 2,
+         "h": 4,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "drum-fan-1",
+         "name": "Drum fan",
+         "x": 36,
+         "z": 49,
+         "w": 3,
+         "d": 1.5,
+         "h": 3,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "drum-fan-2",
+         "name": "Drum fan",
+         "x": 40,
+         "z": 49,
+         "w": 3,
+         "d": 1.5,
+         "h": 3,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "drum-fan-3",
+         "name": "Drum fan",
+         "x": 44,
+         "z": 49,
+         "w": 3,
+         "d": 1.5,
+         "h": 3,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "orange-drum-fan",
+         "name": "Orange drum fan",
+         "x": 48,
+         "z": 49,
+         "w": 3,
+         "d": 1.5,
+         "h": 3.5,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "pedestal-fan-1",
+         "name": "Pedestal fan",
+         "x": 55.5,
+         "z": 48.6,
+         "w": 2.5,
+         "d": 2.5,
+         "h": 6,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "pedestal-fan-2",
+         "name": "Pedestal fan",
+         "x": 58.5,
+         "z": 48.6,
+         "w": 2.5,
+         "d": 2.5,
+         "h": 6,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "air-mover",
+         "name": "Blue air mover",
+         "x": 52,
+         "z": 49,
+         "w": 1.5,
+         "d": 1.5,
+         "h": 1.5,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "shopping-cart-1",
+         "name": "Scrap/coupon cart",
+         "x": 26,
+         "z": 48.5,
+         "w": 3,
+         "d": 2,
+         "h": 3.5,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "shopping-cart-2",
+         "name": "Scrap/coupon cart",
+         "x": 30,
+         "z": 48.5,
+         "w": 3,
+         "d": 2,
+         "h": 3.5,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "hydration-table",
+         "name": "Water cooler table",
+         "x": 2,
+         "z": 12,
+         "w": 4,
+         "d": 2,
+         "h": 3,
+         "y": 0,
+         "rot": 90,
+         "est": true
+        },
+        {
+         "id": "workbench-vise",
+         "name": "Long fab bench w/ vise",
+         "x": 78,
+         "z": 48.5,
+         "w": 10,
+         "d": 3,
+         "h": 3,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "pipe-stand",
+         "name": "Tripod pipe stand",
+         "x": 71,
+         "z": 48.5,
+         "w": 2,
+         "d": 2,
+         "h": 4,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "tool-shelf",
+         "name": "Power tool/stock shelving",
+         "x": 88.5,
+         "z": 1.5,
+         "w": 3,
+         "d": 12,
+         "h": 6,
+         "y": 0,
+         "rot": 90,
+         "est": true
+        },
+        {
+         "id": "parts-bin-shelf",
+         "name": "Blue parts-bin shelving",
+         "x": -10,
+         "z": 1,
+         "w": 6,
+         "d": 2,
+         "h": 7,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "regulator-shelf",
+         "name": "Steel shelving: regulators, plasma",
+         "x": -13,
+         "z": 6,
+         "w": 2,
+         "d": 6,
+         "h": 7,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "small-bench",
+         "name": "Tool room bench",
+         "x": -9,
+         "z": 8.5,
+         "w": 4,
+         "d": 2,
+         "h": 3,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "floor-boxes",
+         "name": "Boxed stock (now in side box)",
+         "x": -5,
+         "z": 1.2,
+         "w": 3,
+         "d": 2,
+         "h": 1.5,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "side-box-shelf",
+         "name": "Side box shelving",
+         "x": -6.5,
+         "z": 15,
+         "w": 2,
+         "d": 8,
+         "h": 6,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "zone-panels",
+         "name": "Tape: keep 3 ft clear (panel bank)",
+         "x": 76,
+         "z": 3,
+         "w": 12,
+         "d": 3,
+         "color": "#e0b43a",
+         "y": 0,
+         "h": 0.05,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "zone-subpanel",
+         "name": "Tape: keep 3 ft clear (sub-panel)",
+         "x": 26,
+         "z": 1.9,
+         "w": 3,
+         "d": 3,
+         "color": "#e0b43a",
+         "y": 0,
+         "h": 0.05,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "zone-exit",
+         "name": "Tape: keep clear (EXIT door)",
+         "x": 6,
+         "z": 47.5,
+         "w": 4,
+         "d": 4,
+         "color": "#e0b43a",
+         "y": 0,
+         "h": 0.05,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "zone-drill",
+         "name": "Tape: drill press work area",
+         "x": 14,
+         "z": 45.5,
+         "w": 3,
+         "d": 3,
+         "color": "#e0b43a",
+         "y": 0,
+         "h": 0.05,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "zone-grinders",
+         "name": "Tape: grinder standing strip (3 ft)",
+         "x": 96,
+         "z": 8.5,
+         "w": 3,
+         "d": 14,
+         "color": "#e0b43a",
+         "y": 0,
+         "h": 0.05,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "zone-sidebox",
+         "name": "Tape: electrical room, keep clear",
+         "x": -3,
+         "z": 15,
+         "w": 3.5,
+         "d": 8,
+         "color": "#e0b43a",
+         "y": 0,
+         "h": 0.05,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "fan-parking",
+         "name": "Tape: fan parking",
+         "x": 47,
+         "z": 48.25,
+         "w": 26,
+         "d": 3.5,
+         "color": "#5a8fd0",
+         "y": 0,
+         "h": 0.05,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "helmet-rail",
+         "name": "Helmet rail (one hook per student)",
+         "x": -5,
+         "z": 0.25,
+         "y": 4,
+         "w": 4,
+         "d": 0.3,
+         "h": 1.5,
+         "rot": 0,
+         "color": "#4d6b8a",
+         "est": true
+        }
+       ],
+       "label": "After (Opus + tidy-up)"
+      },
+      "afterOpus": {
+       "objects": [
+        {
+         "id": "steel-bench",
+         "name": "Steel work table (instructor station)",
+         "x": 9,
+         "z": 25,
+         "w": 6,
+         "d": 3,
+         "h": 3,
+         "y": 0,
+         "rot": 90,
+         "est": true
+        },
+        {
+         "id": "work-table-2",
+         "name": "Small steel table (consumables)",
+         "x": 32,
+         "z": 25,
+         "w": 5,
+         "d": 3,
+         "h": 3,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "fixture-table",
+         "name": "Heavy fixturing table",
+         "x": 52,
+         "z": 25,
+         "w": 4,
+         "d": 3,
+         "h": 3.5,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "spool-rack",
+         "name": "Rolling wire-spool rack",
+         "x": 6,
+         "z": 19,
+         "w": 6,
+         "d": 3,
+         "h": 6,
+         "y": 0,
+         "rot": 90,
+         "est": true
+        },
+        {
+         "id": "gas-cart-1",
+         "name": "Oxy-fuel cylinder cart",
+         "x": 2,
+         "z": 34,
+         "w": 2.5,
+         "d": 2,
+         "h": 5,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "gas-cart-2",
+         "name": "Oxy-fuel cylinder cart",
+         "x": 2,
+         "z": 37,
+         "w": 2.5,
+         "d": 2,
+         "h": 5,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "gas-cart-3",
+         "name": "Oxy-fuel cylinder cart",
+         "x": 2,
+         "z": 40,
+         "w": 2.5,
+         "d": 2,
+         "h": 5,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "portable-welder-1",
+         "name": "Portable welder",
+         "x": 64,
+         "z": 25,
+         "w": 2,
+         "d": 3,
+         "h": 3.5,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "portable-welder-2",
+         "name": "Portable welder",
+         "x": 68,
+         "z": 25,
+         "w": 2,
+         "d": 3,
+         "h": 3.5,
+         "y": 0,
+         "rot": 0,
+         "est": true
+        },
+        {
+         "id": "tool-chests",
+         "name": "Rolling modular tool chests",
          "x": 89,
          "z": 25,
          "w": 6,
@@ -5663,7 +6220,7 @@ window.SHOP_DATA = {
          "est": true
         }
        ],
-       "label": "After (Claude Opus)"
+       "label": "After (Claude Opus, original)"
       }
      }
     },

@@ -654,8 +654,9 @@ function resolve(prev, next) {
   const p = { x: next.x, z: next.z };
   for (const g of fixedColliders) pushOut(g, p);
   for (const node of nodes.values()) {
-    // Anything whose underside is above head height (6 ft) is something you walk under.
-    if (node.hidden || !node.cur || node.cur.y >= 6) continue;
+    // Anything whose underside is above head height (6 ft) is something you walk under, and anything
+    // under 0.25 ft tall (floor tape marking a keep-clear zone) is something you walk over.
+    if (node.hidden || !node.cur || node.cur.y >= 6 || node.cur.h < 0.25) continue;
     pushOut(node.group, p);
   }
   if (walkable(p.x, p.z)) return p;
