@@ -1,10 +1,14 @@
 /*
- * viewer.js — first-person (WASD) walkthrough of the shop, driven entirely by
- * window.SHOP_DATA from layouts.js. This file shouldn't need edits when the
- * real layouts arrive; if it does, that's a bug in here, not in the data.
+ * viewer.js — first-person (WASD / touch) walkthrough of the shop, driven entirely by
+ * window.SHOP_DATA from layouts.js. It should not need edits when a new model's JSON
+ * arrives; only layouts.js changes (see the format notes at the top of that file).
  *
- * The design bias throughout: boring + robust beats pretty. This runs live in
- * front of people, so every choice favors "can't visibly break" over fidelity.
+ * Design bias throughout: boring + robust beats pretty. This runs live in front of people,
+ * so every choice favors "can't visibly break" over fidelity.
+ *
+ * Shape of the data: SHOP_DATA.models[key] = one model's complete world — its own coordinate
+ * frame, fixed features, and before/after layouts. Models are NOT merged or normalized; each
+ * one is shown exactly as it described the shop, which keeps the comparison honest.
  */
 import * as THREE from 'three';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
@@ -13,26 +17,35 @@ const $ = (id) => document.getElementById(id);
 const DEG = Math.PI / 180;
 
 // ───────────────────────── data + validation ─────────────────────────
-// Fail loudly in the menu card, not silently in a blank canvas. A typo in
-// pasted JSON at 11pm Sunday should name itself.
+// Fail loudly in the menu card, not silently in a blank canvas. A typo in pasted JSON
+// at 11pm Sunday should name itself.
 const DATA = window.SHOP_DATA;
 function fail(msg) { $('err').textContent = msg; throw new Error(msg); }
 
-if (!DATA || !DATA.room || !DATA.layouts) fail('layouts.js is missing SHOP_DATA.room or SHOP_DATA.layouts.');
-const ROOM = DATA.room;
-const LAYOUT_KEYS = Object.keys(DATA.layouts);
-if (!LAYOUT_KEYS.length) fail('SHOP_DATA.layouts is empty.');
-const BEFORE_KEY = DATA.layouts.before ? 'before' : LAYOUT_KEYS[0];
+if (!DATA || !DATA.models) fail('layouts.js is missing SHOP_DATA.models.');
+const MODEL_KEYS = Object.keys(DATA.models);
+if (!MODEL_KEYS.length) fail('SHOP_DATA.models is empty.');
 
-for (const key of LAYOUT_KEYS) {
+const NUM_FIELDS = ['x', 'z', 'w', 'd', 'h'];
+function checkItems(where, list) {
   const seen = new Set();
-  for (const o of DATA.layouts[key].objects) {
-    for (const f of ['x', 'z', 'w', 'd', 'h']) {
-      if (!Number.isFinite(o[f])) fail(`Layout "${key}", object "${o.id}": "${f}" must be a number (got ${o[f]}).`);
+  for (const o of list || []) {
+    for (const f of NUM_FIELDS) {
+      if (!Number.isFinite(o[f])) fail(`${where}, object "${o.id}": "${f}" must be a number (got ${o[f]}).`);
     }
-    if (seen.has(o.id)) fail(`Layout "${key}" lists id "${o.id}" twice.`);
+    if (seen.has(o.id)) fail(`${where} lists id "${o.id}" twice.`);
     seen.add(o.id);
   }
+}
+for (const key of MODEL_KEYS) {
+  const m = DATA.models[key];
+  if (!Array.isArray(m.rooms) || !m.rooms.length) fail(`Model "${key}" needs a rooms array.`);
+  for (const r of m.rooms) for (const f of ['x0', 'z0', 'w', 'd', 'h']) {
+    if (!Number.isFinite(r[f])) fail(`Model "${key}", room "${r.id}": "${f}" must be a number.`);
+  }
+  if (!m.layouts || !Object.keys(m.layouts).length) fail(`Model "${key}" has no layouts.`);
+  checkItems(`Model "${key}" fixed`, m.fixed);
+  for (const lk of Object.keys(m.layouts)) checkItems(`Model "${key}", layout "${lk}"`, m.layouts[lk].objects);
 }
 
 // ───────────────────────── renderer / scene / cameras ─────────────────────────
@@ -45,179 +58,329 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color('#14161a');
 
 const EYE = 5.5;       // ft, eye height
-const RADIUS = 1.0;    // ft, player collision circle — roomy enough that you don't clip bench corners
-const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 200);
-camera.position.set(ROOM.spawn?.x ?? ROOM.width / 2, EYE, ROOM.spawn?.z ?? ROOM.depth - 2);
+const RADIUS = 0.9;    // ft, player collision circle. Small enough to fit through a 3 ft door
+const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 300);
 camera.rotation.order = 'YXZ';
-camera.rotation.y = -(ROOM.spawn?.yaw ?? 0) * DEG; // yaw 0 faces -z (up the plan)
 
-// Plan-view camera for the T key. Orthographic so the floor plan isn't distorted —
-// that's the view David will actually compare against his own sketch.
-const topCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 200);
-function fitTopCam() {
+// Plan-view camera for the T key. Orthographic so the floor plan isn't distorted — that's
+// the view people will compare against their own mental map of the shop.
+const topCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 300);
+function fitTopCam(bounds) {
   const aspect = window.innerWidth / window.innerHeight;
-  const m = 2; // ft of margin around the room
-  const halfH = Math.max(ROOM.depth / 2 + m, (ROOM.width / 2 + m) / aspect);
+  const m = 2; // ft of margin around everything
+  const w = bounds.maxX - bounds.minX + 2 * m, d = bounds.maxZ - bounds.minZ + 2 * m;
+  const halfH = Math.max(d / 2, w / 2 / aspect);
+  const cx = (bounds.minX + bounds.maxX) / 2, cz = (bounds.minZ + bounds.maxZ) / 2;
   topCam.left = -halfH * aspect; topCam.right = halfH * aspect;
   topCam.top = halfH; topCam.bottom = -halfH;
-  topCam.position.set(ROOM.width / 2, 60, ROOM.depth / 2);
+  topCam.position.set(cx, 80, cz);
   topCam.up.set(0, 0, -1);            // north (z=0) is the top of the screen, like a floor plan
-  topCam.lookAt(ROOM.width / 2, 0, ROOM.depth / 2);
+  topCam.lookAt(cx, 0, cz);
   topCam.updateProjectionMatrix();
 }
-fitTopCam();
 
 // Flat-ish lighting on purpose: no shadows keeps it fast on any presentation laptop.
-scene.add(new THREE.AmbientLight(0xffffff, 0.65));
+scene.add(new THREE.AmbientLight(0xffffff, 0.7));
 scene.add(new THREE.HemisphereLight(0xffffff, 0x3a3f48, 0.5));
-const sun = new THREE.DirectionalLight(0xffffff, 0.7);
-sun.position.set(ROOM.width * 0.3, 30, ROOM.depth * 0.2);
+const sun = new THREE.DirectionalLight(0xffffff, 0.6);
+sun.position.set(30, 60, 20);
 scene.add(sun);
 
-// ───────────────────────── the room ─────────────────────────
-const W = ROOM.width, D = ROOM.depth, H = ROOM.height;
-
-// Floor: canvas-drawn grid, one cell = 4 ft, so you can eyeball distances while walking.
-function gridTexture() {
-  const c = document.createElement('canvas'); c.width = c.height = 256;
-  const g = c.getContext('2d');
-  g.fillStyle = '#5a5e66'; g.fillRect(0, 0, 256, 256);
-  g.strokeStyle = '#4a4e56'; g.lineWidth = 4; g.strokeRect(0, 0, 256, 256);
-  const t = new THREE.CanvasTexture(c);
-  t.wrapS = t.wrapT = THREE.RepeatWrapping;
-  t.repeat.set(W / 4, D / 4);
-  t.colorSpace = THREE.SRGBColorSpace;
-  return t;
-}
-const floor = new THREE.Mesh(new THREE.PlaneGeometry(W, D), new THREE.MeshLambertMaterial({ map: gridTexture() }));
-floor.rotation.x = -Math.PI / 2;
-floor.position.set(W / 2, 0, D / 2);
-scene.add(floor);
-
-// Ceiling hides in top-down view. Walls are thin boxes just OUTSIDE the room rectangle so the
-// interior faces sit exactly on x=0/W and z=0/D — no plane-orientation guesswork.
-const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(W, D), new THREE.MeshLambertMaterial({ color: '#3b3f47' }));
-ceiling.rotation.x = Math.PI / 2;
-ceiling.position.set(W / 2, H, D / 2);
-scene.add(ceiling);
-
-const wallMat = new THREE.MeshLambertMaterial({ color: '#8d9199' });
-function wall(cx, cz, sx, sz) {
-  const m = new THREE.Mesh(new THREE.BoxGeometry(sx, H, sz), wallMat);
-  m.position.set(cx, H / 2, cz);
-  scene.add(m);
-}
-const T = 0.3;
-wall(W / 2, -T / 2, W + 2 * T, T);        // north
-wall(W / 2, D + T / 2, W + 2 * T, T);     // south
-wall(-T / 2, D / 2, T, D);                // west
-wall(W + T / 2, D / 2, T, D);             // east
-
-// A few emissive "fixture" strips so the ceiling reads as a ceiling.
-const lightMat = new THREE.MeshBasicMaterial({ color: '#fffbe8' });
-const lights = [];
-for (let i = 0; i < 3; i++) for (let j = 0; j < 2; j++) {
-  const m = new THREE.Mesh(new THREE.BoxGeometry(6, 0.15, 0.6), lightMat);
-  m.position.set(W * (i + 0.5) / 3, H - 0.1, D * (j + 0.5) / 2);
-  scene.add(m); lights.push(m);
-}
-
-// ───────────────────────── shared box + edge geometry ─────────────────────────
-// Everything is a unit cube scaled to size. That's what makes the before→after morph
-// trivial: tween position/rotation/scale and the same mesh is reused for every layout.
+// ───────────────────────── shared geometry + color rules ─────────────────────────
+// Everything is a unit cube scaled to size. That's what makes the before→after morph trivial:
+// tween position/rotation/scale and the same mesh is reused for every layout.
 const unitBox = new THREE.BoxGeometry(1, 1, 1);
 const unitEdges = new THREE.EdgesGeometry(unitBox);
 const edgeMat = new THREE.LineBasicMaterial({ color: 0x0b0c0f });
 
-// Declared up here (not next to addLabel) because the fixed-feature loop below runs first
-// and a `const` read before its line is a temporal-dead-zone crash.
-const labelSprites = [];
-
-// Fixed features (doors, windows, columns). Static; only `collide:true` ones block you.
-const fixedColliders = [];
-for (const f of DATA.fixed || []) {
-  const g = new THREE.Group();
-  g.add(new THREE.Mesh(unitBox, new THREE.MeshLambertMaterial({ color: f.color || '#777' })));
-  g.add(new THREE.LineSegments(unitEdges, edgeMat));
-  g.position.set(f.x, (f.y || 0) + f.h / 2, f.z);
-  g.scale.set(f.w, f.h, f.d);
-  g.rotation.y = -(f.rot || 0) * DEG;
-  scene.add(g);
-  if (f.collide) fixedColliders.push(g);
-  addLabel(f.name, new THREE.Vector3(f.x, (f.y || 0) + f.h + 0.8, f.z), true);
+// Models don't send colors, so we infer one from the item's id/name. First match wins.
+// Why: a walkthrough of identical gray boxes is unreadable; color is the cheapest legend.
+const COLOR_RULES = [
+  [/panel/, '#8a3a3a'], [/^ext|extinguisher/, '#c0392b'], [/rollup|roll-up/, '#8a8f94'],
+  [/door|opening/, '#7a5230'], [/duct/, '#9aa0a8'], [/gas-air|gas\/air/, '#4a90a4'], [/hose/, '#c0392b'],
+  [/welder/, '#3d6fd0'], [/grinder/, '#d6a31f'], [/fan|air-mover/, '#6b7280'],
+  [/locker|cabinet|shelf|shelving|rack|cubby/, '#4d6b8a'], [/bench|table|station/, '#a0743c'],
+  [/chest|tool/, '#b22'], [/cart|stand/, '#888'], [/drill|broom/, '#3d8a5a'], [/box|stock/, '#8a7a5a'],
+];
+function colorFor(o) {
+  if (o.color) return o.color;
+  const s = `${o.id} ${o.name || ''}`.toLowerCase();
+  for (const [re, c] of COLOR_RULES) if (re.test(s)) return c;
+  return '#8b8f97';
 }
 
 // ───────────────────────── labels ─────────────────────────
 // Canvas-text sprites. They face the camera for free, and depthTest stays on so a label
 // behind a bench doesn't float through it.
-function addLabel(text, pos, isFixed = false) {
+function makeLabel(text, dim) {
   const c = document.createElement('canvas'); c.width = 512; c.height = 96;
   const g = c.getContext('2d');
-  g.fillStyle = isFixed ? '#1d2026d9' : '#0b0c0fd9';
+  g.fillStyle = dim ? '#1d2026d9' : '#0b0c0fd9';
   g.beginPath(); g.roundRect(4, 4, 504, 88, 18); g.fill();
   g.font = '600 44px system-ui, sans-serif';
   g.textAlign = 'center'; g.textBaseline = 'middle';
-  g.fillStyle = isFixed ? '#9aa0a8' : '#ffffff';
+  g.fillStyle = dim ? '#9aa0a8' : '#ffffff';
   g.fillText(text, 256, 50, 480);
   const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
   const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
   s.scale.set(4.2, 0.79, 1);
-  s.position.copy(pos);
-  scene.add(s);
-  labelSprites.push(s);
   return s;
 }
 
-// ───────────────────────── movable objects ─────────────────────────
-// One node per id across ALL layouts (union), so a model that forgets an object doesn't crash us.
-const nodes = new Map(); // id → { group, label, cur, from, to, name, hidden }
-for (const key of LAYOUT_KEYS) {
-  for (const o of DATA.layouts[key].objects) {
-    if (nodes.has(o.id)) continue;
-    const group = new THREE.Group();
-    group.add(new THREE.Mesh(unitBox, new THREE.MeshLambertMaterial({ color: o.color || '#999' })));
-    group.add(new THREE.LineSegments(unitEdges, edgeMat));
-    scene.add(group);
-    nodes.set(o.id, { group, label: addLabel(o.name || o.id, new THREE.Vector3()), cur: null, from: null, to: null, hidden: true });
+// ───────────────────────── the loaded model ("world") ─────────────────────────
+// Everything model-specific lives under `world`, so switching models is: remove the group, build a new one.
+let world = null;
+let M = null;                       // current model's data
+let modelKey = null;
+let rects = [];                     // walkable room rectangles
+let passages = [];                  // little walkable rects that bridge two rooms through a door gap
+let fixedColliders = [];            // invisible box proxies for solid fixed features
+let nodes = new Map();              // movable id → { group, label, cur, from, to, moved }
+let labelSprites = [];              // { sprite, maxDist, hidden }
+let overheadMeshes = [];            // things above head height; hidden in plan view
+let ceilings = [];
+let layoutKeys = [];
+let beforeKey = 'before';
+let currentKey = null;
+let lastAfterKey = null;
+let roomIdx = 0;
+let tweenT = 1;
+
+function disposeWorld() {
+  if (!world) return;
+  scene.remove(world);
+  world.traverse((o) => {
+    if (o.material) {
+      if (o.material.map) o.material.map.dispose();
+      o.material.dispose();
+    }
+  });
+  world = null;
+}
+
+function inAnyRoom(x, z) {
+  return M.rooms.some((r) => x > r.x0 && x < r.x0 + r.w && z > r.z0 && z < r.z0 + r.d);
+}
+
+// Door classification. Which fixed items are doors is declared per model (`doors`), not guessed from
+// names — "Extinguisher by side door" must not become a doorway.
+// A door that joins two rooms becomes a gap in the wall you can walk through; a door to the outside
+// is just a colored panel set into the wall (opening it onto black void would look broken).
+function doorInfo(f) {
+  const vertical = f.d > f.w;                    // thin in x → sits in a wall running along z
+  const axis = vertical ? 'z' : 'x';
+  const c = vertical ? f.x : f.z;                // the wall line it sits on
+  const mid = vertical ? f.z : f.x;
+  const half = (vertical ? f.d : f.w) / 2;
+  const probe = (s) => (vertical ? inAnyRoom(c + s * 1.2, mid) : inAnyRoom(mid, c + s * 1.2));
+  return { axis, c, lo: mid - half, hi: mid + half, connects: probe(-1) && probe(1), vertical };
+}
+
+function addBox(parent, cx, cy, cz, sx, sy, sz, mat) {
+  const m = new THREE.Mesh(unitBox, mat);
+  m.position.set(cx, cy, cz); m.scale.set(sx, sy, sz);
+  parent.add(m);
+  return m;
+}
+
+// Walls are boxes centered ON each room edge (not outside it), so two rooms that share an edge draw
+// the identical wall in the identical spot — no double thickness, no visible seam.
+const WT = 0.3;
+function addWalls(parent, r, gaps, mat) {
+  const edges = [
+    { axis: 'x', c: r.z0,       a0: r.x0, a1: r.x0 + r.w },   // north
+    { axis: 'x', c: r.z0 + r.d, a0: r.x0, a1: r.x0 + r.w },   // south
+    { axis: 'z', c: r.x0,       a0: r.z0, a1: r.z0 + r.d },   // west
+    { axis: 'z', c: r.x0 + r.w, a0: r.z0, a1: r.z0 + r.d },   // east
+  ];
+  for (const e of edges) {
+    let segs = [[e.a0 - WT / 2, e.a1 + WT / 2]];
+    for (const g of gaps) {
+      if (g.axis !== e.axis || Math.abs(g.c - e.c) > 0.6) continue;
+      segs = segs.flatMap(([s0, s1]) => {
+        if (g.hi <= s0 || g.lo >= s1) return [[s0, s1]];
+        const out = [];
+        if (g.lo > s0) out.push([s0, g.lo]);
+        if (g.hi < s1) out.push([g.hi, s1]);
+        return out;
+      });
+    }
+    for (const [s0, s1] of segs) {
+      const len = s1 - s0; if (len < 0.01) continue;
+      const mid = (s0 + s1) / 2;
+      if (e.axis === 'x') addBox(parent, mid, r.h / 2, e.c, len, r.h, WT, mat);
+      else addBox(parent, e.c, r.h / 2, mid, WT, r.h, len, mat);
+    }
   }
 }
 
-const pose = (o) => ({ x: o.x, y: o.y || 0, z: o.z, rot: o.rot || 0, w: o.w, h: o.h, d: o.d });
+// Booth rows arrive as one long box ("Booth row A (16 booths)"). A solid slab reads as a wall, not a
+// welding school, so `decor` lets the model wrapper say "draw this as N blue booths with orange curtains
+// opening toward +z". The collision proxy stays the single box — decor is purely visual.
+function buildBooths(parent, f, dec, mats) {
+  const alongX = f.w >= f.d;
+  const L = alongX ? f.w : f.d, T = alongX ? f.d : f.w;
+  const n = Math.max(1, dec.count | 0), mod = L / n;
+  const openAxis = dec.open.endsWith('x') ? 'x' : 'z';
+  const sign = dec.open.startsWith('-') ? -1 : 1;
+  const bodyT = T * 0.86;                                   // booth body, leaving the front sliver open
+  for (let i = 0; i < n; i++) {
+    const along = -L / 2 + mod * (i + 0.5);
+    // body sits against the back (opposite the open side); curtain hangs at the open face
+    const bodyOff = -sign * (T - bodyT) / 2, curtOff = sign * (T / 2 - 0.05);
+    const place = (a, across) => (alongX ? [f.x + a, f.z + across] : [f.x + across, f.z + a]);
+    const [bx, bz] = place(along, bodyOff);
+    const body = addBox(parent, bx, f.h / 2, bz,
+      alongX ? mod * 0.9 : bodyT, f.h, alongX ? bodyT : mod * 0.9, mats.blue);
+    const [cx, cz] = place(along, curtOff);
+    const curtain = addBox(parent, cx, f.h * 0.5, cz,
+      alongX ? mod * 0.55 : 0.08, f.h * 0.7, alongX ? 0.08 : mod * 0.55, mats.orange);
+    body.add(new THREE.LineSegments(unitEdges, edgeMat));
+    if ((f.y || 0) >= 6) overheadMeshes.push(body);   // "overhead" = starts above head height, NOT merely tall
+    void curtain; void openAxis;
+  }
+}
 
-function applyPose(node, p) {
-  node.group.position.set(p.x, p.y + p.h / 2, p.z);
-  node.group.scale.set(p.w, p.h, p.d);
-  // `rot` is degrees CLOCKWISE as seen on the floor plan (compass-style); three.js rotates
-  // the other way, hence the minus.
-  node.group.rotation.y = -p.rot * DEG;
-  node.label.position.set(p.x, p.y + p.h + 0.9, p.z);
+function loadModel(key) {
+  disposeWorld();
+  modelKey = key; M = DATA.models[key];
+  world = new THREE.Group(); scene.add(world);
+  rects = []; passages = []; fixedColliders = []; nodes = new Map();
+  labelSprites = []; overheadMeshes = []; ceilings = [];
+
+  const addLabel = (text, pos, dim, maxDist) => {
+    const s = makeLabel(text, dim); s.position.copy(pos); world.add(s);
+    const rec = { sprite: s, maxDist, hidden: false, fixed: dim }; labelSprites.push(rec); return rec;
+  };
+
+  // — rooms: floor, ceiling, light strips —
+  const gridCanvas = document.createElement('canvas'); gridCanvas.width = gridCanvas.height = 256;
+  { const g = gridCanvas.getContext('2d'); g.fillStyle = '#5a5e66'; g.fillRect(0, 0, 256, 256);
+    g.strokeStyle = '#4a4e56'; g.lineWidth = 4; g.strokeRect(0, 0, 256, 256); }
+  const lightMat = new THREE.MeshBasicMaterial({ color: '#fffbe8' });
+  const ceilMat = new THREE.MeshLambertMaterial({ color: '#3b3f47' });
+  const wallMat = new THREE.MeshLambertMaterial({ color: '#8d9199' });
+  const bounds = { minX: Infinity, maxX: -Infinity, minZ: Infinity, maxZ: -Infinity };
+
+  // doors → gaps (only where two rooms meet)
+  const doorIds = new Set(M.doors || []);
+  const doors = (M.fixed || []).filter((f) => doorIds.has(f.id)).map((f) => ({ f, ...doorInfo(f) }));
+  const gaps = doors.filter((d) => d.connects).map((d) => ({ axis: d.axis, c: d.c, lo: d.lo, hi: d.hi }));
+  for (const d of doors.filter((x) => x.connects)) {
+    // A passage rect lets the walker's circle cross the wall line through the gap. 0.3 ft of slack on each
+    // side of the opening lets you clip a door frame slightly instead of needing a pixel-perfect line-up.
+    passages.push(d.vertical
+      ? { a: d.c - RADIUS, b: d.c + RADIUS, c: d.lo + 0.3, d: d.hi - 0.3 }
+      : { a: d.lo + 0.3, b: d.hi - 0.3, c: d.c - RADIUS, d: d.c + RADIUS });
+  }
+
+  for (const r of M.rooms) {
+    const tex = new THREE.CanvasTexture(gridCanvas); // one texture object per room (each has its own repeat)
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.colorSpace = THREE.SRGBColorSpace;
+    tex.repeat.set(r.w / 4, r.d / 4);                // one cell = 4 ft, so you can eyeball distances
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(r.w, r.d), new THREE.MeshLambertMaterial({ map: tex }));
+    floor.rotation.x = -Math.PI / 2; floor.position.set(r.x0 + r.w / 2, 0, r.z0 + r.d / 2); world.add(floor);
+    const ceil = new THREE.Mesh(new THREE.PlaneGeometry(r.w, r.d), ceilMat);
+    ceil.rotation.x = Math.PI / 2; ceil.position.set(r.x0 + r.w / 2, r.h, r.z0 + r.d / 2); world.add(ceil);
+    ceilings.push(ceil);
+    // light strips: a grid on big rooms, one strip on small ones
+    const nx = Math.max(1, Math.round(r.w / 30)), nz = Math.max(1, Math.round(r.d / 25));
+    for (let i = 0; i < nx; i++) for (let j = 0; j < nz; j++) {
+      const m = addBox(world, r.x0 + r.w * (i + 0.5) / nx, r.h - 0.1, r.z0 + r.d * (j + 0.5) / nz,
+        Math.min(6, r.w * 0.6), 0.15, 0.6, lightMat);
+      ceilings.push(m);
+    }
+    addWalls(world, r, gaps, wallMat);
+    rects.push({ x0: r.x0 + RADIUS, x1: r.x0 + r.w - RADIUS, z0: r.z0 + RADIUS, z1: r.z0 + r.d - RADIUS });
+    bounds.minX = Math.min(bounds.minX, r.x0); bounds.maxX = Math.max(bounds.maxX, r.x0 + r.w);
+    bounds.minZ = Math.min(bounds.minZ, r.z0); bounds.maxZ = Math.max(bounds.maxZ, r.z0 + r.d);
+  }
+  fitTopCam(bounds);
+
+  // — fixed features —
+  const hide = new Set(M.hide || []);
+  const decor = M.decor || {};
+  const mats = { blue: new THREE.MeshLambertMaterial({ color: '#2f6fb5' }), orange: new THREE.MeshLambertMaterial({ color: '#e8962e', transparent: true, opacity: 0.88 }) };
+  const doorById = new Map(doors.map((d) => [d.f.id, d]));
+  for (const f of M.fixed || []) {
+    if (hide.has(f.id)) continue;                       // e.g. a "light grid" slab that would blanket the whole room
+    const y = f.y || 0;
+    const dInfo = doorById.get(f.id);
+    const isGap = dInfo && dInfo.connects;
+    // collision: solid unless it's a door, or it's overhead (you walk under anything starting above 6 ft)
+    const solid = f.collide ?? (!dInfo && y < 6);
+    if (solid) {
+      const proxy = new THREE.Group();
+      proxy.position.set(f.x, y + f.h / 2, f.z); proxy.scale.set(f.w, f.h, f.d); proxy.rotation.y = -(f.rot || 0) * DEG;
+      fixedColliders.push(proxy);
+    }
+    if (!isGap) {                                       // a walk-through gap draws nothing; the gap IS the door
+      if (decor[f.id]?.type === 'booths') buildBooths(world, f, decor[f.id], mats);
+      else {
+        const g = new THREE.Group();
+        g.add(new THREE.Mesh(unitBox, new THREE.MeshLambertMaterial({ color: colorFor(f) })));
+        g.add(new THREE.LineSegments(unitEdges, edgeMat));
+        g.position.set(f.x, y + f.h / 2, f.z); g.scale.set(f.w, f.h, f.d); g.rotation.y = -(f.rot || 0) * DEG;
+        world.add(g);
+        if (y >= 6) overheadMeshes.push(g);
+      }
+    }
+    if (y < 6) addLabel(f.name || f.id, new THREE.Vector3(f.x, y + f.h + 0.8, f.z), true, 14);
+  }
+
+  // — movable objects: one node per id across ALL layouts (union), so a model that forgets one
+  //   object in a layout doesn't crash us —
+  layoutKeys = Object.keys(M.layouts);
+  beforeKey = M.layouts.before ? 'before' : layoutKeys[0];
+  lastAfterKey = layoutKeys.find((k) => k !== beforeKey) || beforeKey;
+  for (const lk of layoutKeys) for (const o of M.layouts[lk].objects) {
+    if (nodes.has(o.id)) continue;
+    const group = new THREE.Group();
+    const mat = new THREE.MeshLambertMaterial({ color: colorFor(o) });
+    group.add(new THREE.Mesh(unitBox, mat)); group.add(new THREE.LineSegments(unitEdges, edgeMat));
+    world.add(group);
+    nodes.set(o.id, { group, mat, label: addLabel(o.name || o.id, new THREE.Vector3(), false, 22), cur: null, from: null, to: null, hidden: true, moved: false });
+  }
+
+  currentKey = null; tweenT = 1;
+  roomIdx = 0; setRoom(0);
+  setLayout(beforeKey, true);
+  renderMenu();
 }
 
 // ───────────────────────── layout switching + tween ─────────────────────────
+const pose = (o) => ({ x: o.x, y: o.y || 0, z: o.z, rot: o.rot || 0, w: o.w, h: o.h, d: o.d });
 const TWEEN_SECONDS = 1.4;
-let currentKey = null;
-let lastAfterKey = LAYOUT_KEYS.find((k) => k !== BEFORE_KEY) || BEFORE_KEY;
-let tweenT = 1;
-
 const ease = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 // Shortest way around the circle, so a 350°→10° rotation turns 20°, not 340°.
 const angleDelta = (a, b) => ((b - a + 540) % 360) - 180;
 
+function applyPose(node, p) {
+  node.group.position.set(p.x, p.y + p.h / 2, p.z);
+  node.group.scale.set(p.w, p.h, p.d);
+  // `rot` is degrees CLOCKWISE as seen on the floor plan (compass-style); three.js rotates the other way.
+  node.group.rotation.y = -p.rot * DEG;
+  node.label.sprite.position.set(p.x, p.y + p.h + 0.9, p.z);
+}
+
 function setLayout(key, instant = false) {
-  if (!DATA.layouts[key]) return;
-  const byId = new Map(DATA.layouts[key].objects.map((o) => [o.id, o]));
+  if (!M.layouts[key]) return;
+  const byId = new Map(M.layouts[key].objects.map((o) => [o.id, o]));
+  const before = new Map((M.layouts[beforeKey]?.objects || []).map((o) => [o.id, o]));
   for (const [id, node] of nodes) {
     const o = byId.get(id);
-    if (!o) { node.hidden = true; node.group.visible = false; node.label.visible = false; continue; }
+    if (!o) { node.hidden = true; node.group.visible = false; node.label.hidden = true; continue; }
     const to = pose(o);
-    node.from = node.cur && !node.hidden ? { ...node.cur } : { ...to }; // newly-appearing objects don't fly in from nowhere
-    node.to = to;
-    node.hidden = false;
-    node.group.visible = true;
+    node.from = node.cur && !node.hidden ? { ...node.cur } : { ...to };   // newly-appearing objects don't fly in from nowhere
+    node.to = to; node.hidden = false; node.label.hidden = false; node.group.visible = true;
     if (!node.cur) node.cur = { ...to };
+    // "moved" = differs from the before layout; moved things glow amber in any non-before layout
+    const b = before.get(id);
+    node.moved = key !== beforeKey && (!b || Math.hypot(b.x - o.x, b.z - o.z) > 0.5 || Math.abs(angleDelta(b.rot || 0, o.rot || 0)) > 1);
+    node.mat.emissive.set(node.moved ? '#6b4300' : '#000000');
   }
   currentKey = key;
-  if (key !== BEFORE_KEY) lastAfterKey = key;
+  if (key !== beforeKey) lastAfterKey = key;
   tweenT = instant ? 1 : 0;
   if (instant) stepTween(0);
   refreshHud();
@@ -239,24 +402,46 @@ function stepTween(dt) {
   }
 }
 
-// ───────────────────────── HUD + menu buttons ─────────────────────────
+// ───────────────────────── HUD + menu ─────────────────────────
 let topdown = false;
 let labelsOn = true;
 
-const layoutsEl = $('layouts');
-LAYOUT_KEYS.forEach((key, i) => {
-  const b = document.createElement('button');
-  b.textContent = `${i + 1} · ${DATA.layouts[key].label || key}`;
-  b.dataset.key = key;
-  b.addEventListener('click', () => setLayout(key));
-  layoutsEl.appendChild(b);
-});
-
 function refreshHud() {
-  $('hudName').textContent = DATA.layouts[currentKey].label || currentKey;
-  $('hudHint').textContent = topdown ? '· top-down' : '';
-  for (const b of layoutsEl.children) b.classList.toggle('on', b.dataset.key === currentKey);
+  const movedCount = [...nodes.values()].filter((n) => n.moved && !n.hidden).length;
+  $('hudName').textContent = `${M.label || modelKey} · ${M.layouts[currentKey].label || currentKey}`;
+  $('hudHint').textContent = [M.rooms[roomIdx]?.name, topdown ? 'plan view' : '', movedCount ? `${movedCount} moved` : ''].filter(Boolean).join(' · ');
+  for (const b of document.querySelectorAll('#layouts button')) b.classList.toggle('on', b.dataset.key === currentKey);
+  for (const b of document.querySelectorAll('#models button')) b.classList.toggle('on', b.dataset.key === modelKey);
+  for (const b of document.querySelectorAll('#rooms button')) b.classList.toggle('on', +b.dataset.i === roomIdx);
   $('cross').style.display = topdown ? 'none' : '';
+}
+
+function renderMenu() {
+  const fill = (id, items, onClick, datasetKey) => {
+    const el = $(id); el.textContent = '';
+    items.forEach(([key, text]) => {
+      const b = document.createElement('button'); b.textContent = text; b.dataset[datasetKey] = key;
+      b.addEventListener('click', () => onClick(key)); el.appendChild(b);
+    });
+    el.style.display = items.length > 1 ? '' : 'none';
+  };
+  fill('models', MODEL_KEYS.map((k) => [k, DATA.models[k].label || k]), (k) => loadModel(k), 'key');
+  fill('layouts', layoutKeys.map((k, i) => [k, `${i + 1} · ${M.layouts[k].label || k}`]), (k) => setLayout(k), 'key');
+  fill('rooms', M.rooms.map((r, i) => [i, r.name || r.id]), (i) => setRoom(+i), 'i');
+  refreshHud();
+}
+
+// ───────────────────────── movement helpers ─────────────────────────
+const pos = { x: 0, z: 0 };
+function setRoom(i) {
+  roomIdx = ((i % M.rooms.length) + M.rooms.length) % M.rooms.length;
+  const r = M.rooms[roomIdx];
+  const s = r.spawn || { x: r.x0 + r.w / 2, z: r.z0 + r.d / 2, yaw: 0 };
+  pos.x = s.x; pos.z = s.z;
+  camera.position.set(pos.x, EYE, pos.z);
+  camera.rotation.y = -(s.yaw || 0) * DEG;     // yaw 0 faces -z ("up" the plan), 90 faces +x
+  camera.rotation.x = 0;
+  if (currentKey) refreshHud(); // during initial load no layout is chosen yet; setLayout refreshes the HUD itself
 }
 
 // ───────────────────────── input ─────────────────────────
@@ -265,8 +450,9 @@ const pause = $('pause');
 controls.addEventListener('lock', () => { pause.style.display = 'none'; });
 controls.addEventListener('unlock', () => { pause.style.display = 'flex'; });
 document.addEventListener('pointerlockerror', () => { $('err').textContent = 'The browser refused mouse capture. Click the button again.'; });
-// Phones/tablets report a coarse primary pointer. They have no pointer lock and no keyboard,
-// so "playing" is just a flag there, and walking/looking come from the touch layer below.
+
+// Phones/tablets report a coarse primary pointer. They have no pointer lock and no keyboard, so
+// "playing" is just a flag there, and walking/looking come from the touch layer below.
 const touchMode = window.matchMedia('(pointer: coarse)').matches;
 let touchPlaying = false;
 const isPlaying = () => (touchMode ? touchPlaying : controls.isLocked);
@@ -278,8 +464,11 @@ const start = () => {
 $('go').addEventListener('click', start);
 pause.addEventListener('click', (e) => { if (e.target === pause) start(); });
 
-// The same three actions are reachable from keys AND touch buttons, so they live in one place.
-const toggleBeforeAfter = () => setLayout(currentKey === BEFORE_KEY ? lastAfterKey : BEFORE_KEY);
+// The same actions are reachable from keys AND touch buttons, so they live in one place.
+const toggleBeforeAfter = () => setLayout(currentKey === beforeKey ? lastAfterKey : beforeKey);
+const nextLayout = () => setLayout(layoutKeys[(layoutKeys.indexOf(currentKey) + 1) % layoutKeys.length]);
+const nextModel = () => loadModel(MODEL_KEYS[(MODEL_KEYS.indexOf(modelKey) + 1) % MODEL_KEYS.length]);
+const nextRoom = () => setRoom(roomIdx + 1);
 const toggleTopdown = () => { topdown = !topdown; refreshHud(); };
 const toggleLabels = () => { labelsOn = !labelsOn; };
 
@@ -288,23 +477,38 @@ addEventListener('keydown', (e) => {
   held.add(e.code);
   if (e.repeat) return;
   const digit = /^Digit([1-9])$/.exec(e.code);
-  if (digit && LAYOUT_KEYS[digit[1] - 1]) setLayout(LAYOUT_KEYS[digit[1] - 1]);
+  if (digit && layoutKeys[digit[1] - 1]) setLayout(layoutKeys[digit[1] - 1]);
   else if (e.code === 'KeyB') toggleBeforeAfter();
+  else if (e.code === 'KeyN') nextModel();
+  else if (e.code === 'KeyR') nextRoom();
   else if (e.code === 'KeyT') toggleTopdown();
   else if (e.code === 'KeyL') toggleLabels();
 });
+addEventListener('keyup', (e) => held.delete(e.code));
+addEventListener('blur', () => held.clear()); // alt-tab mid-stride shouldn't leave you sprinting forever
+
+addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  if (M) loadBoundsFit();
+});
+function loadBoundsFit() {
+  const b = { minX: Infinity, maxX: -Infinity, minZ: Infinity, maxZ: -Infinity };
+  for (const r of M.rooms) { b.minX = Math.min(b.minX, r.x0); b.maxX = Math.max(b.maxX, r.x0 + r.w); b.minZ = Math.min(b.minZ, r.z0); b.maxZ = Math.max(b.maxZ, r.z0 + r.d); }
+  fitTopCam(b);
+}
 
 // ───────────────────────── touch layer ─────────────────────────
-// Left-bottom: a floating stick that appears under the thumb (so no one has to find a fixed
-// control). Anywhere else: drag to look. Pointer events + capture keep a drag alive even if
-// the finger slides over a button. Two thumbs work at once because each gesture tracks its own pointerId.
+// Left-bottom: a floating stick that appears under the thumb (so no one has to find a fixed control).
+// Anywhere else: drag to look. Pointer events + capture keep a drag alive even if the finger slides over
+// a button, and each gesture tracks its own pointerId so two thumbs work at once.
 const stick = { f: 0, r: 0 }; // analog walk input, -1..1
 if (touchMode) {
   document.body.classList.add('touch');
   $('howto').innerHTML = 'Hold your <b>left thumb</b> on the lower left to walk. <b>Drag</b> anywhere else to look around. ' +
     'Landscape works best. Use <b>Before / After</b> to flip layouts.';
   $('howtoSmall').textContent = 'The Menu button brings this card back.';
-  $('go').textContent = 'Walk the shop';
 
   const STICK_R = 55; // px of thumb travel for full speed
   const base = $('joyBase'), knob = $('joyKnob');
@@ -325,19 +529,13 @@ if (touchMode) {
     stick.r = dx / STICK_R; stick.f = -dy / STICK_R;      // up on screen = forward
     knob.style.transform = `translate(${dx}px, ${dy}px)`;
   });
-  const joyEnd = (e) => {
-    if (e.pointerId !== joyId) return;
-    joyId = null; stick.f = stick.r = 0; base.style.display = 'none';
-  };
+  const joyEnd = (e) => { if (e.pointerId !== joyId) return; joyId = null; stick.f = stick.r = 0; base.style.display = 'none'; };
   joy.addEventListener('pointerup', joyEnd);
   joy.addEventListener('pointercancel', joyEnd);
 
   const look = $('look');
   let lookId = null, lx = 0, ly = 0;
-  look.addEventListener('pointerdown', (e) => {
-    if (lookId !== null) return;
-    lookId = e.pointerId; look.setPointerCapture(lookId); lx = e.clientX; ly = e.clientY;
-  });
+  look.addEventListener('pointerdown', (e) => { if (lookId !== null) return; lookId = e.pointerId; look.setPointerCapture(lookId); lx = e.clientX; ly = e.clientY; });
   look.addEventListener('pointermove', (e) => {
     if (e.pointerId !== lookId || !touchPlaying || topdown) return;
     const k = 0.0045; // radians per px — roughly a full screen swipe ≈ a 90° turn
@@ -350,33 +548,26 @@ if (touchMode) {
   look.addEventListener('pointercancel', lookEnd);
 
   $('tB').addEventListener('click', toggleBeforeAfter);
-  // Cycles before → A → B → before…, so every layout is one tap away without opening the menu.
-  $('tN').addEventListener('click', () => setLayout(LAYOUT_KEYS[(LAYOUT_KEYS.indexOf(currentKey) + 1) % LAYOUT_KEYS.length]));
+  $('tN').addEventListener('click', nextLayout);
+  $('tModel').addEventListener('click', nextModel);
+  $('tRoom').addEventListener('click', nextRoom);
   $('tT').addEventListener('click', toggleTopdown);
   $('tL').addEventListener('click', toggleLabels);
   $('tM').addEventListener('click', () => { touchPlaying = false; stick.f = stick.r = 0; pause.style.display = 'flex'; });
+  if (MODEL_KEYS.length < 2) $('tModel').style.display = 'none';
 }
-addEventListener('keyup', (e) => held.delete(e.code));
-addEventListener('blur', () => held.clear()); // alt-tab mid-stride shouldn't leave you sprinting forever
-
-addEventListener('resize', () => {
-  camera.aspect = window.innerWidth / window.innerHeight;
-  camera.updateProjectionMatrix();
-  fitTopCam();
-  renderer.setSize(window.innerWidth, window.innerHeight);
-});
 
 // ───────────────────────── collision ─────────────────────────
-// Player = circle on the floor; every blocker = rotated rectangle. Push the circle out of
-// whichever rectangles it overlaps. Works on the live (mid-tween) pose, so a bench sliding
-// into you shoves you aside instead of swallowing the camera.
+// Player = circle on the floor; every blocker = rotated rectangle. Push the circle out of whichever
+// rectangles it overlaps. Works on the live (mid-tween) pose, so a bench sliding into you shoves you
+// aside instead of swallowing the camera.
 function pushOut(group, p) {
   const hw = group.scale.x / 2, hd = group.scale.z / 2;
   const th = group.rotation.y, c = Math.cos(th), s = Math.sin(th);
   const dx = p.x - group.position.x, dz = p.z - group.position.z;
   const lx = dx * c - dz * s, lz = dx * s + dz * c; // world → box-local
   const cx = Math.max(-hw, Math.min(hw, lx)), cz = Math.max(-hd, Math.min(hd, lz));
-  let nx = lx - cx, nz = lz - cz;
+  const nx = lx - cx, nz = lz - cz;
   const dist = Math.hypot(nx, nz);
   if (dist >= RADIUS) return;
   let px, pz;
@@ -389,25 +580,36 @@ function pushOut(group, p) {
   p.z += -px * s + pz * c;
 }
 
-function collide(p) {
+// Walkable = inside some room (shrunk by the player radius) or inside a door passage between rooms.
+function walkable(x, z) {
+  for (const r of rects) if (x >= r.x0 && x <= r.x1 && z >= r.z0 && z <= r.z1) return true;
+  for (const q of passages) if (x >= q.a && x <= q.b && z >= q.c && z <= q.d) return true;
+  return false;
+}
+
+function resolve(prev, next) {
+  const p = { x: next.x, z: next.z };
   for (const g of fixedColliders) pushOut(g, p);
   for (const node of nodes.values()) {
     // Anything whose underside is above head height (6 ft) is something you walk under.
     if (node.hidden || !node.cur || node.cur.y >= 6) continue;
     pushOut(node.group, p);
   }
-  p.x = Math.max(RADIUS, Math.min(W - RADIUS, p.x));
-  p.z = Math.max(RADIUS, Math.min(D - RADIUS, p.z));
+  if (walkable(p.x, p.z)) return p;
+  // Slide along walls: keep whichever axis is still legal instead of stopping dead.
+  if (walkable(p.x, prev.z)) return { x: p.x, z: prev.z };
+  if (walkable(prev.x, p.z)) return { x: prev.x, z: p.z };
+  return { x: prev.x, z: prev.z };
 }
 
 // ───────────────────────── main loop ─────────────────────────
 const clock = new THREE.Clock();
 const fwd = new THREE.Vector3();
-const pos = { x: camera.position.x, z: camera.position.z };
 
 function update(dt) {
   stepTween(dt);
 
+  let next = { x: pos.x, z: pos.z };
   if (isPlaying() && !topdown) {
     const speed = (held.has('ShiftLeft') || held.has('ShiftRight') ? 12 : 6) * dt; // ft/s
     // Keyboard gives -1/0/1; the touch stick adds analog values on top of it.
@@ -417,27 +619,26 @@ function update(dt) {
     if (len > 0.05) {
       if (len > 1) { f /= len; r /= len; } // cap at 1 so diagonals aren't faster; analog <1 = slower walk
       camera.getWorldDirection(fwd); fwd.y = 0; fwd.normalize();
-      pos.x = camera.position.x + (fwd.x * f - fwd.z * r) * speed;
-      pos.z = camera.position.z + (fwd.z * f + fwd.x * r) * speed;
-    } else { pos.x = camera.position.x; pos.z = camera.position.z; }
-  } else { pos.x = camera.position.x; pos.z = camera.position.z; }
-
-  collide(pos); // runs even while standing still, so morphing furniture can nudge you
+      next = { x: pos.x + (fwd.x * f - fwd.z * r) * speed, z: pos.z + (fwd.z * f + fwd.x * r) * speed };
+    }
+  }
+  const p = resolve(pos, next); // runs even while standing still, so morphing furniture can nudge you
+  pos.x = p.x; pos.z = p.z;
   camera.position.set(pos.x, EYE, pos.z);
 
   const active = topdown ? topCam : camera;
-  ceiling.visible = !topdown;
-  lights.forEach((m) => { m.visible = !topdown; });
-  for (const s of labelSprites) {
-    const d = s.position.distanceTo(camera.position);
-    s.visible = labelsOn && (topdown || d < 22);
-    // Sprites are sized in world feet, so up close they balloon over half the screen.
-    // Shrink them as you approach (floor at 40%) so they stay readable but never dominate.
-    const k = topdown ? 1 : Math.max(0.4, Math.min(1, d / 14));
+  for (const c of ceilings) c.visible = !topdown;
+  for (const m of overheadMeshes) m.visible = !topdown;
+  for (const L of labelSprites) {
+    const s = L.sprite, d = s.position.distanceTo(camera.position);
+    // Plan view: only movable items get labels (the walls/doors/panels are already visible as shapes, and
+    // ~25 fixed labels buried the map), and at 2x size because a 100 ft room on a phone is ~10 px per foot.
+    s.visible = labelsOn && !L.hidden && (topdown ? !L.fixed : d < L.maxDist);
+    // Sprites are sized in world feet, so up close they balloon over half the screen. Shrink them as you
+    // approach (floor at 40%) so they stay readable but never dominate.
+    const k = topdown ? 2 : Math.max(0.4, Math.min(1, d / 14));
     s.scale.set(4.2 * k, 0.79 * k, 1);
   }
-  // Hidden nodes' labels must stay hidden regardless of the pass above.
-  for (const node of nodes.values()) if (node.hidden) node.label.visible = false;
   return active;
 }
 
@@ -447,8 +648,13 @@ function frame() {
   requestAnimationFrame(frame);
 }
 
-setLayout(BEFORE_KEY, true);
+loadModel(MODEL_KEYS[0]);
 window.__shopReady = true;
 // Debug/test handle — also lets you poke at it from the console during rehearsal.
-window.__shop = { camera, setLayout, controls, get currentKey() { return currentKey; }, nodes, pos, setTopdown: (v) => { topdown = v; refreshHud(); } };
+window.__shop = {
+  camera, pos, controls,
+  setLayout, loadModel, setRoom, setTopdown: (v) => { topdown = v; refreshHud(); },
+  get currentKey() { return currentKey; }, get modelKey() { return modelKey; }, get nodes() { return nodes; },
+  get passages() { return passages; }, get rects() { return rects; },
+};
 frame();
