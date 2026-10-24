@@ -1,4 +1,4 @@
-import type { Record } from "./types";
+import type { Record } from "./types.ts";
 
 /** Asia, West Asia, Africa, Oceania */
 export const RECORDS_A: Record[] = [

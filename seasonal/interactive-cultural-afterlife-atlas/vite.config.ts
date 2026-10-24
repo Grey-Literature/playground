@@ -4,10 +4,10 @@ import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig, type Plugin } from "vite";
 import { viteSingleFile } from "vite-plugin-singlefile";
-import { WORKS } from "./src/data/bibliography";
-import { checkAtlasIntegrity, orphanWorks } from "./src/data/integrity";
-import { RECORDS_A } from "./src/data/records-a";
-import { RECORDS_B } from "./src/data/records-b";
+import { WORKS } from "./src/data/bibliography.ts";
+import { checkAtlasIntegrity, orphanWorks } from "./src/data/integrity.ts";
+import { RECORDS_A } from "./src/data/records-a.ts";
+import { RECORDS_B } from "./src/data/records-b.ts";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -55,7 +55,7 @@ export default defineConfig({
     // The portfolio reserves a bare index.html for its root hub; every stub
     // site is <concept>-index.html.  The singlefile plugin follows the input
     // basename, so the build emits dist/thresholds-index.html.
-    rollupOptions: {
+    rolldownOptions: {
       input: path.resolve(__dirname, "thresholds-index.html"),
     },
   },
