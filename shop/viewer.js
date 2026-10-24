@@ -265,9 +265,23 @@ const pause = $('pause');
 controls.addEventListener('lock', () => { pause.style.display = 'none'; });
 controls.addEventListener('unlock', () => { pause.style.display = 'flex'; });
 document.addEventListener('pointerlockerror', () => { $('err').textContent = 'The browser refused mouse capture. Click the button again.'; });
-const start = () => { try { controls.lock(); } catch (e) { $('err').textContent = String(e); } };
+// Phones/tablets report a coarse primary pointer. They have no pointer lock and no keyboard,
+// so "playing" is just a flag there, and walking/looking come from the touch layer below.
+const touchMode = window.matchMedia('(pointer: coarse)').matches;
+let touchPlaying = false;
+const isPlaying = () => (touchMode ? touchPlaying : controls.isLocked);
+
+const start = () => {
+  if (touchMode) { touchPlaying = true; pause.style.display = 'none'; return; }
+  try { controls.lock(); } catch (e) { $('err').textContent = String(e); }
+};
 $('go').addEventListener('click', start);
 pause.addEventListener('click', (e) => { if (e.target === pause) start(); });
+
+// The same three actions are reachable from keys AND touch buttons, so they live in one place.
+const toggleBeforeAfter = () => setLayout(currentKey === BEFORE_KEY ? lastAfterKey : BEFORE_KEY);
+const toggleTopdown = () => { topdown = !topdown; refreshHud(); };
+const toggleLabels = () => { labelsOn = !labelsOn; };
 
 const held = new Set();
 addEventListener('keydown', (e) => {
@@ -275,10 +289,71 @@ addEventListener('keydown', (e) => {
   if (e.repeat) return;
   const digit = /^Digit([1-9])$/.exec(e.code);
   if (digit && LAYOUT_KEYS[digit[1] - 1]) setLayout(LAYOUT_KEYS[digit[1] - 1]);
-  else if (e.code === 'KeyB') setLayout(currentKey === BEFORE_KEY ? lastAfterKey : BEFORE_KEY);
-  else if (e.code === 'KeyT') { topdown = !topdown; refreshHud(); }
-  else if (e.code === 'KeyL') labelsOn = !labelsOn;
+  else if (e.code === 'KeyB') toggleBeforeAfter();
+  else if (e.code === 'KeyT') toggleTopdown();
+  else if (e.code === 'KeyL') toggleLabels();
 });
+
+// ───────────────────────── touch layer ─────────────────────────
+// Left-bottom: a floating stick that appears under the thumb (so no one has to find a fixed
+// control). Anywhere else: drag to look. Pointer events + capture keep a drag alive even if
+// the finger slides over a button. Two thumbs work at once because each gesture tracks its own pointerId.
+const stick = { f: 0, r: 0 }; // analog walk input, -1..1
+if (touchMode) {
+  document.body.classList.add('touch');
+  $('howto').innerHTML = 'Hold your <b>left thumb</b> on the lower left to walk. <b>Drag</b> anywhere else to look around. ' +
+    'Landscape works best. Use <b>Before / After</b> to flip layouts.';
+  $('howtoSmall').textContent = 'The Menu button brings this card back.';
+  $('go').textContent = 'Walk the shop';
+
+  const STICK_R = 55; // px of thumb travel for full speed
+  const base = $('joyBase'), knob = $('joyKnob');
+  let joyId = null, ox = 0, oy = 0;
+  const joy = $('joy');
+  joy.addEventListener('pointerdown', (e) => {
+    if (joyId !== null) return;
+    joyId = e.pointerId; joy.setPointerCapture(joyId);
+    ox = e.clientX; oy = e.clientY;
+    base.style.display = 'block'; base.style.left = ox + 'px'; base.style.top = oy + 'px';
+    knob.style.transform = '';
+  });
+  joy.addEventListener('pointermove', (e) => {
+    if (e.pointerId !== joyId) return;
+    let dx = e.clientX - ox, dy = e.clientY - oy;
+    const len = Math.hypot(dx, dy);
+    if (len > STICK_R) { dx *= STICK_R / len; dy *= STICK_R / len; }
+    stick.r = dx / STICK_R; stick.f = -dy / STICK_R;      // up on screen = forward
+    knob.style.transform = `translate(${dx}px, ${dy}px)`;
+  });
+  const joyEnd = (e) => {
+    if (e.pointerId !== joyId) return;
+    joyId = null; stick.f = stick.r = 0; base.style.display = 'none';
+  };
+  joy.addEventListener('pointerup', joyEnd);
+  joy.addEventListener('pointercancel', joyEnd);
+
+  const look = $('look');
+  let lookId = null, lx = 0, ly = 0;
+  look.addEventListener('pointerdown', (e) => {
+    if (lookId !== null) return;
+    lookId = e.pointerId; look.setPointerCapture(lookId); lx = e.clientX; ly = e.clientY;
+  });
+  look.addEventListener('pointermove', (e) => {
+    if (e.pointerId !== lookId || !touchPlaying || topdown) return;
+    const k = 0.0045; // radians per px — roughly a full screen swipe ≈ a 90° turn
+    camera.rotation.y -= (e.clientX - lx) * k;
+    camera.rotation.x = Math.max(-1.2, Math.min(1.2, camera.rotation.x - (e.clientY - ly) * k));
+    lx = e.clientX; ly = e.clientY;
+  });
+  const lookEnd = (e) => { if (e.pointerId === lookId) lookId = null; };
+  look.addEventListener('pointerup', lookEnd);
+  look.addEventListener('pointercancel', lookEnd);
+
+  $('tB').addEventListener('click', toggleBeforeAfter);
+  $('tT').addEventListener('click', toggleTopdown);
+  $('tL').addEventListener('click', toggleLabels);
+  $('tM').addEventListener('click', () => { touchPlaying = false; stick.f = stick.r = 0; pause.style.display = 'flex'; });
+}
 addEventListener('keyup', (e) => held.delete(e.code));
 addEventListener('blur', () => held.clear()); // alt-tab mid-stride shouldn't leave you sprinting forever
 
@@ -331,15 +406,17 @@ const pos = { x: camera.position.x, z: camera.position.z };
 function update(dt) {
   stepTween(dt);
 
-  if (controls.isLocked && !topdown) {
+  if (isPlaying() && !topdown) {
     const speed = (held.has('ShiftLeft') || held.has('ShiftRight') ? 12 : 6) * dt; // ft/s
-    const f = (held.has('KeyW') || held.has('ArrowUp') ? 1 : 0) - (held.has('KeyS') || held.has('ArrowDown') ? 1 : 0);
-    const r = (held.has('KeyD') || held.has('ArrowRight') ? 1 : 0) - (held.has('KeyA') || held.has('ArrowLeft') ? 1 : 0);
-    if (f || r) {
+    // Keyboard gives -1/0/1; the touch stick adds analog values on top of it.
+    let f = (held.has('KeyW') || held.has('ArrowUp') ? 1 : 0) - (held.has('KeyS') || held.has('ArrowDown') ? 1 : 0) + stick.f;
+    let r = (held.has('KeyD') || held.has('ArrowRight') ? 1 : 0) - (held.has('KeyA') || held.has('ArrowLeft') ? 1 : 0) + stick.r;
+    const len = Math.hypot(f, r);
+    if (len > 0.05) {
+      if (len > 1) { f /= len; r /= len; } // cap at 1 so diagonals aren't faster; analog <1 = slower walk
       camera.getWorldDirection(fwd); fwd.y = 0; fwd.normalize();
-      const len = Math.hypot(f, r); // normalize so diagonals aren't faster
-      pos.x = camera.position.x + ((fwd.x * f) + (-fwd.z * r)) / len * speed;
-      pos.z = camera.position.z + ((fwd.z * f) + (fwd.x * r)) / len * speed;
+      pos.x = camera.position.x + (fwd.x * f - fwd.z * r) * speed;
+      pos.z = camera.position.z + (fwd.z * f + fwd.x * r) * speed;
     } else { pos.x = camera.position.x; pos.z = camera.position.z; }
   } else { pos.x = camera.position.x; pos.z = camera.position.z; }
 
