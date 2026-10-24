@@ -45,6 +45,11 @@ for (const key of MODEL_KEYS) {
   }
   if (!m.layouts || !Object.keys(m.layouts).length) fail(`Model "${key}" has no layouts.`);
   checkItems(`Model "${key}" fixed`, m.fixed);
+  for (const id of Object.keys(m.enclosures || {})) {
+    const f = (m.fixed || []).find((x) => x.id === id);
+    if (!f) fail(`Model "${key}": enclosure "${id}" is not an id in "fixed".`);
+    if (f.rot) fail(`Model "${key}": enclosure "${id}" has rot ${f.rot}; enclosures must be axis-aligned (rot 0).`);
+  }
   for (const lk of Object.keys(m.layouts)) checkItems(`Model "${key}", layout "${lk}"`, m.layouts[lk].objects);
 }
 
@@ -241,6 +246,41 @@ function buildBooths(parent, f, dec, mats) {
   }
 }
 
+// Some models put a room INSIDE the main floor as a single box (Gemini's tool room). A solid box can't be
+// walked into and hides the shelving it describes, so the wrapper's `enclosures` asks for hollow walls
+// with a doorway instead:   enclosures: { 'tool-room-main': { door: { side: 's', w: 3.5, at: 0 } } }
+//   side  n | s | e | w (n = z-min, s = z-max, w = x-min, e = x-max)     at  ft off the wall's middle
+// Axis-aligned only (rot 0). If the model didn't give a door, the wrapper's `note` must say it was added.
+function buildEnclosure(parent, f, enc, mat) {
+  const x0 = f.x - f.w / 2, x1 = f.x + f.w / 2, z0 = f.z - f.d / 2, z1 = f.z + f.d / 2;
+  const sides = {
+    n: { axis: 'x', c: z0, a0: x0, a1: x1 }, s: { axis: 'x', c: z1, a0: x0, a1: x1 },
+    w: { axis: 'z', c: x0, a0: z0, a1: z1 }, e: { axis: 'z', c: x1, a0: z0, a1: z1 },
+  };
+  const door = enc.door || null, LINTEL = 7;                 // ft: wall above this closes the doorway top
+  for (const [name, e] of Object.entries(sides)) {
+    let segs = [[e.a0 - WT / 2, e.a1 + WT / 2]];
+    let gap = null;
+    if (door && door.side === name) {
+      const mid = (e.a0 + e.a1) / 2 + (door.at || 0);
+      gap = [mid - door.w / 2, mid + door.w / 2];
+      segs = [[e.a0 - WT / 2, gap[0]], [gap[1], e.a1 + WT / 2]];
+    }
+    const put = (s0, s1, y0, y1, solid) => {
+      const len = s1 - s0; if (len < 0.01 || y1 - y0 < 0.01) return;
+      const m = (s0 + s1) / 2, cy = (y0 + y1) / 2, hh = y1 - y0;
+      const cx = e.axis === 'x' ? m : e.c, cz = e.axis === 'x' ? e.c : m;
+      const sx = e.axis === 'x' ? len : WT, sz = e.axis === 'x' ? WT : len;
+      addBox(parent, cx, cy, cz, sx, hh, sz, mat);
+      if (solid) { const p = new THREE.Group(); p.position.set(cx, cy, cz); p.scale.set(sx, hh, sz); fixedColliders.push(p); }
+    };
+    for (const [s0, s1] of segs) put(s0, s1, 0, f.h, true);
+    if (gap) put(gap[0], gap[1], LINTEL, f.h, false);        // lintel: visual only, it's above head height
+  }
+  const roof = addBox(parent, f.x, f.h - 0.1, f.z, f.w + WT, 0.2, f.d + WT, mat);
+  overheadMeshes.push(roof);                                  // plan view lifts it off so you can see inside
+}
+
 function loadModel(key) {
   disposeWorld();
   modelKey = key; M = DATA.models[key];
@@ -301,21 +341,26 @@ function loadModel(key) {
   const hide = new Set(M.hide || []);
   const decor = M.decor || {};
   const mats = { blue: new THREE.MeshLambertMaterial({ color: '#2f6fb5' }), orange: new THREE.MeshLambertMaterial({ color: '#e8962e', transparent: true, opacity: 0.88 }) };
+  const encMat = new THREE.MeshLambertMaterial({ color: '#a89f8c' });
+  const enclosures = M.enclosures || {};
   const doorById = new Map(doors.map((d) => [d.f.id, d]));
   for (const f of M.fixed || []) {
     if (hide.has(f.id)) continue;                       // e.g. a "light grid" slab that would blanket the whole room
     const y = f.y || 0;
     const dInfo = doorById.get(f.id);
     const isGap = dInfo && dInfo.connects;
-    // collision: solid unless it's a door, or it's overhead (you walk under anything starting above 6 ft)
-    const solid = f.collide ?? (!dInfo && y < 6);
+    const enc = enclosures[f.id];
+    // collision: solid unless it's a door, or it's overhead (you walk under anything starting above 6 ft).
+    // An enclosure adds its own wall colliders instead of one solid block.
+    const solid = !enc && (f.collide ?? (!dInfo && y < 6));
     if (solid) {
       const proxy = new THREE.Group();
       proxy.position.set(f.x, y + f.h / 2, f.z); proxy.scale.set(f.w, f.h, f.d); proxy.rotation.y = -(f.rot || 0) * DEG;
       fixedColliders.push(proxy);
     }
     if (!isGap) {                                       // a walk-through gap draws nothing; the gap IS the door
-      if (decor[f.id]?.type === 'booths') buildBooths(world, f, decor[f.id], mats);
+      if (enc) buildEnclosure(world, f, enc, encMat);
+      else if (decor[f.id]?.type === 'booths') buildBooths(world, f, decor[f.id], mats);
       else {
         const g = new THREE.Group();
         g.add(new THREE.Mesh(unitBox, new THREE.MeshLambertMaterial({ color: colorFor(f) })));
@@ -428,6 +473,8 @@ function renderMenu() {
   fill('models', MODEL_KEYS.map((k) => [k, DATA.models[k].label || k]), (k) => loadModel(k), 'key');
   fill('layouts', layoutKeys.map((k, i) => [k, `${i + 1} · ${M.layouts[k].label || k}`]), (k) => setLayout(k), 'key');
   fill('rooms', M.rooms.map((r, i) => [i, r.name || r.id]), (i) => setRoom(+i), 'i');
+  // Per-model caveats (what the model guessed, what we added). Shown in the menu so nobody has to ask.
+  $('note').textContent = M.note || ''; $('note').style.display = M.note ? '' : 'none';
   refreshHud();
 }
 
