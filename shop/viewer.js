@@ -350,6 +350,8 @@ if (touchMode) {
   look.addEventListener('pointercancel', lookEnd);
 
   $('tB').addEventListener('click', toggleBeforeAfter);
+  // Cycles before → A → B → before…, so every layout is one tap away without opening the menu.
+  $('tN').addEventListener('click', () => setLayout(LAYOUT_KEYS[(LAYOUT_KEYS.indexOf(currentKey) + 1) % LAYOUT_KEYS.length]));
   $('tT').addEventListener('click', toggleTopdown);
   $('tL').addEventListener('click', toggleLabels);
   $('tM').addEventListener('click', () => { touchPlaying = false; stick.f = stick.r = 0; pause.style.display = 'flex'; });
