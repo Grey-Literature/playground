@@ -1,4 +1,4 @@
-import type { Record, Work } from "./types";
+import type { Record, Work } from "./types.ts";
 
 /**
  * Structural checks over the records and the bibliography.

@@ -15,7 +15,7 @@ Rosetta's personal portfolio — *Rosetta's Garden of Keys*. A root hub
 self-contained, hand-made interactive piece (a toy, a game, a card). Same
 containment-shelf spirit throughout: little loops for hands, eyes, and
 attention — not "real" apps with menus, accounts, or win states. This repo
-deploys to **GitHub Pages** (repo: `RosettasKeys/playground`).
+deploys to **GitHub Pages** (repo: `Grey-Literature/playground`).
 
 ## Zone map
 
