@@ -33,6 +33,8 @@
  * Second exception: `opus` is the layout Tasha is running with, so its "after" is Opus's after plus a
  * tidy-up of the cluttered spots in the photos (new ids that exist only there, like floor-tape zones,
  * are hidden in the other layouts). Opus's own after is kept unchanged as "afterOpus".
+ * Its tool-room zones also carry `holds` (what goes on that shelf) and `rule` (how the zone is kept);
+ * like `src`/`est`, the viewer ignores them.
  *
  * COORDINATES (feet): x/z are an object's CENTER on the floor plan; w runs along x and d along z
  * before rotation; h is height; y is the bottom edge off the floor (0 unless wall-mounted);
@@ -4407,7 +4409,7 @@ window.SHOP_DATA = {
     opus: {
      "label": "Claude Opus",
      "frame": "Main floor: x=0 is the west end wall (front door; office/bulletin end seen at far end of 9875/9879), x runs east 0->100 along the booth rows. z=0 is the north long wall (main panels, lockers, grinders, ducting: 9883/9886/9888), z runs south 0->50 to the wall with the EXIT (9894) and roll-up door (9896). Rows A and B are assumed to open onto the center aisle (z16-34). Tool room is modeled as an annex west of the main floor: x -14..0, z 0..10, side box x -7.5..0, z 10..20, door at x=0 z=5. Based on the two collages only; wall assignments and sizes are estimates. Yard not covered.",
-     "note": "Opus worked from two photo collages only. The shell, doors, panel wall, tool-room annex and every size are estimates. Yard not covered. Layout 2 is Opus's after plus a tidy-up of seven cluttered spots from the photos (grinder corner, fan parking, panel clear zones, toolboxes, side box, EXIT and drill press); yellow floor tape marks keep-clear zones. Layout 3 is Opus's after unchanged.",
+     "note": "Opus worked from two photo collages only. The shell, doors, panel wall, tool-room annex and every size are estimates. Yard not covered. Layout 2 is Opus's after plus a tidy-up of seven cluttered spots from the photos (grinder corner, fan parking, panel clear zones, toolboxes, side box, EXIT and drill press); yellow floor tape marks keep-clear zones. Layout 3 is Opus's after unchanged. The tool room in layout 2 is sorted by function into six zones (Z1 grab-and-go by the door, Z2 regulators/torches/hoses, Z3 power and specialty tools, Z4 small-parts bin wall, Z5 bulk above active stock, Z6 cords and leads on hooks); the side box is the electrical room, so it holds metal reserve only.",
      "rooms": [
       {
        "id": "main",
@@ -5608,31 +5610,51 @@ window.SHOP_DATA = {
         },
         {
          "id": "parts-bin-shelf",
-         "name": "Blue parts-bin shelving",
+         "name": "Z4 · Small-parts bin wall",
          "x": -10,
          "z": 1,
          "w": 6,
          "d": 2,
-         "h": 7,
+         "h": 5.5,
          "y": 0,
          "rot": 0,
-         "est": true
+         "est": true,
+         "color": "#2f6fb5",
+         "holds": [
+          "fittings",
+          "adapters",
+          "connectors",
+          "clamps",
+          "tips",
+          "repair parts",
+          "fasteners"
+         ],
+         "rule": "every bin labeled; no misc bin; a mixed bin gets split"
         },
         {
          "id": "regulator-shelf",
-         "name": "Steel shelving: regulators, plasma",
+         "name": "Z2 · Regulators, torches, hoses",
          "x": -13,
          "z": 6,
          "w": 2,
          "d": 6,
-         "h": 7,
+         "h": 5.5,
          "y": 0,
          "rot": 0,
-         "est": true
+         "est": true,
+         "color": "#c0663a",
+         "holds": [
+          "regulators",
+          "torch assemblies",
+          "hose sets",
+          "flowmeters",
+          "related fittings in labeled bins"
+         ],
+         "rule": "complete sets together; fragile items off the floor, below shoulder height"
         },
         {
          "id": "small-bench",
-         "name": "Tool room bench",
+         "name": "Repair bench (REPAIR tags wait here)",
          "x": -9,
          "z": 8.5,
          "w": 4,
@@ -5640,23 +5662,31 @@ window.SHOP_DATA = {
          "h": 3,
          "y": 0,
          "rot": 0,
-         "est": true
+         "est": true,
+         "rule": "tagged REPAIR items live here, not back on the shelves"
         },
         {
          "id": "floor-boxes",
-         "name": "Boxed stock (now in side box)",
-         "x": -5,
-         "z": 1.2,
-         "w": 3,
+         "name": "Z5 · Bulk: unopened boxes",
+         "x": -10,
+         "z": 1,
+         "w": 6,
          "d": 2,
-         "h": 1.5,
-         "y": 0,
+         "h": 0.9,
+         "y": 6.9,
          "rot": 0,
-         "est": true
+         "est": true,
+         "color": "#a8875a",
+         "holds": [
+          "overstock consumables",
+          "unopened boxes",
+          "duplicate stock"
+         ],
+         "rule": "bulk sits above active stock, never in front of it; step stool"
         },
         {
          "id": "side-box-shelf",
-         "name": "Side box shelving",
+         "name": "Z5 · Metal reserve only (no cardboard)",
          "x": -6.5,
          "z": 15,
          "w": 2,
@@ -5664,7 +5694,14 @@ window.SHOP_DATA = {
          "h": 6,
          "y": 0,
          "rot": 0,
-         "est": true
+         "est": true,
+         "color": "#a8875a",
+         "holds": [
+          "spare clamps",
+          "spare torch parts",
+          "steel fittings in metal bins"
+         ],
+         "rule": "electrical room: no cardboard, hoses or other combustibles; panel clear zone stays taped"
         },
         {
          "id": "zone-panels",
@@ -5762,13 +5799,107 @@ window.SHOP_DATA = {
          "name": "Helmet rail (one hook per student)",
          "x": -5,
          "z": 0.25,
-         "y": 4,
+         "y": 5,
          "w": 4,
          "d": 0.3,
-         "h": 1.5,
+         "h": 0.6,
          "rot": 0,
          "color": "#4d6b8a",
          "est": true
+        },
+        {
+         "id": "z1-grab-shelf",
+         "name": "Z1 · Grab-and-go consumables",
+         "x": -0.625,
+         "z": 8.25,
+         "w": 1.25,
+         "d": 3,
+         "h": 6,
+         "y": 0,
+         "rot": 0,
+         "color": "#4f9a5c",
+         "est": true,
+         "holds": [
+          "contact tips",
+          "nozzles",
+          "cups",
+          "wire accessories",
+          "common fittings",
+          "tape, soapstone, markers",
+          "grinding discs, cutoff wheels",
+          "common PPE replacements"
+         ],
+         "rule": "high-turnover items only"
+        },
+        {
+         "id": "z3-tool-cabinet",
+         "name": "Z3 · Power & specialty tools",
+         "x": -5,
+         "z": 0.75,
+         "w": 4,
+         "d": 1.5,
+         "h": 3.5,
+         "y": 0,
+         "rot": 0,
+         "color": "#8a6bb0",
+         "est": true,
+         "holds": [
+          "upper shelf (active): drills, grinders",
+          "lower shelf (specialty, infrequent): specialty welding tools, test tools, cased portables"
+         ],
+         "rule": "if it has a case, it stays in the case unless in use"
+        },
+        {
+         "id": "z5-top-west",
+         "name": "Z5 · Bulk: reserve hoses, spares",
+         "x": -13,
+         "z": 6,
+         "y": 6.9,
+         "w": 2,
+         "d": 6,
+         "h": 0.9,
+         "rot": 0,
+         "color": "#a8875a",
+         "est": true,
+         "holds": [
+          "reserve hoses",
+          "extra accessories",
+          "duplicate stock"
+         ],
+         "rule": "above active stock, never in front of it"
+        },
+        {
+         "id": "z6-cord-rack",
+         "name": "Z6 · Cord & lead hooks",
+         "x": -0.3,
+         "z": 2.1,
+         "y": 3,
+         "w": 0.6,
+         "d": 2.4,
+         "h": 3,
+         "rot": 0,
+         "color": "#3a9a9a",
+         "est": true,
+         "holds": [
+          "coiled extension cords",
+          "spare leads",
+          "hoses not in use (on the hose hangers beside it)"
+         ],
+         "rule": "hang or rack it; no floor nest; grouped by type and length"
+        },
+        {
+         "id": "quarantine-tote",
+         "name": "Quarantine tote (sort weekly)",
+         "x": -6.25,
+         "z": 9.3,
+         "w": 1.5,
+         "d": 1,
+         "h": 2,
+         "y": 0,
+         "rot": 0,
+         "color": "#8a7a5a",
+         "est": true,
+         "rule": "unsorted returns only; emptied into the right zone weekly"
         }
        ],
        "label": "After (Opus + tidy-up)"

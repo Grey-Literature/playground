@@ -63,6 +63,7 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color('#14161a');
 
 const EYE = 5.5;       // ft, eye height
+const pullDir = new THREE.Vector3();   // scratch vector for pulling labels off walls (see frame())
 const RADIUS = 0.9;    // ft, player collision circle. Small enough to fit through a 3 ft door
 const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 300);
 camera.rotation.order = 'YXZ';
@@ -130,6 +131,10 @@ function makeLabel(text, dim) {
   const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
   s.scale.set(4.2, 0.79, 1);
   return s;
+}
+function setLabelText(sprite, text) {
+  const fresh = makeLabel(text, false);
+  sprite.material.map.dispose(); sprite.material.dispose(); sprite.material = fresh.material;
 }
 
 // ───────────────────────── the loaded model ("world") ─────────────────────────
@@ -395,7 +400,7 @@ function loadModel(key) {
     const mat = new THREE.MeshLambertMaterial({ color: colorFor(o) });
     group.add(new THREE.Mesh(unitBox, mat)); group.add(new THREE.LineSegments(unitEdges, edgeMat));
     world.add(group);
-    nodes.set(o.id, { group, mat, label: addLabel(o.name || o.id, new THREE.Vector3(), false, 22), cur: null, from: null, to: null, hidden: true, moved: false });
+    nodes.set(o.id, { group, mat, text: o.name || o.id, label: addLabel(o.name || o.id, new THREE.Vector3(), false, 22), cur: null, from: null, to: null, hidden: true, moved: false });
   }
 
   currentKey = null; tweenT = 1;
@@ -416,7 +421,8 @@ function applyPose(node, p) {
   node.group.scale.set(p.w, p.h, p.d);
   // `rot` is degrees CLOCKWISE as seen on the floor plan (compass-style); three.js rotates the other way.
   node.group.rotation.y = -p.rot * DEG;
-  node.label.sprite.position.set(p.x, p.y + p.h + 0.9, p.z);
+  (node.label.base ||= new THREE.Vector3()).set(p.x, p.y + p.h + 0.9, p.z);
+  node.label.sprite.position.copy(node.label.base);
 }
 
 function setLayout(key, instant = false) {
@@ -434,6 +440,9 @@ function setLayout(key, instant = false) {
     const b = before.get(id);
     node.moved = key !== beforeKey && (!b || Math.hypot(b.x - o.x, b.z - o.z) > 0.5 || Math.abs(angleDelta(b.rot || 0, o.rot || 0)) > 1);
     node.mat.emissive.set(node.moved ? '#6b4300' : '#000000');
+    // A layout can rename or recolor an item (the Opus tool-room zones do), so label and color follow the layout.
+    node.mat.color.set(colorFor(o));
+    if ((o.name || o.id) !== node.text) setLabelText(node.label.sprite, node.text = o.name || o.id);
   }
   currentKey = key;
   if (key !== beforeKey) lastAfterKey = key;
@@ -694,7 +703,11 @@ function update(dt) {
   for (const c of ceilings) c.visible = !topdown;
   for (const m of overheadMeshes) m.visible = !topdown;
   for (const L of labelSprites) {
-    const s = L.sprite, d = s.position.distanceTo(camera.position);
+    const s = L.sprite;
+    // A label on something against a wall turns to face you and half of it sinks into the wall. Pull movable
+    // labels toward your eye (up to 1.5 ft, never past halfway) so the whole sign clears the wall.
+    if (L.base) s.position.copy(L.base).addScaledVector(pullDir.subVectors(camera.position, L.base).normalize(), topdown ? 0 : Math.min(1.5, L.base.distanceTo(camera.position) / 2));
+    const d = s.position.distanceTo(camera.position);
     // Plan view: only movable items get labels (the walls/doors/panels are already visible as shapes, and
     // ~25 fixed labels buried the map), and at 2x size because a 100 ft room on a phone is ~10 px per foot.
     s.visible = labelsOn && !L.hidden && (topdown ? !L.fixed : d < L.maxDist);
