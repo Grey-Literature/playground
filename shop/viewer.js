@@ -146,7 +146,7 @@ let rects = [];                     // walkable room rectangles
 let passages = [];                  // little walkable rects that bridge two rooms through a door gap
 let fixedColliders = [];            // invisible box proxies for solid fixed features
 let nodes = new Map();              // movable id → { group, label, cur, from, to, moved }
-let labelSprites = [];              // { sprite, maxDist, hidden }
+let labelSprites = [];              // { sprite, base, maxDist, hidden } — base is where the label wants to sit
 let overheadMeshes = [];            // things above head height; hidden in plan view
 let ceilings = [];
 let layoutKeys = [];
@@ -194,9 +194,11 @@ function addBox(parent, cx, cy, cz, sx, sy, sz, mat) {
 }
 
 // Walls are boxes centered ON each room edge (not outside it), so two rooms that share an edge draw
-// the identical wall in the identical spot — no double thickness, no visible seam.
+// the identical wall in the identical spot — no double thickness, no visible seam. Room walls are normally
+// just visual (the walkable rectangles keep you in), but a room built inside another one (a tool room carved
+// out of the shop floor) sits on walkable floor, so its walls get `solid` colliders.
 const WT = 0.3;
-function addWalls(parent, r, gaps, mat) {
+function addWalls(parent, r, gaps, mat, solid) {
   const edges = [
     { axis: 'x', c: r.z0,       a0: r.x0, a1: r.x0 + r.w },   // north
     { axis: 'x', c: r.z0 + r.d, a0: r.x0, a1: r.x0 + r.w },   // south
@@ -218,8 +220,8 @@ function addWalls(parent, r, gaps, mat) {
     for (const [s0, s1] of segs) {
       const len = s1 - s0; if (len < 0.01) continue;
       const mid = (s0 + s1) / 2;
-      if (e.axis === 'x') addBox(parent, mid, r.h / 2, e.c, len, r.h, WT, mat);
-      else addBox(parent, e.c, r.h / 2, mid, WT, r.h, len, mat);
+      const wall = e.axis === 'x' ? addBox(parent, mid, r.h / 2, e.c, len, r.h, WT, mat) : addBox(parent, e.c, r.h / 2, mid, WT, r.h, len, mat);
+      if (solid) fixedColliders.push(wall);
     }
   }
 }
@@ -296,7 +298,7 @@ function loadModel(key) {
 
   const addLabel = (text, pos, dim, maxDist) => {
     const s = makeLabel(text, dim); s.position.copy(pos); world.add(s);
-    const rec = { sprite: s, maxDist, hidden: false, fixed: dim }; labelSprites.push(rec); return rec;
+    const rec = { sprite: s, base: pos.clone(), maxDist, hidden: false, fixed: dim }; labelSprites.push(rec); return rec;
   };
 
   // — rooms: floor, ceiling, light strips —
@@ -325,7 +327,9 @@ function loadModel(key) {
     tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.colorSpace = THREE.SRGBColorSpace;
     tex.repeat.set(r.w / 4, r.d / 4);                // one cell = 4 ft, so you can eyeball distances
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(r.w, r.d), new THREE.MeshLambertMaterial({ map: tex }));
-    floor.rotation.x = -Math.PI / 2; floor.position.set(r.x0 + r.w / 2, 0, r.z0 + r.d / 2); world.add(floor);
+    // A room inside another room: its floor sits a hair higher so the two floors don't flicker, and its walls are solid.
+    const nested = M.rooms.some((o) => o !== r && r.x0 >= o.x0 && r.z0 >= o.z0 && r.x0 + r.w <= o.x0 + o.w && r.z0 + r.d <= o.z0 + o.d);
+    floor.rotation.x = -Math.PI / 2; floor.position.set(r.x0 + r.w / 2, nested ? 0.02 : 0, r.z0 + r.d / 2); world.add(floor);
     // `outdoor` rooms (a yard) get floor + low fence walls only: no ceiling, no light strips.
     const nx = r.outdoor ? 0 : Math.max(1, Math.round(r.w / 30)), nz = r.outdoor ? 0 : Math.max(1, Math.round(r.d / 25));
     if (!r.outdoor) {
@@ -339,7 +343,7 @@ function loadModel(key) {
         Math.min(6, r.w * 0.6), 0.15, 0.6, lightMat);
       ceilings.push(m);
     }
-    addWalls(world, r, gaps, wallMat);
+    addWalls(world, r, gaps, wallMat, nested);
     rects.push({ x0: r.x0 + RADIUS, x1: r.x0 + r.w - RADIUS, z0: r.z0 + RADIUS, z1: r.z0 + r.d - RADIUS });
     bounds.minX = Math.min(bounds.minX, r.x0); bounds.maxX = Math.max(bounds.maxX, r.x0 + r.w);
     bounds.minZ = Math.min(bounds.minZ, r.z0); bounds.maxZ = Math.max(bounds.maxZ, r.z0 + r.d);
@@ -383,6 +387,7 @@ function loadModel(key) {
     }
     if (y < 6) {
       const rec = addLabel(f.name || f.id, new THREE.Vector3(f.x, y + f.h + 0.8, f.z), true, 14);
+      rec.foot = { x: f.x, z: f.z, hw: f.w / 2, hd: f.d / 2, rot: f.rot || 0 };
       // Plan view normally shows only the movable items' labels. `planLabels` opts structural blocks in
       // (e.g. classrooms that would otherwise be an unlabeled grey slab).
       if ((M.planLabels || []).includes(f.id)) rec.fixed = false;
@@ -421,8 +426,11 @@ function applyPose(node, p) {
   node.group.scale.set(p.w, p.h, p.d);
   // `rot` is degrees CLOCKWISE as seen on the floor plan (compass-style); three.js rotates the other way.
   node.group.rotation.y = -p.rot * DEG;
-  (node.label.base ||= new THREE.Vector3()).set(p.x, p.y + p.h + 0.9, p.z);
-  node.label.sprite.position.copy(node.label.base);
+  node.label.base.set(p.x, p.y + p.h + 0.9, p.z);
+  // Seen from below, a label on top of something mounted above your eye (a high shelf) disappears behind it,
+  // so in the walk view that label hangs under it like a shelf tag instead.
+  node.label.under = p.y >= EYE ? p.y : null;
+  Object.assign(node.label.foot ||= {}, { x: p.x, z: p.z, hw: p.w / 2, hd: p.d / 2, rot: p.rot });
 }
 
 function setLayout(key, instant = false) {
@@ -702,21 +710,88 @@ function update(dt) {
   const active = topdown ? topCam : camera;
   for (const c of ceilings) c.visible = !topdown;
   for (const m of overheadMeshes) m.visible = !topdown;
+  active.updateMatrixWorld();
+  placeLabels(active);
+  return active;
+}
+
+// ───────────────────────── labels: placement + declutter ─────────────────────────
+// Each frame, every label starts at its base (just above the thing it names) and then:
+//  1. Walk view: it is pulled toward your eye (up to 1.5 ft, never past halfway), so it hangs in front of
+//     the shelf it names instead of inside the one stacked above it.
+//  2. Walk view: the whole sign is kept inside its room, its edges stopping short of the walls and ceiling.
+//     A sprite always faces the screen, so how far it reaches toward a wall depends on which way you look:
+//     that's what camR/camU measure.
+//  3. Nearest first (labels in the room you're standing in before anything seen through a door), a label
+//     that would overlap one already placed tries one row up, one down, then two; if it still collides it
+//     sits this frame out. Plan view does the same, rows running north/south.
+const LABEL_PAD = WT / 2 + 0.1;     // ft between a sign's edge and a wall face or the ceiling
+const LABEL_ROWS = [0, 1, -1, 2, -2];
+const camR = new THREE.Vector3(), camU = new THREE.Vector3(), ndc = new THREE.Vector3(), edge = new THREE.Vector3(), rowStart = new THREE.Vector3();
+const inRoom = (r, x, z) => x >= r.x0 && x <= r.x0 + r.w && z >= r.z0 && z <= r.z0 + r.d;
+const roomAt = (x, z) => M.rooms.filter((r) => inRoom(r, x, z)).sort((a, b) => a.w * a.d - b.w * b.d)[0];   // innermost room wins
+const clampIn = (v, lo, hi) => (lo > hi ? (lo + hi) / 2 : Math.max(lo, Math.min(hi, v)));
+const keepOffWalls = (p, r, L) => { p.x = clampIn(p.x, r.x0 + L.mx, r.x0 + r.w - L.mx); p.z = clampIn(p.z, r.z0 + L.mz, r.z0 + r.d - L.mz); };
+
+function placeLabels(cam) {
+  camR.setFromMatrixColumn(cam.matrixWorld, 0); camU.setFromMatrixColumn(cam.matrixWorld, 1);
+  const here = roomAt(pos.x, pos.z), shown = [];
   for (const L of labelSprites) {
-    const s = L.sprite;
-    // A label on something against a wall turns to face you and half of it sinks into the wall. Pull movable
-    // labels toward your eye (up to 1.5 ft, never past halfway) so the whole sign clears the wall.
-    if (L.base) s.position.copy(L.base).addScaledVector(pullDir.subVectors(camera.position, L.base).normalize(), topdown ? 0 : Math.min(1.5, L.base.distanceTo(camera.position) / 2));
-    const d = s.position.distanceTo(camera.position);
+    const s = L.sprite, b = L.base, d0 = b.distanceTo(camera.position);
     // Plan view: only movable items get labels (the walls/doors/panels are already visible as shapes, and
     // ~25 fixed labels buried the map), and at 2x size because a 100 ft room on a phone is ~10 px per foot.
-    s.visible = labelsOn && !L.hidden && (topdown ? !L.fixed : d < L.maxDist);
+    s.visible = labelsOn && !L.hidden && (topdown ? !L.fixed : d0 < L.maxDist);
+    if (!s.visible) continue;
     // Sprites are sized in world feet, so up close they balloon over half the screen. Shrink them as you
     // approach (floor at 40%) so they stay readable but never dominate.
-    const k = topdown ? 2 : Math.max(0.4, Math.min(1, d / 14));
-    s.scale.set(4.2 * k, 0.79 * k, 1);
+    const k = topdown ? 2 : Math.max(0.4, Math.min(1, d0 / 14));
+    L.hw = 2.1 * k; L.hh = 0.395 * k;
+    s.scale.set(2 * L.hw, 2 * L.hh, 1);
+    const p = s.position.copy(b);
+    // A door's label sits on a wall two rooms share: your side wins.
+    const own = roomAt(b.x, b.z), onEdge = own && Math.min(b.x - own.x0, own.x0 + own.w - b.x, b.z - own.z0, own.z0 + own.d - b.z) < 0.6;
+    L.room = onEdge && here && here !== own && inRoom(here, b.x, b.z) ? here : own;
+    if (!topdown) {
+      // Stand the label over the edge of its item nearest you, not its middle: seen end-on, the near end of a
+      // long or tall shelf would otherwise rise up and hide a label sitting over its center.
+      const f = L.foot;
+      if (f) {
+        const th = -f.rot * DEG, c = Math.cos(th), sn = Math.sin(th), dx = camera.position.x - f.x, dz = camera.position.z - f.z;
+        const lx = clampIn(dx * c - dz * sn, -f.hw, f.hw), lz = clampIn(dx * sn + dz * c, -f.hd, f.hd);
+        p.x = f.x + lx * c + lz * sn; p.z = f.z - lx * sn + lz * c;
+      }
+      if (L.under != null) p.y = L.under - L.hh - 0.15;
+      p.addScaledVector(pullDir.subVectors(camera.position, p).normalize(), Math.min(1.5, d0 / 2));
+      const r = L.room;
+      if (r) {
+        L.mx = L.hw * Math.abs(camR.x) + L.hh * Math.abs(camU.x) + LABEL_PAD;
+        L.mz = L.hw * Math.abs(camR.z) + L.hh * Math.abs(camU.z) + LABEL_PAD;
+        keepOffWalls(p, r, L);
+        if (!r.outdoor) p.y = Math.min(p.y, r.h - L.hh * Math.abs(camU.y) - LABEL_PAD);
+      }
+    } else p.y = 40;   // plan view looks straight down, so height doesn't move a label: lift it over every shelf and booth
+    L.rank = (L.room === here ? 0 : 1e6) + (topdown ? Math.hypot(b.x - pos.x, b.z - pos.z) : d0);
+    shown.push(L);
   }
-  return active;
+  shown.sort((a, b) => a.rank - b.rank);
+  const taken = [];
+  for (const L of shown) {
+    const s = L.sprite, r = L.room; rowStart.copy(s.position);
+    let placed = false;
+    for (const row of LABEL_ROWS) {
+      s.position.copy(rowStart).addScaledVector(camU, row * 2.2 * L.hh);
+      if (!topdown && row && r) keepOffWalls(s.position, r, L);   // looking up or down, a row shift also moves sideways
+      if (!topdown && row && (s.position.y - L.hh < 0.2 || (r && !r.outdoor && s.position.y + L.hh * Math.abs(camU.y) > r.h - LABEL_PAD))) continue;
+      ndc.copy(s.position).project(cam);
+      if (ndc.z > 1) { placed = true; break; }        // behind you: not drawn, so it can't crowd anything
+      const dx = Math.abs(edge.copy(s.position).addScaledVector(camR, L.hw).project(cam).x - ndc.x);
+      const dy = Math.abs(edge.copy(s.position).addScaledVector(camU, L.hh).project(cam).y - ndc.y);
+      const box = [ndc.x - dx, ndc.x + dx, ndc.y - dy, ndc.y + dy];
+      if (taken.some((t) => box[0] < t[1] && box[1] > t[0] && box[2] < t[3] && box[3] > t[2])) continue;
+      taken.push(box); placed = true; break;
+    }
+    if (!placed) s.visible = false;
+  }
 }
 
 function frame() {
@@ -733,5 +808,6 @@ window.__shop = {
   setLayout, loadModel, setRoom, setTopdown: (v) => { topdown = v; refreshHud(); },
   get currentKey() { return currentKey; }, get modelKey() { return modelKey; }, get nodes() { return nodes; },
   get passages() { return passages; }, get rects() { return rects; },
+  resolve, get labels() { return labelSprites; }, placeLabels: () => { const c = topdown ? topCam : camera; c.updateMatrixWorld(); placeLabels(c); },
 };
 frame();
