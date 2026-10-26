@@ -32,7 +32,7 @@ window.SHOP_DATA = {
   models: {
     opus: {
      "label": "Claude Opus",
-     "frame": "Floor plan from Tasha's annotated aerial view and photos (2026-10-25). x=0 is the west wall shared with the classrooms and offices (their door at z 8, bathrooms door at z 27.5); x runs east 0->100 to the yard wall (roll-up door z 4-16, A-series booths z 17-39, EXIT z 42). z=0 is the north wall shared with the diesel shop; z runs south 0->50 to the parking-lot wall (door at x 47). Booths 36-51 line the diesel wall; 18-35 and 1-17 stand back to back mid-floor (z 18-30); A1-A10 line the south wall east of the parking door. The broom corner is the SE corner where the south-wall and yard-wall booths meet. The tool room (14x10) and side box (7.5x10, the electrical room in 9914) are walled off inside the floor on the south wall, x 16-37.5; the storage pocket west of them (x 0-16) holds the main panels and the fire riser room. The red-curtain storage (9897-9901) is placed north of the NE corner, between the diesel shop and the yard; that spot is a guess. Sizes are measured; positions from the markup and photos are approximate.",
+     "frame": "Floor plan from Tasha's annotated aerial view and photos (2026-10-25). x=0 is the west wall shared with the classrooms and offices. From the diesel wall south it has the classroom door in a dark corner (z 1-4, 9880), the whiteboards with the drinking fountain and water coolers, then a white wall jog sticking out 4 ft (z 14-21) that is the bathrooms, door on its north face (9875/9879/9881; which face is a guess). Tasha identified both on 2026-10-26; x runs east 0->100 to the yard wall (roll-up door z 4-16, A-series booths z 17-39, EXIT z 42). z=0 is the north wall shared with the diesel shop; z runs south 0->50 to the parking-lot wall (door at x 47). Booths 36-51 line the diesel wall; 18-35 and 1-17 stand back to back mid-floor (z 18-30); A1-A10 line the south wall east of the parking door. The broom corner is the SE corner where the south-wall and yard-wall booths meet. The tool room (14x10) and side box (7.5x10, the electrical room in 9914) are walled off inside the floor on the south wall, x 16-37.5; the storage pocket west of them (x 0-16) holds the main panels and the fire riser room. The red-curtain storage (9897-9901) is placed north of the NE corner, between the diesel shop and the yard; that spot is a guess. Sizes are measured; positions from the markup and photos are approximate.",
      "note": "Floor plan from an annotated aerial view plus photos. The yard-wall booths, the red-curtain storage spot and most loose equipment in layout 1 are estimates. Layout 2 is the reorg, focused on the three worst spots: the broom corner (brooms on wall rails, drill press square taped clear), the storage pocket between the tool room and the classroom wall (panels and riser door taped clear, jugs together, toolboxes in a numbered row), and the red-curtain storage (totes along the curtain, cylinders chained to the wall, engine welder parked by the door). Elsewhere: grinders get a taped station on the diesel wall by the classroom end, fans park beside the parking door, lockers and shelving line the tool-room front and west wall, and the tool room is sorted into six zones (Z1 grab-and-go by the door through Z6 cords on hooks). The side box is the electrical room, so it holds metal reserve only.",
      "rooms": [
       {
@@ -94,7 +94,6 @@ window.SHOP_DATA = {
      ],
      "doors": [
       "front-door",
-      "bathroom-door",
       "side-door",
       "exit-door",
       "rollup-door",
@@ -357,7 +356,7 @@ window.SHOP_DATA = {
        "id": "ext-door",
        "name": "Extinguisher by classroom door",
        "x": 0.3,
-       "z": 10.3,
+       "z": 4.4,
        "w": 0.6,
        "d": 0.8,
        "h": 2,
@@ -391,9 +390,9 @@ window.SHOP_DATA = {
       },
       {
        "id": "front-door",
-       "name": "Door to classrooms and offices",
+       "name": "Door to classrooms and offices (dark corner, 9880)",
        "x": 0,
-       "z": 8,
+       "z": 2.5,
        "w": 0.5,
        "d": 3,
        "h": 7,
@@ -402,16 +401,56 @@ window.SHOP_DATA = {
        "est": true
       },
       {
+       "id": "bathrooms-jog",
+       "name": "Bathrooms (wall jog, 9875/9879/9881)",
+       "x": 2,
+       "z": 17.5,
+       "w": 4,
+       "d": 7,
+       "h": 12,
+       "y": 0,
+       "rot": 0,
+       "color": "#d4d6d9",
+       "est": true
+      },
+      {
        "id": "bathroom-door",
        "y": 0,
        "rot": 0,
        "est": true,
-       "name": "Bathrooms",
-       "x": 0,
-       "z": 27.5,
-       "w": 0.5,
-       "d": 3,
+       "name": "Bathrooms door (north face of the jog; which face is a guess)",
+       "x": 2.25,
+       "z": 13.85,
+       "w": 3,
+       "d": 0.3,
        "h": 7
+      },
+      {
+       "id": "whiteboard-wall",
+       "name": "Whiteboards and clipboards (9879/9881)",
+       "x": 0.25,
+       "z": 9.3,
+       "w": 0.15,
+       "d": 8.6,
+       "h": 4,
+       "y": 3.5,
+       "rot": 0,
+       "color": "#eeeeee",
+       "collide": false,
+       "est": true
+      },
+      {
+       "id": "drinking-fountain",
+       "name": "Drinking fountain (9879)",
+       "x": 1.1,
+       "z": 6.6,
+       "w": 1.5,
+       "d": 2,
+       "h": 3.5,
+       "y": 0,
+       "rot": 0,
+       "color": "#b8bcc2",
+       "est": true
       },
       {
        "id": "side-door",
@@ -865,13 +904,13 @@ window.SHOP_DATA = {
         {
          "id": "hydration-table",
          "name": "Water cooler table (9879)",
-         "x": 6,
-         "z": 36,
+         "x": 1.35,
+         "z": 9.7,
          "w": 4,
          "d": 2,
          "h": 3,
          "y": 0,
-         "rot": 0,
+         "rot": 90,
          "est": true
         },
         {
@@ -901,13 +940,13 @@ window.SHOP_DATA = {
         {
          "id": "tool-shelf",
          "name": "Power tool/stock shelving (9898)",
-         "x": 1.5,
-         "z": 19,
+         "x": 8,
+         "z": 22.75,
          "w": 3,
          "d": 12,
          "h": 6,
          "y": 0,
-         "rot": 0,
+         "rot": 90,
          "est": true
         },
         {
@@ -1248,13 +1287,13 @@ window.SHOP_DATA = {
         {
          "id": "lockers",
          "name": "Blue lockers",
-         "x": 0.75,
-         "z": 22,
+         "x": 3.5,
+         "z": 21.75,
          "w": 6,
          "d": 1.5,
          "h": 6,
          "y": 0,
-         "rot": 90,
+         "rot": 0,
          "est": true
         },
         {
@@ -1271,9 +1310,9 @@ window.SHOP_DATA = {
         },
         {
          "id": "caged-cabinet",
-         "name": "Caged grinder cabinet (spark barrier to row C)",
-         "x": 1,
-         "z": 4,
+         "name": "Caged grinder cabinet (wheels and discs)",
+         "x": 5,
+         "z": 17.5,
          "w": 3,
          "d": 2,
          "h": 4,
@@ -1284,7 +1323,7 @@ window.SHOP_DATA = {
         {
          "id": "grinder-1",
          "name": "Pedestal grinder",
-         "x": 1.5,
+         "x": 4.75,
          "z": 1,
          "w": 2,
          "d": 2,
@@ -1296,7 +1335,7 @@ window.SHOP_DATA = {
         {
          "id": "grinder-2",
          "name": "Pedestal grinder",
-         "x": 5,
+         "x": 7.5,
          "z": 1,
          "w": 2,
          "d": 2,
@@ -1308,7 +1347,7 @@ window.SHOP_DATA = {
         {
          "id": "grinder-3",
          "name": "Grinder on red stand",
-         "x": 8.5,
+         "x": 10.25,
          "z": 1,
          "w": 2,
          "d": 2,
@@ -1320,7 +1359,7 @@ window.SHOP_DATA = {
         {
          "id": "grinder-4",
          "name": "Pedestal grinder",
-         "x": 12,
+         "x": 13,
          "z": 1,
          "w": 2,
          "d": 2,
@@ -1439,9 +1478,9 @@ window.SHOP_DATA = {
         },
         {
          "id": "hydration-table",
-         "name": "Water cooler table",
-         "x": 2,
-         "z": 13,
+         "name": "Water cooler table (9879)",
+         "x": 1.35,
+         "z": 9.7,
          "w": 4,
          "d": 2,
          "h": 3,
@@ -1736,7 +1775,7 @@ window.SHOP_DATA = {
          "d": 1.5,
          "h": 6,
          "x": 0.75,
-         "z": 17
+         "z": 24.2
         },
         {
          "id": "brooms",
@@ -1881,9 +1920,9 @@ window.SHOP_DATA = {
         {
          "id": "zone-grinders",
          "name": "Tape: grinder standing strip (3 ft)",
-         "x": 8.5,
+         "x": 9,
          "z": 3.5,
-         "w": 12,
+         "w": 11,
          "d": 3,
          "color": "#e0b43a",
          "y": 0,
