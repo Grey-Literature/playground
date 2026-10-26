@@ -32,8 +32,8 @@ window.SHOP_DATA = {
   models: {
     opus: {
      "label": "Claude Opus",
-     "frame": "Floor plan from Tasha's annotated aerial view and photos (2026-10-25). x=0 is the west wall shared with the classrooms and offices. From the diesel wall south it has the classroom door in a dark corner (z 1-4, 9880), the whiteboards with the drinking fountain and water coolers, then a white wall jog sticking out 4 ft (z 14-28.5) that is the bathrooms, door on its north face (9875/9879/9881; which face is a guess). Tasha identified both on 2026-10-26; x runs east 0->100 to the yard wall (roll-up door z 4-16, A-series booths z 17-39, EXIT z 42). z=0 is the north wall shared with the diesel shop; z runs south 0->50 to the parking-lot wall (door at x 47). Booths 36-51 line the diesel wall; 18-35 and 1-17 stand back to back mid-floor (z 18-30); A1-A10 line the south wall east of the parking door. The broom corner is the SE corner where the south-wall and yard-wall booths meet. The tool room (14x10) and side box (7.5x10, the electrical room in 9914) are walled off inside the floor on the south wall, x 16-37.5; the storage pocket west of them (x 0-16, south of the bathrooms jog) holds the main panels on the tool room's outside wall and, along the west wall from the SW corner north (9884/9885), the fire riser closet (door on its east face), two water-jug pallets hiding a second door, the rusty bag shelf and the flammables cabinet. The red-curtain storage (9897-9901) is placed north of the NE corner, between the diesel shop and the yard; that spot is a guess. Sizes are measured; positions from the markup and photos are approximate.",
-     "note": "Floor plan from an annotated aerial view plus photos. The yard-wall booths, the red-curtain storage spot and most loose equipment in layout 1 are estimates. Layout 2 is the reorg, focused on the three worst spots: the broom corner (brooms on wall rails, drill press square taped clear), the storage pocket between the tool room and the bathrooms (back-to-back shelving down the center, rolling toolboxes in numbered taped spots, jugs together against the bathroom wall, and the panels, riser door and the door behind the jugs taped clear), and the red-curtain storage (totes along the curtain, cylinders chained to the wall, engine welder parked by the door). Elsewhere: grinders get a taped station on the bathrooms' outside wall beside the caged wheel cabinet, the blue lockers and the fan parking share the tool room block's east side by the parking door, and the tool room is sorted into six zones (Z1 grab-and-go by the door through Z6 cords on hooks). The side box is the electrical room, so it holds metal reserve only.",
+     "frame": "Floor plan from Tasha's annotated aerial view and photos (2026-10-25). x=0 is the west wall shared with the classrooms and offices. From the diesel wall south it has the classroom door in a dark corner (z 1-4, 9880), the whiteboards with the drinking fountain and water coolers, then a white wall jog sticking out 4 ft (z 14-28.5) that is the bathrooms, door on its north face (9875/9879/9881; which face is a guess). Tasha identified both on 2026-10-26; x runs east 0->100 to the yard wall (roll-up door z 4-16, A-series booths z 17-39, EXIT z 42). z=0 is the north wall shared with the diesel shop; z runs south 0->50 to the parking-lot wall (door at x 47). Booths 36-51 line the diesel wall; 18-35 and 1-17 stand back to back mid-floor (z 18-30); A1-A10 line the south wall east of the parking door. The broom corner is the SE corner where the south-wall and yard-wall booths meet. The tool room (14x10) and side box (7.5x10, the electrical room in 9914) are walled off inside the floor on the south wall, x 20-41.5; the storage pocket west of them (x 0-20, south of the bathrooms jog; that width is a GUESS: the plan had 16 ft, widened by 4 on 2026-10-26 because the photos read wider, so the tool room and side box slid east with it) holds the main panels on the tool room's outside wall and, along the west wall from the SW corner north (9884/9885), the fire riser closet (door on its east face), two water-jug pallets hiding a second door, the rusty bag shelf and the flammables cabinet. The red-curtain storage (9897-9901) is placed north of the NE corner, between the diesel shop and the yard; that spot is a guess. Sizes are measured; positions from the markup and photos are approximate.",
+     "note": "Floor plan from an annotated aerial view plus photos. The storage pocket's width (west wall to the tool room) is a guess, widened 4 ft from the plan. The yard-wall booths, the red-curtain storage spot and most loose equipment in layout 1 are estimates. Layout 2 is the reorg, focused on the three worst spots: the broom corner (brooms on wall rails, drill press square taped clear), the storage pocket between the tool room and the bathrooms (back-to-back shelving down the center, rolling toolboxes in numbered taped spots, jugs together against the bathroom wall, and the panels, riser door and the door behind the jugs taped clear), and the red-curtain storage (totes along the curtain, cylinders chained to the wall, engine welder parked by the door). Elsewhere: grinders get a taped station on the bathrooms' outside wall beside the caged wheel cabinet, the blue lockers and the fan parking share the side box's east side, clear of the parking door, and the tool room is sorted into six zones (Z1 grab-and-go by the door through Z6 cords on hooks). The side box is the electrical room, so it holds metal reserve only.",
      "rooms": [
       {
        "id": "main",
@@ -52,13 +52,13 @@ window.SHOP_DATA = {
       {
        "id": "toolroom",
        "name": "Tool room",
-       "x0": 16,
+       "x0": 20,
        "z0": 40,
        "w": 14,
        "d": 10,
        "h": 9,
        "spawn": {
-        "x": 23.5,
+        "x": 27.5,
         "z": 42.5,
         "yaw": 180
        }
@@ -66,13 +66,13 @@ window.SHOP_DATA = {
       {
        "id": "sidebox",
        "name": "Side box (electrical room)",
-       "x0": 30,
+       "x0": 34,
        "z0": 40,
        "w": 7.5,
        "d": 10,
        "h": 9,
        "spawn": {
-        "x": 31.5,
+        "x": 35.5,
         "z": 43.5,
         "yaw": 90
        }
@@ -270,7 +270,7 @@ window.SHOP_DATA = {
       {
        "id": "electrical-panels",
        "name": "Main panels and disconnects (9883)",
-       "x": 15.25,
+       "x": 19.25,
        "z": 45,
        "w": 1.5,
        "d": 8,
@@ -297,7 +297,7 @@ window.SHOP_DATA = {
        "rot": 0,
        "est": true,
        "name": "Electrical panels A, B, A1 (9914)",
-       "x": 34,
+       "x": 38,
        "z": 49.6,
        "w": 6,
        "d": 0.8,
@@ -344,7 +344,7 @@ window.SHOP_DATA = {
       {
        "id": "ext-panels",
        "name": "Extinguisher by the main panels (9883)",
-       "x": 15.7,
+       "x": 19.7,
        "z": 40.6,
        "w": 0.6,
        "d": 0.8,
@@ -541,7 +541,7 @@ window.SHOP_DATA = {
       {
        "id": "toolroom-door",
        "name": "Tool room door",
-       "x": 23.5,
+       "x": 27.5,
        "z": 40,
        "w": 3,
        "d": 0.5,
@@ -553,7 +553,7 @@ window.SHOP_DATA = {
       {
        "id": "sidebox-door",
        "name": "Side box doorway (9910)",
-       "x": 30,
+       "x": 34,
        "z": 43.5,
        "w": 0.5,
        "d": 3,
@@ -565,7 +565,7 @@ window.SHOP_DATA = {
       {
        "id": "hose-hooks",
        "name": "Wall hose hangers (9906)",
-       "x": 20.5,
+       "x": 24.5,
        "z": 40.4,
        "w": 3,
        "d": 0.8,
@@ -677,7 +677,7 @@ window.SHOP_DATA = {
         {
          "id": "portable-welder-2",
          "name": "Portable welder (9894)",
-         "x": 39,
+         "x": 43,
          "z": 42,
          "w": 2,
          "d": 3,
@@ -701,7 +701,7 @@ window.SHOP_DATA = {
         {
          "id": "bin-shelf",
          "name": "Parts shelf (9888)",
-         "x": 37.5,
+         "x": 41.5,
          "z": 39,
          "w": 4,
          "d": 2,
@@ -713,7 +713,7 @@ window.SHOP_DATA = {
         {
          "id": "lockers",
          "name": "Blue lockers (9888)",
-         "x": 19,
+         "x": 23,
          "z": 39.25,
          "w": 6,
          "d": 1.5,
@@ -725,7 +725,7 @@ window.SHOP_DATA = {
         {
          "id": "rusty-cabinet",
          "name": "Mesh-door cabinet (9886)",
-         "x": 26.5,
+         "x": 30.5,
          "z": 39.25,
          "w": 3,
          "d": 1.5,
@@ -737,7 +737,7 @@ window.SHOP_DATA = {
         {
          "id": "caged-cabinet",
          "name": "Caged grinder cabinet (9888)",
-         "x": 41,
+         "x": 45,
          "z": 39,
          "w": 3,
          "d": 2,
@@ -749,7 +749,7 @@ window.SHOP_DATA = {
         {
          "id": "grinder-1",
          "name": "Pedestal grinder",
-         "x": 44.5,
+         "x": 48.5,
          "z": 38.5,
          "w": 2,
          "d": 2,
@@ -761,7 +761,7 @@ window.SHOP_DATA = {
         {
          "id": "grinder-2",
          "name": "Pedestal grinder",
-         "x": 47,
+         "x": 51,
          "z": 38.5,
          "w": 2,
          "d": 2,
@@ -773,7 +773,7 @@ window.SHOP_DATA = {
         {
          "id": "grinder-3",
          "name": "Grinder on red stand",
-         "x": 49.5,
+         "x": 53.5,
          "z": 38.5,
          "w": 2,
          "d": 2,
@@ -953,7 +953,7 @@ window.SHOP_DATA = {
         {
          "id": "parts-bin-shelf",
          "name": "Blue parts-bin shelving (9906)",
-         "x": 21,
+         "x": 25,
          "z": 49,
          "w": 6,
          "d": 2,
@@ -965,7 +965,7 @@ window.SHOP_DATA = {
         {
          "id": "regulator-shelf",
          "name": "Steel shelving: regulators, plasma (9912)",
-         "x": 17,
+         "x": 21,
          "z": 45,
          "w": 2,
          "d": 6,
@@ -977,7 +977,7 @@ window.SHOP_DATA = {
         {
          "id": "small-bench",
          "name": "Tool room bench",
-         "x": 20,
+         "x": 24,
          "z": 41.5,
          "w": 4,
          "d": 2,
@@ -989,7 +989,7 @@ window.SHOP_DATA = {
         {
          "id": "floor-boxes",
          "name": "Floor boxes and cords (9912)",
-         "x": 24,
+         "x": 28,
          "z": 45,
          "w": 3,
          "d": 2,
@@ -1001,7 +1001,7 @@ window.SHOP_DATA = {
         {
          "id": "side-box-shelf",
          "name": "Side box overflow shelving",
-         "x": 33.75,
+         "x": 37.75,
          "z": 45,
          "w": 2,
          "d": 8,
@@ -1369,7 +1369,7 @@ window.SHOP_DATA = {
         {
          "id": "cubby-rack",
          "name": "Cubby/bag shelving",
-         "x": 29.5,
+         "x": 33.5,
          "z": 39,
          "w": 8,
          "d": 2,
@@ -1381,7 +1381,7 @@ window.SHOP_DATA = {
         {
          "id": "bin-shelf",
          "name": "Parts shelf",
-         "x": 35.5,
+         "x": 39.5,
          "z": 39,
          "w": 4,
          "d": 2,
@@ -1393,8 +1393,8 @@ window.SHOP_DATA = {
         {
          "id": "lockers",
          "name": "Blue lockers",
-         "x": 38.25,
-         "z": 43.25,
+         "x": 42.25,
+         "z": 47,
          "w": 6,
          "d": 1.5,
          "h": 6,
@@ -1405,7 +1405,7 @@ window.SHOP_DATA = {
         {
          "id": "rusty-cabinet",
          "name": "Mesh-door cabinet",
-         "x": 19.5,
+         "x": 23.5,
          "z": 39.25,
          "w": 3,
          "d": 1.5,
@@ -1477,8 +1477,8 @@ window.SHOP_DATA = {
         {
          "id": "drum-fan-1",
          "name": "Drum fan",
-         "x": 41.15,
-         "z": 48.4,
+         "x": 42.15,
+         "z": 41.75,
          "w": 3,
          "d": 1.2,
          "h": 3,
@@ -1489,8 +1489,8 @@ window.SHOP_DATA = {
         {
          "id": "drum-fan-2",
          "name": "Drum fan",
-         "x": 42.4,
-         "z": 48.4,
+         "x": 43.4,
+         "z": 41.75,
          "w": 3,
          "d": 1.2,
          "h": 3,
@@ -1501,8 +1501,8 @@ window.SHOP_DATA = {
         {
          "id": "drum-fan-3",
          "name": "Drum fan",
-         "x": 43.65,
-         "z": 48.4,
+         "x": 44.65,
+         "z": 41.75,
          "w": 3,
          "d": 1.2,
          "h": 3,
@@ -1513,8 +1513,8 @@ window.SHOP_DATA = {
         {
          "id": "orange-drum-fan",
          "name": "Orange drum fan",
-         "x": 44.9,
-         "z": 48.4,
+         "x": 45.9,
+         "z": 41.75,
          "w": 3,
          "d": 1.2,
          "h": 3.5,
@@ -1525,8 +1525,8 @@ window.SHOP_DATA = {
         {
          "id": "pedestal-fan-1",
          "name": "Pedestal fan",
-         "x": 41.5,
-         "z": 45.6,
+         "x": 47.4,
+         "z": 41,
          "w": 1.8,
          "d": 1.8,
          "h": 6,
@@ -1537,8 +1537,8 @@ window.SHOP_DATA = {
         {
          "id": "pedestal-fan-2",
          "name": "Pedestal fan",
-         "x": 43.4,
-         "z": 45.6,
+         "x": 47.4,
+         "z": 42.95,
          "w": 1.8,
          "d": 1.8,
          "h": 6,
@@ -1549,8 +1549,8 @@ window.SHOP_DATA = {
         {
          "id": "air-mover",
          "name": "Blue air mover",
-         "x": 44.9,
-         "z": 45.6,
+         "x": 48.9,
+         "z": 41,
          "w": 1.2,
          "d": 1.2,
          "h": 1.5,
@@ -1621,8 +1621,8 @@ window.SHOP_DATA = {
         {
          "id": "tool-shelf",
          "name": "Center shelving, west face: bags, PPE, stock",
-         "x": 6,
-         "z": 37.5,
+         "x": 9,
+         "z": 36,
          "w": 2,
          "d": 8,
          "h": 6,
@@ -1633,7 +1633,7 @@ window.SHOP_DATA = {
         {
          "id": "regulator-shelf",
          "name": "Z2 · Regulators, torches, hoses",
-         "x": 17,
+         "x": 21,
          "z": 47,
          "w": 2,
          "d": 6,
@@ -1654,7 +1654,7 @@ window.SHOP_DATA = {
         {
          "id": "z5-top-west",
          "name": "Z5 · Bulk: reserve hoses, spares",
-         "x": 17,
+         "x": 21,
          "z": 47,
          "y": 7.3,
          "w": 2,
@@ -1673,7 +1673,7 @@ window.SHOP_DATA = {
         {
          "id": "small-bench",
          "name": "Repair bench (REPAIR tags wait here)",
-         "x": 17,
+         "x": 21,
          "z": 42,
          "w": 4,
          "d": 2,
@@ -1686,7 +1686,7 @@ window.SHOP_DATA = {
         {
          "id": "quarantine-tote",
          "name": "Quarantine tote (sort weekly)",
-         "x": 18.75,
+         "x": 22.75,
          "z": 41,
          "w": 1.5,
          "d": 1,
@@ -1700,7 +1700,7 @@ window.SHOP_DATA = {
         {
          "id": "parts-bin-shelf",
          "name": "Z4 · Small-parts bin wall",
-         "x": 21,
+         "x": 25,
          "z": 49,
          "w": 6,
          "d": 2,
@@ -1723,7 +1723,7 @@ window.SHOP_DATA = {
         {
          "id": "floor-boxes",
          "name": "Z5 · Bulk: unopened boxes",
-         "x": 21,
+         "x": 25,
          "z": 49,
          "w": 6,
          "d": 2,
@@ -1742,7 +1742,7 @@ window.SHOP_DATA = {
         {
          "id": "z3-tool-cabinet",
          "name": "Z3 · Power & specialty tools",
-         "x": 26,
+         "x": 30,
          "z": 49.25,
          "w": 4,
          "d": 1.5,
@@ -1760,7 +1760,7 @@ window.SHOP_DATA = {
         {
          "id": "helmet-rail",
          "name": "Helmet rail (one hook per student)",
-         "x": 26,
+         "x": 30,
          "z": 49.75,
          "y": 5,
          "w": 4,
@@ -1773,7 +1773,7 @@ window.SHOP_DATA = {
         {
          "id": "z1-grab-shelf",
          "name": "Z1 · Grab-and-go consumables",
-         "x": 27.75,
+         "x": 31.75,
          "z": 40.625,
          "w": 4,
          "d": 1.25,
@@ -1797,7 +1797,7 @@ window.SHOP_DATA = {
         {
          "id": "z6-cord-rack",
          "name": "Z6 · Cord & lead hooks",
-         "x": 17.8,
+         "x": 21.8,
          "z": 40.3,
          "y": 3,
          "w": 2.4,
@@ -1816,7 +1816,7 @@ window.SHOP_DATA = {
         {
          "id": "side-box-shelf",
          "name": "Z5 · Metal reserve only (no cardboard)",
-         "x": 35.5,
+         "x": 39.5,
          "z": 41,
          "w": 4,
          "d": 2,
@@ -1835,7 +1835,7 @@ window.SHOP_DATA = {
         {
          "id": "zone-sidebox",
          "name": "Tape: electrical room, keep clear",
-         "x": 34,
+         "x": 38,
          "z": 47.7,
          "w": 7,
          "d": 3,
@@ -1856,7 +1856,7 @@ window.SHOP_DATA = {
          "h": 5.5,
          "color": "#5b8fd0",
          "x": 2,
-         "z": 30.5
+         "z": 31
         },
         {
          "id": "water-jugs-2",
@@ -1868,8 +1868,8 @@ window.SHOP_DATA = {
          "d": 4,
          "h": 5.5,
          "color": "#5b8fd0",
-         "x": 6,
-         "z": 30.5
+         "x": 2,
+         "z": 35
         },
         {
          "id": "bag-shelf",
@@ -1961,20 +1961,20 @@ window.SHOP_DATA = {
         {
          "id": "flammables-cabinet",
          "y": 0,
-         "rot": 90,
+         "rot": 0,
          "est": true,
          "name": "Flammables cabinet (9885)",
          "w": 3.5,
          "d": 1.5,
          "h": 3.5,
          "color": "#e0c020",
-         "x": 0.75,
-         "z": 35
+         "x": 9.75,
+         "z": 49.25
         },
         {
          "id": "zone-panels",
          "name": "Tape: keep 3 ft clear (main panels)",
-         "x": 13,
+         "x": 17,
          "z": 44.75,
          "w": 3,
          "d": 7.5,
@@ -2039,10 +2039,10 @@ window.SHOP_DATA = {
         {
          "id": "fan-parking",
          "name": "Tape: fan parking",
-         "x": 43,
-         "z": 47.25,
-         "w": 5,
-         "d": 5.5,
+         "x": 45.5,
+         "z": 41.95,
+         "w": 8,
+         "d": 3.9,
          "color": "#5a8fd0",
          "y": 0,
          "h": 0.05,
@@ -2071,8 +2071,8 @@ window.SHOP_DATA = {
          "y": 0,
          "est": true,
          "holds": "small toolboxes and hard cases on the 24 in shelves; the big rolling Keter stacks park on the tape instead",
-         "x": 8,
-         "z": 37.5,
+         "x": 11,
+         "z": 36,
          "rot": 0
         },
         {
@@ -2084,8 +2084,8 @@ window.SHOP_DATA = {
          "y": 0,
          "color": "#2b2b2e",
          "est": true,
-         "x": 13.6,
-         "z": 33.6,
+         "x": 17,
+         "z": 33.75,
          "rot": 0
         },
         {
@@ -2097,8 +2097,8 @@ window.SHOP_DATA = {
          "y": 0,
          "color": "#2b2b2e",
          "est": true,
-         "x": 13.6,
-         "z": 35.1,
+         "x": 17,
+         "z": 35.25,
          "rot": 0
         },
         {
@@ -2110,8 +2110,8 @@ window.SHOP_DATA = {
          "y": 0,
          "color": "#2b2b2e",
          "est": true,
-         "x": 13.6,
-         "z": 36.6,
+         "x": 17,
+         "z": 36.75,
          "rot": 0
         },
         {
@@ -2123,8 +2123,8 @@ window.SHOP_DATA = {
          "y": 0,
          "color": "#2b2b2e",
          "est": true,
-         "x": 13.6,
-         "z": 38.1,
+         "x": 17,
+         "z": 38.25,
          "rot": 0
         },
         {
@@ -2136,8 +2136,8 @@ window.SHOP_DATA = {
          "y": 0,
          "color": "#2b2b2e",
          "est": true,
-         "x": 13.6,
-         "z": 39.6,
+         "x": 17,
+         "z": 39.75,
          "rot": 0
         },
         {
@@ -2149,7 +2149,7 @@ window.SHOP_DATA = {
          "y": 0,
          "color": "#2b2b2e",
          "est": true,
-         "x": 8.9,
+         "x": 9.8,
          "z": 42.5,
          "rot": 0
         },
@@ -2162,7 +2162,7 @@ window.SHOP_DATA = {
          "y": 0,
          "color": "#2b2b2e",
          "est": true,
-         "x": 10.6,
+         "x": 11.5,
          "z": 42.5,
          "rot": 0
         },
@@ -2175,7 +2175,7 @@ window.SHOP_DATA = {
          "y": 0,
          "color": "#2b2b2e",
          "est": true,
-         "x": 8.9,
+         "x": 9.8,
          "z": 44,
          "rot": 0
         },
@@ -2188,7 +2188,7 @@ window.SHOP_DATA = {
          "y": 0,
          "color": "#2b2b2e",
          "est": true,
-         "x": 10.6,
+         "x": 11.5,
          "z": 44,
          "rot": 0
         },
@@ -2201,8 +2201,8 @@ window.SHOP_DATA = {
          "est": true,
          "w": 2.2,
          "d": 7.6,
-         "x": 13.6,
-         "z": 36.6,
+         "x": 17,
+         "z": 36.75,
          "rot": 0
         },
         {
@@ -2216,6 +2216,19 @@ window.SHOP_DATA = {
          "est": true,
          "x": 1.5,
          "z": 42.5,
+         "rot": 0
+        },
+        {
+         "id": "zone-toolboxes-2",
+         "name": "Tape: numbered toolbox spots",
+         "h": 0.05,
+         "y": 0,
+         "color": "#e0b43a",
+         "est": true,
+         "w": 3.6,
+         "d": 3.2,
+         "x": 10.65,
+         "z": 43.25,
          "rot": 0
         }
        ],
