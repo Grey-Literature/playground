@@ -503,6 +503,14 @@ function renderMenu() {
   fill('rooms', M.rooms.map((r, i) => [i, r.name || r.id]), (i) => setRoom(+i), 'i');
   // Per-model caveats (what the model guessed, what we added). Shown in the menu so nobody has to ask.
   $('note').textContent = M.note || ''; $('note').style.display = M.note ? '' : 'none';
+  // Concept images of the trouble spots: thumbnails here, full size in the #shot viewer.
+  const shots = $('shots'); shots.textContent = '';
+  (M.images || []).forEach((im, i) => {
+    const b = document.createElement('button'); b.title = im.title;
+    const t = document.createElement('img'); t.src = im.src.replace(/^img\//, 'img/thumb/'); t.alt = im.title; t.loading = 'lazy';
+    b.appendChild(t); b.addEventListener('click', () => openShot(i, false)); shots.appendChild(b);
+  });
+  $('shotsHead').style.display = M.images?.length ? '' : 'none';
   refreshHud();
 }
 
@@ -524,8 +532,8 @@ function setRoom(i) {
 const controls = new PointerLockControls(camera, renderer.domElement);
 const pause = $('pause');
 controls.addEventListener('lock', () => { pause.style.display = 'none'; });
-controls.addEventListener('unlock', () => { pause.style.display = 'flex'; });
-document.addEventListener('pointerlockerror', () => { $('err').textContent = 'The browser refused mouse capture. Click the button again.'; });
+controls.addEventListener('unlock', () => { if (quietUnlock) { quietUnlock = false; return; } pause.style.display = 'flex'; });
+document.addEventListener('pointerlockerror', () => { pause.style.display = 'flex'; $('err').textContent = 'The browser refused mouse capture. Click the button again.'; });
 
 // Phones/tablets report a coarse primary pointer. They have no pointer lock and no keyboard, so
 // "playing" is just a flag there, and walking/looking come from the touch layer below.
@@ -548,10 +556,68 @@ const nextRoom = () => setRoom(roomIdx + 1);
 const toggleTopdown = () => { topdown = !topdown; refreshHud(); };
 const toggleLabels = () => { labelsOn = !labelsOn; };
 
+// ───────────────────────── concept images ─────────────────────────
+// `images` in layouts.js are pictures of the trouble spots. Standing at one (within r ft of `at`, or inside one
+// of its `rooms`) offers it, and I opens it. Opening one mid-walk releases the mouse without bringing up the menu,
+// and Back drops you straight into the walk again (that click is the gesture pointer lock needs).
+let shotIdx = -1, shotFromWalk = false, quietUnlock = false, nearIdx = -1;
+function nearestImage() {
+  if (topdown) return -1;
+  const here = roomAt(pos.x, pos.z);
+  let best = -1, bestD = Infinity;
+  (M.images || []).forEach((im, i) => {
+    const d = im.rooms?.includes(here?.id) ? 0 : im.at ? Math.hypot(pos.x - im.at.x, pos.z - im.at.z) : Infinity;
+    if (d <= (im.r ?? 10) && d < bestD) { best = i; bestD = d; }
+  });
+  return best;
+}
+function showShot(i) {
+  const list = M.images, im = list[shotIdx = (i + list.length) % list.length];
+  $('shotImg').src = im.src; $('shotImg').alt = im.title;
+  $('shotTitle').textContent = im.title + '.'; $('shotCap').textContent = im.caption || '';
+  $('shotCount').textContent = `${shotIdx + 1} / ${list.length}`;
+}
+function openShot(i, fromWalk) {
+  showShot(i); shotFromWalk = fromWalk;
+  $('shot').classList.add('open');
+  if (fromWalk) {
+    if (touchMode) { touchPlaying = false; stick.f = stick.r = 0; }
+    else { quietUnlock = true; controls.unlock(); }
+  }
+  $('shotClose').focus();
+}
+function closeShot(resume) {
+  $('shot').classList.remove('open'); shotIdx = -1;
+  if (resume && shotFromWalk) start(); else pause.style.display = 'flex';
+}
+$('shotPrev').addEventListener('click', () => showShot(shotIdx - 1));
+$('shotNext').addEventListener('click', () => showShot(shotIdx + 1));
+$('shotClose').addEventListener('click', () => closeShot(true));
+$('shot').addEventListener('click', (e) => { if (e.target === $('shot')) closeShot(true); });
+$('tShot').addEventListener('click', () => { if (nearIdx >= 0) openShot(nearIdx, true); });
+function refreshNear() {
+  const i = isPlaying() ? nearestImage() : -1;
+  if (i === nearIdx) return;
+  nearIdx = i;
+  const near = $('near');
+  near.style.display = i >= 0 ? 'block' : 'none';
+  $('tShot').style.display = i >= 0 ? '' : 'none';
+  if (i < 0) return;
+  near.innerHTML = 'Concept image here: <b></b> · press <kbd>I</kbd>';
+  near.querySelector('b').textContent = M.images[i].title;
+}
+
 const held = new Set();
 addEventListener('keydown', (e) => {
   held.add(e.code);
   if (e.repeat) return;
+  if (shotIdx >= 0) {               // the image viewer is open: it owns the keys
+    if (e.code === 'Escape') closeShot(false);
+    else if (e.code === 'ArrowLeft') showShot(shotIdx - 1);
+    else if (e.code === 'ArrowRight') showShot(shotIdx + 1);
+    return;
+  }
+  if (e.code === 'KeyI' && isPlaying() && nearIdx >= 0) { openShot(nearIdx, true); return; }
   const digit = /^Digit([1-9])$/.exec(e.code);
   if (digit && layoutKeys[digit[1] - 1]) setLayout(layoutKeys[digit[1] - 1]);
   else if (e.code === 'KeyB') toggleBeforeAfter();
@@ -712,6 +778,7 @@ function update(dt) {
   for (const m of overheadMeshes) m.visible = !topdown;
   active.updateMatrixWorld();
   placeLabels(active);
+  refreshNear();
   return active;
 }
 
@@ -808,6 +875,6 @@ window.__shop = {
   setLayout, loadModel, setRoom, setTopdown: (v) => { topdown = v; refreshHud(); },
   get currentKey() { return currentKey; }, get modelKey() { return modelKey; }, get nodes() { return nodes; },
   get passages() { return passages; }, get rects() { return rects; },
-  resolve, get labels() { return labelSprites; }, placeLabels: () => { const c = topdown ? topCam : camera; c.updateMatrixWorld(); placeLabels(c); },
+  resolve, get labels() { return labelSprites; }, openShot, get nearImage() { return nearIdx; }, placeLabels: () => { const c = topdown ? topCam : camera; c.updateMatrixWorld(); placeLabels(c); },
 };
 frame();

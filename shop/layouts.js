@@ -20,6 +20,8 @@
  *   decor   optional: draw a fixed block as N booths instead of one slab.
  *   enclosures, planRooms, planLabels  optional viewer features (see viewer.js); unused right now.
  *   note    caveat text shown in the menu (what is measured, what is estimated).
+ *   images  optional concept pictures of trouble spots: {id,title,src,caption, at:{x,z}+r (ft) or rooms:[ids]}.
+ *           Listed in the menu; in the walk, standing within r of `at` (or in one of `rooms`) offers it (I key).
  * Items may also carry `est` (position or size estimated), `holds` (what goes on a tool-room shelf) and
  * `rule` (how a zone is kept); the viewer ignores them. Ids that exist only in the after (floor tape,
  * zones) are hidden in the before.
@@ -34,6 +36,82 @@ window.SHOP_DATA = {
      "label": "Claude Opus",
      "frame": "Floor plan from Tasha's annotated aerial view and photos (2026-10-25). x=0 is the west wall shared with the classrooms and offices. From the diesel wall south it has the classroom door in a dark corner (z 1-4, 9880), the whiteboards with the drinking fountain and water coolers, then a white wall jog sticking out 4 ft (z 14-28.5) that is the bathrooms, door on its north face (9875/9879/9881; which face is a guess). Tasha identified both on 2026-10-26; x runs east 0->100 to the yard wall (roll-up door z 4-16, A-series booths z 17-39, EXIT z 42). z=0 is the north wall shared with the diesel shop; z runs south 0->50 to the parking-lot wall (door at x 47). Booths 36-51 line the diesel wall; 18-35 and 1-17 stand back to back mid-floor (z 18-30); A1-A10 line the south wall east of the parking door. The broom corner is the SE corner where the south-wall and yard-wall booths meet. The tool room (14x10) and side box (7.5x10, the electrical room in 9914) are walled off inside the floor on the south wall, x 20-41.5; the storage pocket west of them (x 0-20, south of the bathrooms jog; that width is a GUESS: the plan had 16 ft, widened by 4 on 2026-10-26 because the photos read wider, so the tool room and side box slid east with it) holds the main panels on the tool room's outside wall and, along the west wall from the SW corner north (9884/9885), the fire riser closet (door on its east face), two water-jug pallets hiding a second door, the rusty bag shelf and the flammables cabinet. The red-curtain storage (9897-9901) is placed north of the NE corner, between the diesel shop and the yard; that spot is a guess. Sizes are measured; positions from the markup and photos are approximate.",
      "note": "Floor plan from an annotated aerial view plus photos. The storage pocket's width (west wall to the tool room) is a guess, widened 4 ft from the plan. The yard-wall booths, the red-curtain storage spot and most loose equipment in layout 1 are estimates. Layout 2 is the reorg, focused on the three worst spots: the broom corner (brooms on wall rails, drill press square taped clear), the storage pocket between the tool room and the bathrooms (back-to-back shelving down the center, rolling toolboxes in numbered taped spots, jugs together against the bathroom wall, and the panels, riser door and the door behind the jugs taped clear), and the red-curtain storage (totes along the curtain, cylinders chained to the wall, engine welder parked by the door). Elsewhere: grinders get a taped station on the bathrooms' outside wall beside the caged wheel cabinet, the blue lockers and the fan parking share the side box's east side, clear of the parking door, and the tool room is sorted into six zones (Z1 grab-and-go by the door through Z6 cords on hooks). The side box is the electrical room, so it holds metal reserve only.",
+     "images": [
+      {
+       "id": "grinder-corner",
+       "title": "Grinders and classroom corner",
+       "src": "img/grinder-classroom-corner.jpg",
+       "at": {
+        "x": 7,
+        "z": 14
+       },
+       "r": 13,
+       "caption": "Before and after: grinders along the bathrooms' outside wall on a taped strip, the classroom door in its dark recess, water coolers where they are. AI concept image, not a photo."
+      },
+      {
+       "id": "storage-pocket",
+       "title": "Storage pocket",
+       "src": "img/storage-pocket.jpg",
+       "at": {
+        "x": 10,
+        "z": 40
+       },
+       "r": 10,
+       "caption": "AI edit of photo 9883: back-to-back shelving down the middle, rolling-toolbox parking along the back wall, jugs and the flammables cabinet on the west wall. (The 3D after parks most toolboxes in a row by the panels instead.)"
+      },
+      {
+       "id": "tool-room-front-1",
+       "title": "Tool-room front",
+       "src": "img/tool-room-front-1.jpg",
+       "at": {
+        "x": 30,
+        "z": 35
+       },
+       "r": 9,
+       "caption": "Before and after along the tool room's front: lockers, fan parking, parts shelving, main aisle clear. The door it calls the side door is the tool room door. AI concept image, not a photo."
+      },
+      {
+       "id": "tool-room-front-2",
+       "title": "Tool-room front, second take",
+       "src": "img/tool-room-front-2.jpg",
+       "at": {
+        "x": 30,
+        "z": 35
+       },
+       "r": 9,
+       "caption": "A second take of the same corner. AI concept image, not a photo."
+      },
+      {
+       "id": "tool-room",
+       "title": "Tool room and side box",
+       "src": "img/tool-room-after.jpg",
+       "rooms": [
+        "toolroom",
+        "sidebox"
+       ],
+       "caption": "The six tool-room zones (Z1 grab-and-go through Z6 cord hooks) and a stocked side box. The 3D after keeps the side box to metal reserve only, since it is the electrical room. AI concept image, not a photo."
+      },
+      {
+       "id": "red-curtain",
+       "title": "Red-curtain storage",
+       "src": "img/red-curtain-after.jpg",
+       "rooms": [
+        "redroom"
+       ],
+       "caption": "After: totes grouped along the curtain, cylinder carts parked and secured, leads coiled, JOBOX, spare-equipment shelf, flammables cabinet and a clear path to the door. AI concept image, not a photo."
+      },
+      {
+       "id": "broom-corner",
+       "title": "Broom corner",
+       "src": "img/broom-corner.jpg",
+       "at": {
+        "x": 94,
+        "z": 46
+       },
+       "r": 9,
+       "caption": "Before and after: brooms in a one-slot-per-tool cabinet, the drill press and the EXIT approach kept clear. AI concept image, not a photo."
+      }
+     ],
      "rooms": [
       {
        "id": "main",

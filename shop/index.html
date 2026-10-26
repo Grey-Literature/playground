@@ -38,6 +38,31 @@
   #card small { display:block; margin-top:12px; color:var(--dim); font-size:12px; }
   #err { color:#ff8a7a; margin-top:10px; white-space:pre-wrap; }
   #pause { z-index:10; }
+  #card { max-height:calc(100% - 24px); overflow:auto; }
+
+  /* Concept images of the trouble spots: a thumbnail strip in the menu, a "press I" chip when you stand at
+     one in the walk, and a full-screen viewer. */
+  #shotsHead { margin:0 0 6px; font-size:12px; }
+  #shots { display:flex; flex-wrap:wrap; gap:6px; margin:0 0 10px; }
+  #shots button { padding:0; border:1px solid #3a3f48; border-radius:5px; overflow:hidden; cursor:pointer; background:#262a31; }
+  #shots button:hover, #shots button:focus-visible { border-color:var(--accent); }
+  #shots img { display:block; height:52px; width:auto; }
+  #near { position:fixed; left:50%; bottom:46px; transform:translateX(-50%); padding:6px 12px; border-radius:6px;
+    background:var(--panel); border:1px solid var(--accent); color:var(--ink); font-size:13px; pointer-events:none;
+    white-space:nowrap; display:none; }
+  #near kbd { color:var(--ink); background:#2c3038; border-radius:3px; padding:0 5px; }
+  body.touch #near { display:none !important; }
+  #shot { position:fixed; inset:0; z-index:20; display:none; flex-direction:column; align-items:center; justify-content:center;
+    gap:10px; padding:12px; background:#0b0c0ff2; }
+  #shot.open { display:flex; }
+  #shot img { max-width:100%; max-height:calc(100% - 120px); object-fit:contain; border-radius:6px; }
+  #shot p { margin:0; max-width:900px; color:var(--dim); font-size:13px; text-align:center; }
+  #shot p b { color:var(--ink); }
+  #shotNav { display:flex; gap:8px; align-items:center; }
+  #shotNav button { min-height:36px; padding:0 14px; border-radius:6px; border:1px solid #3a3f48; cursor:pointer;
+    background:#262a31; color:var(--ink); font-size:14px; }
+  #shotNav #shotClose { background:var(--accent); border-color:var(--accent); color:#1a1405; font-weight:600; }
+  #shotNav span { color:var(--dim); font-size:12px; min-width:40px; text-align:center; }
 
   /* Touch layer. Only shown when viewer.js adds body.touch (coarse pointer = phone/tablet).
      Why custom controls: mobile browsers have no pointer lock and no keyboard, so walking
@@ -68,6 +93,7 @@
   <kbd>B</kbd> before/after &nbsp; <kbd>R</kbd> room &nbsp; <kbd>T</kbd> top-down &nbsp; <kbd>L</kbd> labels &nbsp; <kbd>Esc</kbd> menu
 </div>
 <div id="cross"></div>
+<div id="near"></div>
 
 <div id="tui">
   <div id="look"></div>
@@ -80,6 +106,7 @@
     <button id="tT">Plan view</button>
     <button id="tL">Labels</button>
     <button id="tM">Menu</button>
+    <button id="tShot" style="display:none">Image here</button>
   </div>
 </div>
 
@@ -91,9 +118,22 @@
     <div id="layouts" class="pick"></div>
     <div id="rooms" class="pick"></div>
     <p id="note" style="display:none; font-size:12px; margin:0 0 10px;"></p>
+    <p id="shotsHead" style="display:none">Concept images of the trouble spots (AI, not photos). In the walk, press <b>I</b> when one is offered.</p>
+    <div id="shots"></div>
     <button class="go" id="go">Walk the shop</button>
     <small id="howtoSmall">Esc brings this menu back. Hold Shift to move faster. Moved items glow amber in the after layouts.</small>
     <div id="err"></div>
+  </div>
+</div>
+
+<div id="shot" role="dialog" aria-modal="true" aria-labelledby="shotTitle">
+  <img id="shotImg" alt="">
+  <p><b id="shotTitle"></b> <span id="shotCap"></span></p>
+  <div id="shotNav">
+    <button id="shotPrev" aria-label="Previous image">‹</button>
+    <span id="shotCount"></span>
+    <button id="shotNext" aria-label="Next image">›</button>
+    <button id="shotClose">Back</button>
   </div>
 </div>
 
