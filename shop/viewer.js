@@ -543,7 +543,7 @@ pause.addEventListener('click', (e) => { if (e.target === pause) start(); });
 // The same actions are reachable from keys AND touch buttons, so they live in one place.
 const toggleBeforeAfter = () => setLayout(currentKey === beforeKey ? lastAfterKey : beforeKey);
 const nextLayout = () => setLayout(layoutKeys[(layoutKeys.indexOf(currentKey) + 1) % layoutKeys.length]);
-const nextModel = () => loadModel(MODEL_KEYS[(MODEL_KEYS.indexOf(modelKey) + 1) % MODEL_KEYS.length]);
+const nextModel = () => { if (MODEL_KEYS.length > 1) loadModel(MODEL_KEYS[(MODEL_KEYS.indexOf(modelKey) + 1) % MODEL_KEYS.length]); };
 const nextRoom = () => setRoom(roomIdx + 1);
 const toggleTopdown = () => { topdown = !topdown; refreshHud(); };
 const toggleLabels = () => { labelsOn = !labelsOn; };
