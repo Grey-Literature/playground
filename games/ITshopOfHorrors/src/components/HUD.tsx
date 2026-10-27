@@ -39,7 +39,7 @@ export default function HUD({ flags, integrity }: Props) {
       {/* ticket / objective */}
       <div className="pointer-events-none absolute left-3 top-3 z-30 max-w-sm">
         <div className="rounded-sm border border-red-900/60 bg-black/80 px-3 py-2">
-          <div className="font-term text-[10px] tracking-[0.3em] text-red-500">
+          <div className="font-term text-xs tracking-[0.25em] text-red-400">
             TICKET #666 — THE LAST ESCALATION
           </div>
           <div className="font-crt mt-1 text-lg leading-tight text-zinc-200">
@@ -49,9 +49,9 @@ export default function HUD({ flags, integrity }: Props) {
       </div>
 
       {/* integrity */}
-      <div className="pointer-events-none absolute right-3 top-3 z-30 w-48">
+      <div className="pointer-events-none absolute right-3 top-3 z-30 w-60">
         <div className="rounded-sm border border-emerald-900/60 bg-black/80 px-3 py-2">
-          <div className="font-term flex justify-between text-[10px] tracking-[0.2em] text-zinc-500">
+          <div className="font-term flex justify-between text-xs tracking-[0.15em] text-zinc-400">
             <span>BADGE INTEGRITY</span>
             <span className={integrity <= 25 ? "text-red-400" : "text-emerald-400"}>
               {integrity}%
@@ -74,10 +74,10 @@ export default function HUD({ flags, integrity }: Props) {
             {items.map((it) => (
               <span
                 key={it.label}
-                className={`font-term border px-1.5 py-0.5 text-[9px] tracking-wider ${
+                className={`font-term border px-1.5 py-0.5 text-[11px] tracking-wider ${
                   it.have
                     ? "border-emerald-700 bg-emerald-950/60 text-emerald-300"
-                    : "border-zinc-800 text-zinc-700 line-through"
+                    : "border-zinc-700 text-zinc-500 line-through"
                 }`}
               >
                 {it.label}
@@ -85,9 +85,9 @@ export default function HUD({ flags, integrity }: Props) {
             ))}
           </div>
           {/* her lanyard */}
-          <div className="font-term mt-2 flex justify-between text-[10px] tracking-[0.2em] text-zinc-500">
+          <div className="font-term mt-2 flex justify-between text-xs tracking-[0.15em] text-zinc-400">
             <span>LANYARD</span>
-            <span className={pins === PIN_TOTAL ? "text-sky-300" : "text-zinc-500"}>
+            <span className={pins === PIN_TOTAL ? "text-sky-300" : "text-zinc-400"}>
               {pins}/{PIN_TOTAL}
             </span>
           </div>
@@ -97,10 +97,10 @@ export default function HUD({ flags, integrity }: Props) {
               return (
                 <span
                   key={id}
-                  className={`font-term border px-1 text-[9px] ${
+                  className={`font-term border px-1 text-[11px] ${
                     got
                       ? "border-sky-700 bg-sky-950/60 text-sky-300"
-                      : "border-zinc-900 text-zinc-800"
+                      : "border-zinc-800 text-zinc-600"
                   }`}
                 >
                   {got ? PINS[id].code : "···"}

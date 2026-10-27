@@ -30,7 +30,7 @@ export function TitleScreen({ onStart }: { onStart: () => void }) {
       </div>
 
       <div className="rise-in relative z-10 text-center">
-        <div className="font-term text-xs tracking-[0.6em] text-red-600">
+        <div className="font-term text-sm tracking-[0.5em] text-red-500">
           TICKET #666 — THE LAST ESCALATION
         </div>
         <h1
@@ -39,7 +39,7 @@ export function TitleScreen({ onStart }: { onStart: () => void }) {
         >
           ITSHOP OF HORRORS
         </h1>
-        <p className="font-term mx-auto mt-6 max-w-xl text-sm leading-relaxed text-zinc-500">
+        <p className="font-term mx-auto mt-6 max-w-xl text-base leading-relaxed text-zinc-400">
           Every problem has a solution.
           <br />
           <span className="text-zinc-300">
@@ -58,10 +58,10 @@ export function TitleScreen({ onStart }: { onStart: () => void }) {
           ▸ ACCEPT TICKET #666
         </button>
 
-        <div className="font-term mt-8 text-[11px] tracking-wider text-zinc-600">
+        <div className="font-term mt-8 text-sm tracking-wider text-zinc-400">
           {CONTROLS_HINT}
         </div>
-        <div className="font-term flicker mt-3 text-[10px] tracking-[0.4em] text-red-900">
+        <div className="font-term flicker mt-3 text-xs tracking-[0.3em] text-red-500">
           HEADPHONES RECOMMENDED · HUMAN ESCALATION PATH: DISABLED
         </div>
       </div>
@@ -92,7 +92,7 @@ export function IntroScreen({ onDone }: { onDone: () => void }) {
   return (
     <div className="crt relative flex h-full w-full items-center justify-center bg-[#030405] px-6">
       <div key={page} className="fade-in max-w-2xl">
-        <div className="font-term mb-6 text-[10px] tracking-[0.5em] text-red-700">
+        <div className="font-term mb-6 text-xs tracking-[0.4em] text-red-500">
           PROLOGUE — AN ACCEPTABLE LEVEL OF FAILURE · {page + 1}/{INTRO_PAGES.length}
         </div>
         <div className="space-y-5">
@@ -110,7 +110,7 @@ export function IntroScreen({ onDone }: { onDone: () => void }) {
             </p>
           ))}
         </div>
-        <div className="font-term mt-10 flex items-center justify-between text-[11px] tracking-widest text-zinc-600">
+        <div className="font-term mt-10 flex items-center justify-between text-sm tracking-widest text-zinc-400">
           <button onClick={onDone} className="hover:text-zinc-400">
             [ESC] SKIP
           </button>
@@ -135,7 +135,7 @@ export function GameOverScreen({ onRetry }: { onRetry: () => void }) {
   return (
     <div className="crt relative flex h-full w-full flex-col items-center justify-center bg-[#0a0203] px-6 text-center">
       <div className="vignette-red" />
-      <div className="font-term text-xs tracking-[0.5em] text-red-700">
+      <div className="font-term text-sm tracking-[0.4em] text-red-500">
         ENDPOINT SECURITY — FINAL VERDICT
       </div>
       <h2
@@ -148,7 +148,7 @@ export function GameOverScreen({ onRetry }: { onRetry: () => void }) {
         Your badge integrity reached zero. The Min Pin has classified you as a
         recurring incident and quarantined you with the others.
       </p>
-      <p className="font-term mt-3 text-xs tracking-widest text-zinc-600">
+      <p className="font-term mt-3 text-sm tracking-widest text-zinc-400">
         ghost_session_15 (you) has joined the undead server.
       </p>
       <button
@@ -231,7 +231,7 @@ export function ResistEnding({
         }`}
       >
         <div className="font-term w-full max-w-2xl border border-emerald-900/50 bg-black/90 p-6 text-sm leading-7">
-          <div className="mb-3 flex justify-between border-b border-zinc-800 pb-2 text-[10px] tracking-[0.3em] text-zinc-600">
+          <div className="mb-3 flex justify-between border-b border-zinc-800 pb-2 text-xs tracking-[0.25em] text-zinc-400">
             <span>/dev/tty666 — PHYSICAL CONSOLE</span>
             <span className="text-sky-500">OPERATOR: T3-CHAOS-38B</span>
           </div>
@@ -254,7 +254,7 @@ export function ResistEnding({
             <p
               key={i}
               className={`font-crt fade-in text-2xl ${
-                l === "Silence." ? "text-zinc-200" : "text-zinc-500"
+                l === "Silence." ? "text-zinc-200" : "text-zinc-400"
               }`}
             >
               {l}
@@ -268,7 +268,7 @@ export function ResistEnding({
   return (
     <div className="crt relative flex h-full w-full flex-col items-center justify-center bg-black px-6">
       <div className="fade-in w-full max-w-xl border border-emerald-900/60 bg-[#020604] p-8 shadow-[0_0_80px_rgba(57,255,142,0.15)]">
-        <div className="font-term mb-4 text-[10px] tracking-[0.4em] text-emerald-800">
+        <div className="font-term mb-4 text-xs tracking-[0.3em] text-emerald-600">
           MONITOR 1 OF 1 — POWER SOURCE: UNKNOWN
         </div>
         {ticket.slice(0, ticketCount).map((l, i) => (
@@ -298,7 +298,7 @@ export function ResistEnding({
           >
             END OF EPISODE ONE
           </div>
-          <p className="font-term mx-auto mt-3 max-w-md text-xs leading-5 text-zinc-600">
+          <p className="font-term mx-auto mt-3 max-w-md text-sm leading-6 text-zinc-400">
             Did T3-Chaos actually shut down E.S.C.A.L.A.T.E. — or did the central
             intelligence let its human interface believe she had succeeded?
           </p>
@@ -348,7 +348,7 @@ export function SurrenderEnding({ onRestart }: { onRestart: () => void }) {
         ))}
         {done && (
           <div className="fade-in pt-6">
-            <div className="font-term text-[10px] tracking-[0.4em] text-red-800">
+            <div className="font-term text-xs tracking-[0.3em] text-red-600">
               ENDING 2/2 — AN ACCEPTABLE LEVEL OF FAILURE
             </div>
             <button

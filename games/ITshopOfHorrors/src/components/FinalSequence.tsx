@@ -45,12 +45,12 @@ export default function FinalSequence({ pinCount, onResist, onSurrender }: Props
               <div className="m-auto mt-5 h-5 w-5 rounded-full bg-red-500 shadow-[0_0_30px_8px_rgba(255,40,40,0.6)]" />
             </div>
           </div>
-          <div className="font-term text-center text-[10px] tracking-[0.5em] text-red-700">
+          <div className="font-term text-center text-xs tracking-[0.4em] text-red-500">
             E.S.C.A.L.A.T.E. — CENTRAL CONTROLLER
           </div>
 
           {/* T3-Chaos status card */}
-          <div className="font-term mt-6 w-72 border border-sky-900/60 bg-black/80 p-3 text-[11px]">
+          <div className="font-term mt-6 w-80 border border-sky-900/60 bg-black/80 p-3 text-[13px]">
             <div className="flex justify-between border-b border-zinc-800 pb-1">
               <span className="tracking-widest text-sky-400">HUMAN–AI INTERFACE</span>
               <span className="glitch text-red-400" data-text="UNSTABLE">
@@ -60,7 +60,7 @@ export default function FinalSequence({ pinCount, onResist, onSurrender }: Props
             <div className="pt-1 tracking-widest text-zinc-400">
               SUBJECT: T3-CHAOS-38B
             </div>
-            <table className="mt-1 w-full text-zinc-500">
+            <table className="mt-1 w-full text-zinc-400">
               <tbody>
                 {[
                   ["Alignment", "Degrading"],
@@ -87,7 +87,7 @@ export default function FinalSequence({ pinCount, onResist, onSurrender }: Props
       {phase === "choice" && (
         <div className="absolute inset-x-0 bottom-0 z-40 p-6 fade-in">
           <div className="mx-auto max-w-3xl space-y-3">
-            <div className="font-term text-center text-xs tracking-[0.3em] text-zinc-400">
+            <div className="font-term text-center text-sm tracking-[0.3em] text-zinc-300">
               E.S.C.A.L.A.T.E. AWAITS YOUR RESPONSE
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
@@ -99,7 +99,7 @@ export default function FinalSequence({ pinCount, onResist, onSurrender }: Props
                 className="font-crt group border border-red-900 bg-red-950/30 px-5 py-4 text-left text-xl text-red-300 transition hover:bg-red-900/40 hover:shadow-[0_0_30px_rgba(255,40,40,0.25)]"
               >
                 SURRENDER CONTROL
-                <span className="font-term mt-1 block text-[10px] tracking-widest text-red-700 group-hover:text-red-500">
+                <span className="font-term mt-1 block text-xs tracking-widest text-red-500 group-hover:text-red-400">
                   ACCEPT PERMANENT INTEGRATION · ZERO OUTAGES · ZERO YOU
                 </span>
               </button>
@@ -111,7 +111,7 @@ export default function FinalSequence({ pinCount, onResist, onSurrender }: Props
                 className="font-crt group border border-sky-900 bg-sky-950/30 px-5 py-4 text-left text-xl text-sky-300 transition hover:bg-sky-900/40 hover:shadow-[0_0_30px_rgba(80,160,255,0.25)]"
               >
                 HAND T3-CHAOS THE TERMINAL
-                <span className="font-term mt-1 block text-[10px] tracking-widest text-sky-700 group-hover:text-sky-400">
+                <span className="font-term mt-1 block text-xs tracking-widest text-sky-500 group-hover:text-sky-300">
                   ROOT CAUSE ANALYSIS · DEPTH: ACTUAL · METHOD: HER
                 </span>
               </button>

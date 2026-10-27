@@ -154,7 +154,7 @@ export default function App() {
             {whisper && !dialogue && (
               <div
                 key={whisper}
-                className="whisper font-crt pointer-events-none absolute inset-x-0 bottom-20 z-30 text-center text-xl italic text-zinc-500"
+                className="whisper font-crt pointer-events-none absolute inset-x-0 bottom-20 z-30 text-center text-xl italic text-zinc-400"
               >
                 {whisper}
               </div>

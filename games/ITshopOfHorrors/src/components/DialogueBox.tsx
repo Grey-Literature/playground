@@ -66,7 +66,7 @@ export default function DialogueBox({ lines, onClose }: Props) {
       <div className="mx-auto max-w-3xl rounded-sm border border-emerald-900/70 bg-black/90 px-5 py-4 shadow-[0_0_40px_rgba(0,0,0,0.9)]">
         {!isNarration && (
           <div
-            className="font-term mb-1 text-xs tracking-[0.25em]"
+            className="font-term mb-1 text-sm tracking-[0.2em]"
             style={{ color: line.color }}
           >
             ▸ {line.speaker}
@@ -74,13 +74,13 @@ export default function DialogueBox({ lines, onClose }: Props) {
         )}
         <p
           className={`font-crt min-h-[3.5rem] text-xl leading-snug sm:text-2xl ${
-            isNarration ? "italic text-zinc-400" : "text-zinc-100"
+            isNarration ? "italic text-zinc-300" : "text-zinc-100"
           }`}
         >
           {line.text.slice(0, chars)}
           {!fullyTyped && <span className="text-emerald-400">▌</span>}
         </p>
-        <div className="font-term mt-2 flex items-center justify-between text-[10px] tracking-widest text-zinc-600">
+        <div className="font-term mt-2 flex items-center justify-between text-xs tracking-widest text-zinc-400">
           <span>
             {idx + 1} / {lines.length}
           </span>
