@@ -1,0 +1,830 @@
+import { useEffect, useRef } from "react";
+import {
+  MAP,
+  MAP_W,
+  MAP_H,
+  TILE,
+  SPAWN,
+  MINPIN_SPAWN,
+  MINPIN_PATROL,
+  T3_POS,
+  tileAt,
+  isSolid,
+  findTiles,
+} from "../game/mapData";
+import type { Flags } from "../game/types";
+import { PICKUPS, GREEN_RACK, KEYCARD_SPOT, available } from "../game/pickups";
+import { sfxBark, sfxScare } from "../game/audio";
+
+const VIEW_W = 960;
+const VIEW_H = 600;
+const PLAYER_SPEED = 4.3; // tiles/sec
+const CHASE_SPEED = 3.5;
+const PATROL_SPEED = 2.1;
+const PLAYER_R = 0.3;
+const CONE = 0.45; // headlamp half-angle, radians
+const GLINT_SEE = 3.2; // how far the headlamp finds a glint
+const GLINT_NEAR = 1.2; // close enough to notice without the lamp
+
+interface Props {
+  flags: Flags;
+  paused: boolean;
+  onInteract: (id: string) => void;
+  onCaught: () => void;
+}
+
+interface Interactable {
+  id: string;
+  x: number;
+  y: number;
+}
+
+function hash(x: number, y: number): number {
+  let h = (x * 73856093) ^ (y * 19349663);
+  h = (h ^ (h >> 13)) * 1274126177;
+  return ((h ^ (h >> 16)) >>> 0) / 4294967295;
+}
+
+export default function GameCanvas({ flags, paused, onInteract, onCaught }: Props) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const flagsRef = useRef(flags);
+  const pausedRef = useRef(paused);
+  flagsRef.current = flags;
+  pausedRef.current = paused;
+
+  const onInteractRef = useRef(onInteract);
+  const onCaughtRef = useRef(onCaught);
+  onInteractRef.current = onInteract;
+  onCaughtRef.current = onCaught;
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    // ---------- interactables ----------
+    const statics: Interactable[] = [];
+    const add = (ch: string, id: string) =>
+      findTiles(ch).forEach((t) => statics.push({ id, x: t.x + 0.5, y: t.y + 0.5 }));
+    add("T", "terminal");
+    add("P", "printer");
+    add("U", "undead");
+    add("D", "door");
+    add("C", "core");
+    add("K", "coffee");
+    add("W", "whiteboard");
+    // every desk and rack can be searched
+    const searchables: Interactable[] = [...findTiles("="), ...findTiles("S")].map((t) => ({
+      id: `search:${t.x},${t.y}`,
+      x: t.x + 0.5,
+      y: t.y + 0.5,
+    }));
+    const glints = PICKUPS.filter((p) => p.reveal === "glint");
+    const revealed = new Set<string>();
+
+    // ---------- mutable state ----------
+    const player = { x: SPAWN.x, y: SPAWN.y, dx: 0, dy: 1, moving: false };
+    const pin = {
+      x: MINPIN_SPAWN.x,
+      y: MINPIN_SPAWN.y,
+      wp: 0,
+      mode: "patrol" as "patrol" | "chase" | "follow",
+      cooldown: 0,
+      barked: false,
+    };
+    const keys = new Set<string>();
+    let time = 0;
+    let flicker = 1;
+    let flickerTimer = 0;
+    let pacifyFired = false;
+    let raf = 0;
+    let last = performance.now();
+
+    const ghosts = [
+      { x: 31.5, y: 23.5, p: 0 },
+      { x: 37.5, y: 26.0, p: 2.1 },
+      { x: 32.5, y: 21.8, p: 4.2 },
+    ];
+
+    // ---------- input ----------
+    const down = (e: KeyboardEvent) => {
+      const k = e.key.toLowerCase();
+      if (["arrowup", "arrowdown", "arrowleft", "arrowright", " "].includes(k))
+        e.preventDefault();
+      keys.add(k);
+      if ((k === "e" || k === "enter") && !pausedRef.current) {
+        const target = nearestInteractable();
+        if (target) onInteractRef.current(target.id);
+      }
+    };
+    const up = (e: KeyboardEvent) => keys.delete(e.key.toLowerCase());
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
+
+    // Nearest wins; story objects get a small head start so a desk beside
+    // the ticket terminal doesn't steal its prompt.
+    function nearestInteractable(): Interactable | null {
+      let best: Interactable | null = null;
+      let bestScore = Infinity;
+      const consider = (it: Interactable, range: number, bias = 0) => {
+        const d = Math.hypot(it.x - player.x, it.y - player.y);
+        if (d < range && d - bias < bestScore) {
+          bestScore = d - bias;
+          best = it;
+        }
+      };
+      for (const s of statics) consider(s, 1.8, 0.3);
+      consider({ id: "minpin", x: pin.x, y: pin.y }, 2.2);
+      const f = flagsRef.current;
+      for (const g of glints)
+        if (revealed.has(g.id) && available(g, f)) consider({ id: `pickup:${g.id}`, x: g.x, y: g.y }, 1.1, 0.3);
+      for (const s of searchables) consider(s, 1.3);
+      return best;
+    }
+
+    function revealGlints(f: Flags) {
+      const facing = Math.atan2(player.dy, player.dx);
+      for (const g of glints) {
+        if (revealed.has(g.id) || !available(g, f)) continue;
+        const d = Math.hypot(g.x - player.x, g.y - player.y);
+        let off = Math.abs(Math.atan2(g.y - player.y, g.x - player.x) - facing);
+        if (off > Math.PI) off = Math.PI * 2 - off;
+        if (d < GLINT_NEAR || (d < GLINT_SEE && off < CONE)) revealed.add(g.id);
+      }
+    }
+
+    // ---------- collision ----------
+    function blocked(x: number, y: number): boolean {
+      const dOpen = flagsRef.current.doorOpen;
+      const r = PLAYER_R;
+      return (
+        isSolid(tileAt(x - r, y - r), dOpen) ||
+        isSolid(tileAt(x + r, y - r), dOpen) ||
+        isSolid(tileAt(x - r, y + r), dOpen) ||
+        isSolid(tileAt(x + r, y + r), dOpen)
+      );
+    }
+
+    function move(ent: { x: number; y: number }, dx: number, dy: number) {
+      if (dx !== 0 && !blocked(ent.x + dx, ent.y)) ent.x += dx;
+      if (dy !== 0 && !blocked(ent.x, ent.y + dy)) ent.y += dy;
+    }
+
+    // ---------- update ----------
+    function update(dt: number) {
+      time += dt;
+
+      // flashlight flicker
+      flickerTimer -= dt;
+      if (flickerTimer <= 0) {
+        flicker = Math.random() < 0.12 ? 0.55 + Math.random() * 0.3 : 1;
+        flickerTimer = 0.06 + Math.random() * 0.25;
+      }
+
+      if (pausedRef.current) return;
+
+      // player movement
+      let vx = 0;
+      let vy = 0;
+      if (keys.has("w") || keys.has("arrowup")) vy -= 1;
+      if (keys.has("s") || keys.has("arrowdown")) vy += 1;
+      if (keys.has("a") || keys.has("arrowleft")) vx -= 1;
+      if (keys.has("d") || keys.has("arrowright")) vx += 1;
+      const len = Math.hypot(vx, vy);
+      player.moving = len > 0;
+      if (len > 0) {
+        vx /= len;
+        vy /= len;
+        player.dx = vx;
+        player.dy = vy;
+        move(player, vx * PLAYER_SPEED * dt, vy * PLAYER_SPEED * dt);
+      }
+
+      const f = flagsRef.current;
+      revealGlints(f);
+
+      // ---------- min pin ----------
+      pin.cooldown = Math.max(0, pin.cooldown - dt);
+      const dist = Math.hypot(player.x - pin.x, player.y - pin.y);
+
+      if (f.minPinPacified && !f.hasKeycard) {
+        // it leads you to the rack it buried her keycard in, and sits
+        pin.mode = "follow";
+        const tgt = pin.y < 13.6 ? { x: 33.9, y: 13.6 } : KEYCARD_SPOT;
+        const d = Math.hypot(tgt.x - pin.x, tgt.y - pin.y);
+        if (d > 0.15) {
+          const sp = Math.min(2.6 * dt, d);
+          move(pin, ((tgt.x - pin.x) / d) * sp, ((tgt.y - pin.y) / d) * sp);
+        }
+      } else if (f.minPinPacified) {
+        pin.mode = "follow";
+        if (dist > 2.4) {
+          const sp = Math.min(3.2, dist) * dt;
+          move(pin, ((player.x - pin.x) / dist) * sp * 1.2, ((player.y - pin.y) / dist) * sp * 1.2);
+        }
+      } else {
+        const canSee = dist < 6 && pin.cooldown <= 0;
+        if (canSee && pin.mode !== "chase") {
+          pin.mode = "chase";
+          if (!pin.barked) {
+            sfxBark();
+            pin.barked = true;
+          }
+        }
+        if (!canSee && dist > 8) {
+          pin.mode = "patrol";
+          pin.barked = false;
+        }
+
+        if (pin.mode === "chase" && pin.cooldown <= 0) {
+          const sp = CHASE_SPEED * dt;
+          move(pin, ((player.x - pin.x) / dist) * sp, ((player.y - pin.y) / dist) * sp);
+          // caught!
+          if (dist < 0.62 && !f.gotToken) {
+            sfxScare();
+            onCaughtRef.current();
+            player.x = SPAWN.x;
+            player.y = SPAWN.y;
+            pin.x = MINPIN_SPAWN.x;
+            pin.y = MINPIN_SPAWN.y;
+            pin.mode = "patrol";
+            pin.cooldown = 4;
+            pin.barked = false;
+          }
+          // token in hand → it scans you instead of shredding you
+          if (dist < 1.9 && f.gotToken && !pacifyFired) {
+            pacifyFired = true;
+            onInteractRef.current("minpin");
+          }
+        } else {
+          // patrol
+          const wp = MINPIN_PATROL[pin.wp];
+          const d = Math.hypot(wp.x - pin.x, wp.y - pin.y);
+          if (d < 0.25) pin.wp = (pin.wp + 1) % MINPIN_PATROL.length;
+          else {
+            const sp = PATROL_SPEED * dt;
+            move(pin, ((wp.x - pin.x) / d) * sp, ((wp.y - pin.y) / d) * sp);
+          }
+          if (dist < 1.9 && f.gotToken && !pacifyFired) {
+            pacifyFired = true;
+            onInteractRef.current("minpin");
+          }
+        }
+      }
+    }
+
+    // ---------- rendering ----------
+    function camera() {
+      let cx = player.x * TILE - VIEW_W / 2;
+      let cy = player.y * TILE - VIEW_H / 2;
+      cx = Math.max(0, Math.min(MAP_W * TILE - VIEW_W, cx));
+      cy = Math.max(0, Math.min(MAP_H * TILE - VIEW_H, cy));
+      return { cx, cy };
+    }
+
+    function render() {
+      if (!ctx) return;
+      const { cx, cy } = camera();
+      const f = flagsRef.current;
+
+      ctx.fillStyle = "#020304";
+      ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+
+      const x0 = Math.floor(cx / TILE);
+      const y0 = Math.floor(cy / TILE);
+      const x1 = Math.min(MAP_W - 1, Math.ceil((cx + VIEW_W) / TILE));
+      const y1 = Math.min(MAP_H - 1, Math.ceil((cy + VIEW_H) / TILE));
+
+      for (let ty = y0; ty <= y1; ty++) {
+        for (let tx = x0; tx <= x1; tx++) {
+          drawTile(ctx, MAP[ty][tx], tx, ty, cx, cy, f);
+        }
+      }
+
+      drawGhosts(ctx, cx, cy);
+      drawT3(ctx, cx, cy);
+      drawMinPin(ctx, cx, cy, f);
+      drawPlayer(ctx, cx, cy);
+      drawDarkness(ctx, cx, cy, f);
+      drawEmissive(ctx, cx, cy, f, x0, y0, x1, y1);
+      drawPrompt(ctx, f);
+
+      if (pin.mode === "chase" && !f.minPinPacified && !f.gotToken) {
+        ctx.strokeStyle = `rgba(255,30,30,${0.35 + 0.3 * Math.sin(time * 10)})`;
+        ctx.lineWidth = 10;
+        ctx.strokeRect(5, 5, VIEW_W - 10, VIEW_H - 10);
+        ctx.fillStyle = "rgba(255,60,60,0.85)";
+        ctx.font = '20px "VT323", monospace';
+        ctx.textAlign = "center";
+        ctx.fillText("⚠ 406 NOT ACCEPTABLE — THREAT DETECTED: YOU", VIEW_W / 2, 34);
+      }
+    }
+
+    function drawTile(
+      c: CanvasRenderingContext2D,
+      ch: string,
+      tx: number,
+      ty: number,
+      cx: number,
+      cy: number,
+      f: Flags,
+    ) {
+      const px = tx * TILE - cx;
+      const py = ty * TILE - cy;
+      const h = hash(tx, ty);
+
+      if (ch === "#") {
+        c.fillStyle = "#0d1219";
+        c.fillRect(px, py, TILE, TILE);
+        c.fillStyle = "#141c26";
+        c.fillRect(px, py, TILE, 6);
+        c.strokeStyle = "rgba(0,0,0,0.5)";
+        c.strokeRect(px + 0.5, py + 0.5, TILE - 1, TILE - 1);
+        return;
+      }
+
+      // floor base for everything else
+      c.fillStyle = h > 0.86 ? "#0c1014" : "#0a0d11";
+      c.fillRect(px, py, TILE, TILE);
+      c.strokeStyle = "rgba(255,255,255,0.025)";
+      c.strokeRect(px + 0.5, py + 0.5, TILE - 1, TILE - 1);
+      if (h > 0.93) {
+        c.fillStyle = "rgba(120,30,20,0.08)";
+        c.fillRect(px + 6, py + 10, 18, 12);
+      }
+
+      switch (ch) {
+        case "~": {
+          // creeping cables
+          c.strokeStyle = "#2a0f12";
+          c.lineWidth = 4;
+          c.beginPath();
+          const wob = Math.sin(time * 1.4 + tx + ty) * 3;
+          c.moveTo(px, py + 10 + wob);
+          c.bezierCurveTo(px + 14, py + 26, px + 26, py + 2, px + TILE, py + 22 - wob);
+          c.stroke();
+          c.strokeStyle = "#3d1418";
+          c.lineWidth = 2;
+          c.beginPath();
+          c.moveTo(px + 4, py + 32);
+          c.bezierCurveTo(px + 18, py + 18 - wob, px + 24, py + 36, px + TILE, py + 30);
+          c.stroke();
+          c.lineWidth = 1;
+          break;
+        }
+        case "=": {
+          c.fillStyle = "#1c1812";
+          c.fillRect(px + 2, py + 4, TILE - 4, TILE - 8);
+          c.fillStyle = "#2b2418";
+          c.fillRect(px + 2, py + 4, TILE - 4, 6);
+          // dead monitor
+          c.fillStyle = "#05070a";
+          c.fillRect(px + 10, py + 12, 20, 14);
+          c.strokeStyle = "#333";
+          c.strokeRect(px + 10, py + 12, 20, 14);
+          break;
+        }
+        case "S": {
+          c.fillStyle = "#11161d";
+          c.fillRect(px + 3, py + 2, TILE - 6, TILE - 4);
+          c.strokeStyle = "#1f2a36";
+          c.strokeRect(px + 3, py + 2, TILE - 6, TILE - 4);
+          for (let i = 0; i < 4; i++) {
+            c.fillStyle = "#0a0e13";
+            c.fillRect(px + 6, py + 5 + i * 8, TILE - 12, 5);
+          }
+          break;
+        }
+        case "T": {
+          c.fillStyle = "#1c1812";
+          c.fillRect(px + 2, py + 6, TILE - 4, TILE - 10);
+          c.fillStyle = "#07131a";
+          c.fillRect(px + 8, py + 10, 24, 16);
+          c.fillStyle = `rgba(77,227,255,${0.5 + 0.2 * Math.sin(time * 3)})`;
+          c.fillRect(px + 10, py + 12, 20, 12);
+          c.fillStyle = "#032028";
+          for (let i = 0; i < 3; i++) c.fillRect(px + 11, py + 13 + i * 4, 14 - i * 4, 2);
+          break;
+        }
+        case "P": {
+          c.fillStyle = "#4a4336";
+          c.fillRect(px + 4, py + 10, TILE - 8, 22);
+          c.fillStyle = "#5a5244";
+          c.fillRect(px + 4, py + 10, TILE - 8, 6);
+          // paper feed (always printing)
+          const feed = (time * 10) % 12;
+          c.fillStyle = "#cfd4ce";
+          c.fillRect(px + 10, py + 2 - feed / 3, 20, 10 + feed / 2);
+          c.fillStyle = "#777";
+          for (let i = 0; i < 3; i++) c.fillRect(px + 12, py + 4 + i * 3 - feed / 3, 16, 1);
+          break;
+        }
+        case "U": {
+          c.fillStyle = "#10161a";
+          c.fillRect(px + 3, py + 2, TILE - 6, TILE - 4);
+          c.strokeStyle = "#1c3a2a";
+          c.strokeRect(px + 3, py + 2, TILE - 6, TILE - 4);
+          for (let i = 0; i < 4; i++) {
+            c.fillStyle = "#0a1410";
+            c.fillRect(px + 6, py + 5 + i * 8, TILE - 12, 5);
+          }
+          // unplugged cable coiled at its feet
+          c.strokeStyle = "#222";
+          c.lineWidth = 3;
+          c.beginPath();
+          c.arc(px + TILE / 2, py + TILE + 6, 8, 0, Math.PI * 2);
+          c.stroke();
+          c.lineWidth = 1;
+          break;
+        }
+        case "D": {
+          if (f.doorOpen) {
+            c.fillStyle = "#0a0d11";
+            c.fillRect(px, py, TILE, TILE);
+            c.fillStyle = "#1a2a1e";
+            c.fillRect(px, py, 4, TILE);
+            c.fillRect(px + TILE - 4, py, 4, TILE);
+          } else {
+            c.fillStyle = "#1a1016";
+            c.fillRect(px, py, TILE, TILE);
+            c.fillStyle = "#241420";
+            c.fillRect(px + 3, py + 3, TILE - 6, TILE - 6);
+            c.strokeStyle = `rgba(255,40,40,${0.4 + 0.25 * Math.sin(time * 2.2)})`;
+            c.strokeRect(px + 3.5, py + 3.5, TILE - 7, TILE - 7);
+            c.fillStyle = "#ff3b3b";
+            c.font = '11px "VT323", monospace';
+            c.textAlign = "center";
+            c.fillText("403", px + TILE / 2, py + TILE / 2 + 4);
+          }
+          break;
+        }
+        case "C": {
+          const pulse = 0.5 + 0.5 * Math.sin(time * 2.6);
+          c.fillStyle = "#0c0f14";
+          c.fillRect(px - 6, py - 14, TILE + 12, TILE + 18);
+          c.strokeStyle = "#232f3d";
+          c.strokeRect(px - 6, py - 14, TILE + 12, TILE + 18);
+          c.strokeStyle = `rgba(255,40,40,${0.4 + 0.5 * pulse})`;
+          c.lineWidth = 3;
+          c.beginPath();
+          c.arc(px + TILE / 2, py + TILE / 2, 13 + pulse * 2, 0, Math.PI * 2);
+          c.stroke();
+          c.lineWidth = 1;
+          c.fillStyle = `rgba(255,70,70,${0.5 + 0.5 * pulse})`;
+          c.beginPath();
+          c.arc(px + TILE / 2, py + TILE / 2, 5, 0, Math.PI * 2);
+          c.fill();
+          break;
+        }
+        case "K": {
+          c.fillStyle = "#2a2d33";
+          c.fillRect(px + 6, py + 4, TILE - 12, TILE - 8);
+          c.fillStyle = "#15171b";
+          c.fillRect(px + 10, py + 8, TILE - 20, 10);
+          c.fillStyle = "#39ff8e";
+          c.font = '8px "VT323", monospace';
+          c.textAlign = "center";
+          c.fillText("418", px + TILE / 2, py + 16);
+          break;
+        }
+        case "W": {
+          c.fillStyle = "#0d1219";
+          c.fillRect(px, py, TILE, TILE);
+          c.fillStyle = "#d8d8d2";
+          c.fillRect(px + 4, py + 6, TILE - 8, TILE - 16);
+          c.strokeStyle = "#5a2020";
+          for (let i = 0; i < 4; i++) {
+            c.beginPath();
+            c.moveTo(px + 7, py + 10 + i * 5);
+            c.lineTo(px + TILE - 8 - hash(tx + i, ty) * 10, py + 10 + i * 5);
+            c.stroke();
+          }
+          break;
+        }
+      }
+    }
+
+    function drawGhosts(c: CanvasRenderingContext2D, cx: number, cy: number) {
+      for (const g of ghosts) {
+        const gx = g.x * TILE - cx;
+        const gy = g.y * TILE - cy + Math.sin(time * 1.2 + g.p) * 5;
+        if (gx < -60 || gx > VIEW_W + 60 || gy < -60 || gy > VIEW_H + 60) continue;
+        const a = 0.1 + 0.07 * Math.sin(time * 2.1 + g.p * 3);
+        c.fillStyle = `rgba(110,255,168,${a})`;
+        c.beginPath();
+        c.arc(gx, gy - 10, 8, Math.PI, 0);
+        c.lineTo(gx + 8, gy + 14);
+        c.lineTo(gx + 3, gy + 8);
+        c.lineTo(gx - 3, gy + 14);
+        c.lineTo(gx - 8, gy + 8);
+        c.closePath();
+        c.fill();
+      }
+    }
+
+    function drawT3(c: CanvasRenderingContext2D, cx: number, cy: number) {
+      const px = T3_POS.x * TILE - cx;
+      const py = T3_POS.y * TILE - cy;
+      if (px < -60 || px > VIEW_W + 60 || py < -60 || py > VIEW_H + 60) return;
+      const bob = Math.sin(time * 1.6) * 1.5;
+      // body — half human, half machine
+      c.fillStyle = "#1b222c";
+      c.fillRect(px - 7, py - 10 + bob, 14, 22);
+      c.fillStyle = "#2a3340";
+      c.fillRect(px - 7, py - 10 + bob, 7, 22);
+      // head
+      c.fillStyle = "#c9a68a";
+      c.beginPath();
+      c.arc(px - 3, py - 16 + bob, 6, Math.PI / 2, (Math.PI * 3) / 2);
+      c.fill();
+      c.fillStyle = "#39414d";
+      c.beginPath();
+      c.arc(px + 3, py - 16 + bob, 6, (Math.PI * 3) / 2, Math.PI / 2);
+      c.fill();
+      // severed cable from arm
+      c.strokeStyle = "#444";
+      c.lineWidth = 2;
+      c.beginPath();
+      c.moveTo(px + 8, py + 2 + bob);
+      c.bezierCurveTo(px + 14, py + 10, px + 10, py + 18, px + 16, py + 24);
+      c.stroke();
+      c.lineWidth = 1;
+    }
+
+    function drawMinPin(c: CanvasRenderingContext2D, cx: number, cy: number, f: Flags) {
+      const px = pin.x * TILE - cx;
+      const py = pin.y * TILE - cy;
+      if (px < -60 || px > VIEW_W + 60 || py < -60 || py > VIEW_H + 60) return;
+      const trot = Math.sin(time * 14) * 2;
+      // body
+      c.fillStyle = "#151313";
+      c.fillRect(px - 9, py - 5, 18, 9);
+      // legs
+      c.fillStyle = "#1c1818";
+      c.fillRect(px - 8, py + 3, 3, 5 + trot);
+      c.fillRect(px + 5, py + 3, 3, 5 - trot);
+      // head
+      c.fillRect(px + 6, py - 11, 8, 8);
+      // pointy ears
+      c.beginPath();
+      c.moveTo(px + 6, py - 11);
+      c.lineTo(px + 7, py - 17);
+      c.lineTo(px + 10, py - 11);
+      c.fill();
+      c.beginPath();
+      c.moveTo(px + 10, py - 11);
+      c.lineTo(px + 13, py - 17);
+      c.lineTo(px + 14, py - 11);
+      c.fill();
+      // tail antenna
+      c.strokeStyle = "#333";
+      c.beginPath();
+      c.moveTo(px - 9, py - 4);
+      c.lineTo(px - 14, py - 12 + (f.minPinPacified ? Math.sin(time * 10) * 4 : 0));
+      c.stroke();
+    }
+
+    function drawPlayer(c: CanvasRenderingContext2D, cx: number, cy: number) {
+      const px = player.x * TILE - cx;
+      const py = player.y * TILE - cy;
+      const step = player.moving ? Math.sin(time * 12) * 2 : 0;
+      // shadow
+      c.fillStyle = "rgba(0,0,0,0.45)";
+      c.beginPath();
+      c.ellipse(px, py + 12, 9, 4, 0, 0, Math.PI * 2);
+      c.fill();
+      // legs
+      c.fillStyle = "#222a33";
+      c.fillRect(px - 5, py + 4, 4, 8 + step);
+      c.fillRect(px + 1, py + 4, 4, 8 - step);
+      // hoodie body
+      c.fillStyle = "#1f4436";
+      c.fillRect(px - 7, py - 8, 14, 14);
+      // lanyard
+      c.strokeStyle = "#9fe8c4";
+      c.beginPath();
+      c.moveTo(px - 3, py - 8);
+      c.lineTo(px, py);
+      c.lineTo(px + 3, py - 8);
+      c.stroke();
+      c.fillStyle = "#cfd4ce";
+      c.fillRect(px - 2, py - 1, 4, 5);
+      // head
+      c.fillStyle = "#c9a68a";
+      c.beginPath();
+      c.arc(px, py - 13, 6, 0, Math.PI * 2);
+      c.fill();
+      // headlamp
+      c.fillStyle = "#ffe9a3";
+      c.fillRect(px - 2 + player.dx * 3, py - 16 + player.dy * 2, 4, 3);
+    }
+
+    function drawDarkness(c: CanvasRenderingContext2D, cx: number, cy: number, f: Flags) {
+      const px = player.x * TILE - cx;
+      const py = player.y * TILE - cy;
+      const inServerRoom = player.y < 9.5 && f.doorOpen;
+      const base = inServerRoom ? 170 : 130;
+      const r0 = base * flicker * (0.92 + 0.08 * Math.sin(time * 7));
+      const r1 = r0 * 2.6;
+      const grad = c.createRadialGradient(px, py, r0 * 0.35, px, py, r1);
+      grad.addColorStop(0, "rgba(2,3,4,0)");
+      grad.addColorStop(0.45, "rgba(2,3,4,0.45)");
+      grad.addColorStop(1, inServerRoom ? "rgba(20,2,2,0.93)" : "rgba(2,3,4,0.955)");
+      c.fillStyle = grad;
+      c.fillRect(0, 0, VIEW_W, VIEW_H);
+    }
+
+    function drawEmissive(
+      c: CanvasRenderingContext2D,
+      cx: number,
+      cy: number,
+      f: Flags,
+      x0: number,
+      y0: number,
+      x1: number,
+      y1: number,
+    ) {
+      c.save();
+      c.globalCompositeOperation = "lighter";
+      const dot = (x: number, y: number, r: number, col: string) => {
+        c.fillStyle = col;
+        c.beginPath();
+        c.arc(x, y, r, 0, Math.PI * 2);
+        c.fill();
+      };
+      for (let ty = y0; ty <= y1; ty++) {
+        for (let tx = x0; tx <= x1; tx++) {
+          const ch = MAP[ty][tx];
+          const px = tx * TILE - cx;
+          const py = ty * TILE - cy;
+          const h = hash(tx, ty);
+          if (ch === "S") {
+            // the rack that never went red
+            const on = (tx === GREEN_RACK.x && ty === GREEN_RACK.y) || Math.sin(time * (2 + h * 5) + h * 20) > 0;
+            dot(px + 9, py + 7, 1.6, on ? "rgba(60,255,120,0.6)" : "rgba(255,60,60,0.55)");
+            dot(px + TILE - 10, py + 15, 1.4, on ? "rgba(255,170,40,0.5)" : "rgba(60,180,255,0.4)");
+          } else if (ch === "U") {
+            const a = 0.25 + 0.2 * Math.sin(time * 2);
+            dot(px + TILE / 2, py + TILE / 2, 16, `rgba(50,255,140,${a * 0.14})`);
+            dot(px + 9, py + 8, 1.8, "rgba(110,255,168,0.8)");
+          } else if (ch === "T") {
+            dot(px + TILE / 2, py + 18, 14, "rgba(77,227,255,0.12)");
+          } else if (ch === "P") {
+            dot(px + 8, py + 28, 2, `rgba(255,40,40,${0.5 + 0.5 * Math.sin(time * 5)})`);
+          } else if (ch === "C") {
+            const pulse = 0.5 + 0.5 * Math.sin(time * 2.6);
+            dot(px + TILE / 2, py + TILE / 2, 26, `rgba(255,50,50,${0.1 + pulse * 0.1})`);
+          } else if (ch === "D" && !f.doorOpen) {
+            dot(px + TILE / 2, py + TILE / 2, 12, "rgba(255,40,40,0.1)");
+          }
+        }
+      }
+      // things the headlamp has found
+      for (const g of glints) {
+        if (!revealed.has(g.id) || !available(g, f)) continue;
+        const px = g.x * TILE - cx;
+        const py = g.y * TILE - cy;
+        if (px < -20 || px > VIEW_W + 20 || py < -20 || py > VIEW_H + 20) continue;
+        const tw = 0.55 + 0.45 * Math.sin(time * 4.2 + g.x * 3.1);
+        const col = g.id === "cyan" ? "80,230,255" : "255,236,190";
+        dot(px, py, 7, `rgba(${col},${0.12 * tw})`);
+        dot(px, py, 1.8, `rgba(${col},${0.9 * tw})`);
+        c.strokeStyle = `rgba(${col},${0.7 * tw})`;
+        c.beginPath();
+        c.moveTo(px - 5 * tw, py);
+        c.lineTo(px + 5 * tw, py);
+        c.moveTo(px, py - 5 * tw);
+        c.lineTo(px, py + 5 * tw);
+        c.stroke();
+      }
+
+      // min pin eyes
+      {
+        const px = pin.x * TILE - cx;
+        const py = pin.y * TILE - cy;
+        const col = f.minPinPacified
+          ? "rgba(60,255,120,0.9)"
+          : pin.mode === "chase"
+            ? "rgba(255,30,30,1)"
+            : "rgba(255,120,40,0.9)";
+        dot(px + 8, py - 8, 1.7, col);
+        dot(px + 12, py - 8, 1.7, col);
+        if (pin.mode === "chase" && !f.minPinPacified)
+          dot(px + 10, py - 8, 10, "rgba(255,30,30,0.15)");
+      }
+      // T3's diagnostic eye
+      {
+        const px = T3_POS.x * TILE - cx;
+        const py = T3_POS.y * TILE - cy;
+        const red = Math.sin(time * 3.3) > 0;
+        dot(px + 3, py - 16, 2, red ? "rgba(255,50,50,0.95)" : "rgba(80,160,255,0.95)");
+        dot(px + 3, py - 16, 9, red ? "rgba(255,50,50,0.15)" : "rgba(80,160,255,0.15)");
+      }
+      // player headlamp cone
+      {
+        const px = player.x * TILE - cx;
+        const py = player.y * TILE - cy;
+        const ang = Math.atan2(player.dy, player.dx);
+        const g2 = c.createRadialGradient(px, py - 14, 2, px, py - 14, 90);
+        g2.addColorStop(0, "rgba(255,240,190,0.1)");
+        g2.addColorStop(1, "rgba(255,240,190,0)");
+        c.fillStyle = g2;
+        c.beginPath();
+        c.moveTo(px, py - 14);
+        c.arc(px, py - 14, 90, ang - 0.45, ang + 0.45);
+        c.closePath();
+        c.fill();
+      }
+      c.restore();
+    }
+
+    const LABELS: Record<string, (f: Flags) => string> = {
+      terminal: () => "TICKET QUEUE TERMINAL",
+      printer: () => "THE PRINTER THAT KNOWS",
+      undead: () => "THE UNDEAD SERVER",
+      door: (f) => (f.doorOpen ? "SERVER ROOM" : "SERVER ROOM DOOR — LOCKED"),
+      core: () => "E.S.C.A.L.A.T.E. CORE",
+      coffee: () => "COFFEE MACHINE",
+      whiteboard: () => "WHITEBOARD",
+      minpin: (f) =>
+        f.minPinPacified
+          ? "MIN PIN (FRIEND-SHAPED)"
+          : f.gotToken
+            ? "PRESENT WHITELIST TOKEN"
+            : "FERAL SECURITY DAEMON — DO NOT",
+    };
+
+    function drawPrompt(c: CanvasRenderingContext2D, f: Flags) {
+      if (pausedRef.current) return;
+      const t = nearestInteractable();
+      if (!t) return;
+      const label = LABELS[t.id]
+        ? LABELS[t.id](f)
+        : t.id.startsWith("pickup:")
+          ? "SOMETHING GLINTS"
+          : t.id.startsWith("search:")
+            ? tileAt(t.x, t.y) === "=" ? "SEARCH DESK" : "SEARCH RACK"
+            : t.id;
+      const text = `[E] ${label}`;
+      c.font = '22px "VT323", monospace';
+      c.textAlign = "center";
+      const w = c.measureText(text).width + 28;
+      c.fillStyle = "rgba(3,6,8,0.82)";
+      c.fillRect(VIEW_W / 2 - w / 2, VIEW_H - 54, w, 32);
+      c.strokeStyle = "rgba(57,255,142,0.5)";
+      c.strokeRect(VIEW_W / 2 - w / 2 + 0.5, VIEW_H - 53.5, w - 1, 31);
+      c.fillStyle = "#9fe8c4";
+      c.fillText(text, VIEW_W / 2, VIEW_H - 31);
+    }
+
+    // ---------- loop ----------
+    function frame(now: number) {
+      const dt = Math.min(0.05, (now - last) / 1000);
+      last = now;
+      update(dt);
+      render();
+      raf = requestAnimationFrame(frame);
+    }
+    raf = requestAnimationFrame(frame);
+
+    // dev-only verification hook (stripped from the release build)
+    if (import.meta.env.DEV) {
+      const w = window as unknown as { __ishop?: Record<string, unknown> };
+      w.__ishop = {
+        ...w.__ishop,
+        tp: (x: number, y: number) => {
+          player.x = x;
+          player.y = y;
+        },
+        where: () => ({ x: player.x, y: player.y, pin: { x: pin.x, y: pin.y, mode: pin.mode } }),
+        face: (dx: number, dy: number) => {
+          player.dx = dx;
+          player.dy = dy;
+        },
+        revealed: () => [...revealed],
+        interact: () => {
+          const t = nearestInteractable();
+          if (t) onInteractRef.current(t.id);
+          return t?.id ?? null;
+        },
+      };
+    }
+
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("keydown", down);
+      window.removeEventListener("keyup", up);
+    };
+  }, []);
+
+  return (
+    <canvas
+      ref={canvasRef}
+      width={VIEW_W}
+      height={VIEW_H}
+      className="h-full w-full object-contain"
+      style={{ imageRendering: "pixelated" }}
+    />
+  );
+}
