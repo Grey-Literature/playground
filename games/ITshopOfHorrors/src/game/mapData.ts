@@ -107,7 +107,24 @@ export const CAMERAS: { x: number; y: number; facing: number }[] = [
   { x: 31, y: 29, facing: -Math.PI / 2 }, // annex, south wall
 ];
 
+// MAP is mutable (the building moves, CLAUDE.md §4b mechanic 4), but only
+// through setTile, and only for edits shifts.ts has cleared with reach.ts.
+// It keeps the same array identity so every importer sees the change.
 export const MAP: string[][] = buildMap();
+
+export function setTile(x: number, y: number, ch: string) {
+  MAP[y][x] = ch;
+}
+
+// back to the building as drawn: a fresh run
+export function resetMap() {
+  const base = buildMap();
+  for (let y = 0; y < MAP_H; y++) MAP[y] = base[y];
+}
+
+export function cloneMap(): string[][] {
+  return MAP.map((row) => [...row]);
+}
 
 export const SPAWN = { x: 4.5, y: 23.5 }; // office, tile coords
 

@@ -12,6 +12,9 @@ export interface Watch {
   keyEcho: string[]; // your last 12 game keys, for the undead server's jr_tech
   usedDark: boolean; // ever held the headlamp off
   saidISeeYou: boolean;
+  shifted: string[]; // building shifts applied this run (shifts.ts), in order
+  act3Time: number; // seconds spent in Act III, for the silence beat
+  silenced: boolean; // the silence beat has happened
 }
 
 export function createWatch(): Watch {
@@ -23,6 +26,9 @@ export function createWatch(): Watch {
     keyEcho: [],
     usedDark: false,
     saidISeeYou: false,
+    shifted: [],
+    act3Time: 0,
+    silenced: false,
   };
 }
 

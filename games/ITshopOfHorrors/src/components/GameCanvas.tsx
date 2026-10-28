@@ -13,13 +13,17 @@ import {
   tileAt,
   isSolid,
   findTiles,
+  resetMap,
+  setTile,
 } from "../game/mapData";
 import type { Flags } from "../game/types";
 import { actOf } from "../game/acts";
 import { TICKETS, TICKET_BY_ID, isOpen, ticketAt } from "../game/tickets";
 import { echoKey, type Dir, type Watch } from "../game/watch";
 import { PICKUPS, GREEN_RACK, KEYCARD_SPOT, available } from "../game/pickups";
-import { sfxBark, sfxGrowl, sfxScare } from "../game/audio";
+import { SHIFTS, SHIFT_BY_ID, type Shift } from "../game/shifts";
+import { keepsEverythingReachable } from "../game/reach";
+import { sfxBark, sfxGrowl, sfxScare, sfxThunk, sfxKeyTap } from "../game/audio";
 
 const VIEW_W = 960;
 const VIEW_H = 600;
@@ -41,6 +45,16 @@ const PEEK_RANGE = 7; // desk monitors that report your position, Act II on
 const PEEK_OFF_CONE = 1.2; // ...only ones well outside the headlamp
 const WATCHING_CART = { x: 37, y: 10 }; // the triage cart that says I SEE YOU
 const GAME_KEYS = new Set(["w", "a", "s", "d", "e", "f", "arrowup", "arrowdown", "arrowleft", "arrowright", "enter", " "]);
+const BLACKOUT = 0.5; // the single dip a shift hides in: ≥250 ms, never repeated
+const SHIFT_GAP = 4; // seconds between shifts at the least
+const SILENCE_AFTER = 20; // seconds into Act III before the silence beat
+const SILENCE_LEN = 25; // ...and how long nothing happens
+const INCIDENT = [
+  "INC-0668 · SUBMITTED BY: JR. TECH",
+  '"I can\'t find the way out."',
+  "SUBMITTED: 4 MINUTES FROM NOW.",
+];
+const INCIDENT_LEN = 11; // seconds the terminal shows it
 
 interface Props {
   flags: Flags;
@@ -48,6 +62,7 @@ interface Props {
   watch: Watch;
   onInteract: (id: string) => void;
   onCaught: (dir: Dir) => void;
+  onSilence: (silent: boolean) => void;
 }
 
 interface Interactable {
@@ -62,7 +77,7 @@ function hash(x: number, y: number): number {
   return ((h ^ (h >> 16)) >>> 0) / 4294967295;
 }
 
-export default function GameCanvas({ flags, paused, watch, onInteract, onCaught }: Props) {
+export default function GameCanvas({ flags, paused, watch, onInteract, onCaught, onSilence }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const flagsRef = useRef(flags);
   const pausedRef = useRef(paused);
@@ -73,14 +88,21 @@ export default function GameCanvas({ flags, paused, watch, onInteract, onCaught 
 
   const onInteractRef = useRef(onInteract);
   const onCaughtRef = useRef(onCaught);
+  const onSilenceRef = useRef(onSilence);
   onInteractRef.current = onInteract;
   onCaughtRef.current = onCaught;
+  onSilenceRef.current = onSilence;
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
+
+    // the building as this run has left it (a quarantine retry keeps the shifts)
+    resetMap();
+    for (const id of watchRef.current.shifted)
+      for (const e of SHIFT_BY_ID[id].edits) setTile(e.x, e.y, e.ch);
 
     // ---------- interactables ----------
     const statics: Interactable[] = [];
@@ -95,15 +117,20 @@ export default function GameCanvas({ flags, paused, watch, onInteract, onCaught 
     add("W", "whiteboard");
     add("X", "exit");
     for (const t of TICKETS) statics.push({ id: `ticket:${t.id}`, x: t.x + 0.5, y: t.y + 0.5 });
-    // every desk and rack can be searched
-    const searchables: Interactable[] = [...findTiles("="), ...findTiles("S")].map((t) => ({
-      id: `search:${t.x},${t.y}`,
-      x: t.x + 0.5,
-      y: t.y + 0.5,
-    }));
+    // every desk and rack can be searched (re-read when the building moves)
+    let searchables: Interactable[] = [];
+    let desks: ReturnType<typeof findTiles> = [];
+    const readFurniture = () => {
+      desks = findTiles("=");
+      searchables = [...desks, ...findTiles("S")].map((t) => ({
+        id: `search:${t.x},${t.y}`,
+        x: t.x + 0.5,
+        y: t.y + 0.5,
+      }));
+    };
+    readFurniture();
     const glints = PICKUPS.filter((p) => p.reveal === "glint");
     const revealed = new Set<string>();
-    const desks = findTiles("=");
 
     // ---------- mutable state ----------
     const player = { x: SPAWN.x, y: SPAWN.y, dx: 0, dy: 1, moving: false };
@@ -130,6 +157,14 @@ export default function GameCanvas({ flags, paused, watch, onInteract, onCaught 
     let peekTimer = 6;
     let peek: { x: number; y: number; until: number; text: string } | null = null;
     let iSeeYouUntil = 0;
+    // the building moving: a pending shift waits out half a blackout dip
+    let blackoutT = 0;
+    let pending: Shift | null = null;
+    let shiftCooldown = 3;
+    // the silence beat, then your own ticket on the nearest screen
+    let silenceT = 0;
+    let incident: { x: number; y: number; start: number; typed: number } | null = null;
+    let pinClock = 0; // the Min Pin's trot; stops dead in the silence
     let pacifyFired = false;
     let raf = 0;
     let last = performance.now();
@@ -197,7 +232,7 @@ export default function GameCanvas({ flags, paused, watch, onInteract, onCaught 
     // And once, in Act II, the east triage cart says so out loud.
     function watchBack(f: Flags, dt: number) {
       const act = actOf(f);
-      if (act < 2) return;
+      if (act < 2 || silenceT > 0) return;
       peekTimer -= dt;
       if (peekTimer <= 0) {
         const facing = Math.atan2(player.dy, player.dx);
@@ -242,6 +277,125 @@ export default function GameCanvas({ flags, paused, watch, onInteract, onCaught 
       return true;
     }
 
+    // ---------- the building moves (shifts.ts) ----------
+    // A shift happens only where you aren't looking (off camera, or halfway
+    // through one blackout dip) and only if reach.ts says nothing gets cut off.
+    function overlaps(ent: { x: number; y: number }, s: Shift, dOpen: boolean) {
+      return s.edits.some(
+        (e) =>
+          isSolid(e.ch, dOpen) &&
+          ent.x + PLAYER_R > e.x && ent.x - PLAYER_R < e.x + 1 &&
+          ent.y + PLAYER_R > e.y && ent.y - PLAYER_R < e.y + 1,
+      );
+    }
+
+    function safeToShift(s: Shift, f: Flags) {
+      return (
+        !overlaps(player, s, f.doorOpen) &&
+        !overlaps(pin, s, f.doorOpen) &&
+        keepsEverythingReachable(MAP, s.edits, player, f.doorOpen)
+      );
+    }
+
+    function offCamera(s: Shift) {
+      const { cx, cy } = camera();
+      return s.edits.every(
+        (e) =>
+          (e.x + 1) * TILE < cx - TILE || e.x * TILE > cx + VIEW_W + TILE ||
+          (e.y + 1) * TILE < cy - TILE || e.y * TILE > cy + VIEW_H + TILE,
+      );
+    }
+
+    function applyShift(s: Shift) {
+      for (const e of s.edits) setTile(e.x, e.y, e.ch);
+      watchRef.current.shifted.push(s.id);
+      readFurniture();
+    }
+
+    function runShifts(f: Flags, dt: number) {
+      if (blackoutT > 0) {
+        const was = blackoutT;
+        blackoutT -= dt;
+        // the change lands at the darkest point, if it's still safe
+        if (pending && was > BLACKOUT / 2 && blackoutT <= BLACKOUT / 2) {
+          if (safeToShift(pending, f)) applyShift(pending);
+          pending = null;
+        }
+        if (blackoutT <= 0) flickerTimer = 0.6; // and the lights hold steady after
+        return;
+      }
+      shiftCooldown -= dt;
+      if (shiftCooldown > 0 || silenceT > 0 || incident) return;
+      const done = watchRef.current.shifted;
+      for (const s of SHIFTS) {
+        if (done.includes(s.id) || (s.after && !done.includes(s.after))) continue;
+        if (!s.ready(f, player)) continue;
+        if (s.guard === "offscreen" && !offCamera(s)) continue;
+        if (!safeToShift(s, f)) continue;
+        if (s.guard === "offscreen") applyShift(s);
+        else {
+          blackoutT = BLACKOUT;
+          pending = s;
+          sfxThunk();
+        }
+        shiftCooldown = SHIFT_GAP;
+        return;
+      }
+    }
+
+    // ---------- the silence (Act III, once) ----------
+    // ~20 s into Act III everything stops: hum, whispers, flicker, the Min Pin
+    // mid-step. 25 s of nothing. Then the nearest screen shows your own ticket.
+    function runSilence(f: Flags, dt: number) {
+      const w = watchRef.current;
+      if (actOf(f) === 3 && !w.silenced && blackoutT <= 0) {
+        w.act3Time += dt;
+        if (w.act3Time > SILENCE_AFTER) {
+          w.silenced = true;
+          silenceT = SILENCE_LEN;
+          onSilenceRef.current(true);
+        }
+      }
+      if (silenceT > 0) {
+        silenceT -= dt;
+        if (silenceT <= 0) incident = { ...nearestScreen(), start: time, typed: 0 };
+      }
+      if (incident) {
+        // it types itself out, one key at a time
+        const total = INCIDENT.join("").length;
+        const n = Math.min(total, Math.floor((time - incident.start) * 28));
+        const text = INCIDENT.join("");
+        while (incident.typed < n) {
+          if (text[incident.typed] !== " ") sfxKeyTap();
+          incident.typed++;
+        }
+        if (time - incident.start > INCIDENT_LEN) {
+          incident = null;
+          onSilenceRef.current(false);
+        }
+      }
+    }
+
+    // the nearest thing with a screen that's actually on camera
+    function nearestScreen() {
+      const { cx, cy } = camera();
+      let best = { x: Math.floor(player.x), y: Math.floor(player.y) - 1 };
+      let bestD = Infinity;
+      for (let ty = 0; ty < MAP_H; ty++)
+        for (let tx = 0; tx < MAP_W; tx++) {
+          if (!"=TNSU".includes(MAP[ty][tx])) continue;
+          const px = tx * TILE - cx;
+          const py = ty * TILE - cy;
+          if (px < 0 || px > VIEW_W - TILE || py < 90 || py > VIEW_H - TILE) continue;
+          const d = Math.hypot(tx + 0.5 - player.x, ty + 0.5 - player.y);
+          if (d > 1 && d < bestD) {
+            bestD = d;
+            best = { x: tx, y: ty };
+          }
+        }
+      return best;
+    }
+
     // ---------- collision ----------
     function blocked(x: number, y: number): boolean {
       const dOpen = flagsRef.current.doorOpen;
@@ -266,7 +420,9 @@ export default function GameCanvas({ flags, paused, watch, onInteract, onCaught 
       // flashlight flicker: each dip lasts ≥120 ms and is followed by ≥350 ms
       // steady, so it never strobes faster than ~2 dips a second
       flickerTimer -= dt;
-      if (flickerTimer <= 0) {
+      // no flicker in the silence, or inside a blackout (that's dark enough)
+      if (silenceT > 0 || blackoutT > 0) flicker = 1;
+      else if (flickerTimer <= 0) {
         if (flicker < 1) {
           flicker = 1;
           flickerTimer = 0.35 + Math.random() * 0.25;
@@ -305,6 +461,10 @@ export default function GameCanvas({ flags, paused, watch, onInteract, onCaught 
       revealGlints(f);
       if (lampOff()) watchRef.current.usedDark = true;
       watchBack(f, dt);
+      runShifts(f, dt);
+      runSilence(f, dt);
+      if (silenceT > 0) return; // the Min Pin freezes mid-step
+      pinClock += dt;
 
       // ---------- min pin ----------
       pin.cooldown = Math.max(0, pin.cooldown - dt);
@@ -321,6 +481,15 @@ export default function GameCanvas({ flags, paused, watch, onInteract, onCaught 
         }
       } else if (f.minPinPacified) {
         pin.mode = "follow";
+        // left behind a wall the building moved: it's simply behind you again
+        if (dist > 9) {
+          const bx = player.x - player.dx * 1.4;
+          const by = player.y - player.dy * 1.4;
+          if (!blocked(bx, by)) {
+            pin.x = bx;
+            pin.y = by;
+          }
+        }
         if (dist > 2.4) {
           const sp = Math.min(3.2, dist) * dt;
           move(pin, ((player.x - pin.x) / dist) * sp * 1.2, ((player.y - pin.y) / dist) * sp * 1.2);
@@ -448,6 +617,11 @@ export default function GameCanvas({ flags, paused, watch, onInteract, onCaught 
       drawMinPin(ctx, cx, cy, f);
       drawPlayer(ctx, cx, cy);
       drawDarkness(ctx, cx, cy, f);
+      // a blackout: everything goes, except whatever glows on its own
+      if (blackoutT > 0) {
+        ctx.fillStyle = "rgba(0,0,0,0.96)";
+        ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+      }
       drawEmissive(ctx, cx, cy, f, x0, y0, x1, y1);
       drawPrompt(ctx, f);
 
@@ -736,7 +910,7 @@ export default function GameCanvas({ flags, paused, watch, onInteract, onCaught 
       const px = pin.x * TILE - cx;
       const py = pin.y * TILE - cy;
       if (px < -60 || px > VIEW_W + 60 || py < -60 || py > VIEW_H + 60) return;
-      const trot = Math.sin(time * 14) * 2;
+      const trot = Math.sin(pinClock * 14) * 2;
       // body
       c.fillStyle = "#151313";
       c.fillRect(px - 9, py - 5, 18, 9);
@@ -968,6 +1142,38 @@ export default function GameCanvas({ flags, paused, watch, onInteract, onCaught 
       };
       if (peek && time < peek.until) monitor(peek.x, peek.y, "60,255,140", peek.text);
       if (time < iSeeYouUntil) monitor(WATCHING_CART.x, WATCHING_CART.y, "255,50,50", "I SEE YOU");
+
+      // after the silence: a ticket you haven't written yet
+      if (incident) {
+        const px = incident.x * TILE - cx;
+        const py = incident.y * TILE - cy;
+        dot(px + 20, py + 19, 26, "rgba(60,255,140,0.12)");
+        c.fillStyle = "rgba(60,255,140,0.8)";
+        c.fillRect(px + 10, py + 12, 20, 14);
+        c.font = '18px "VT323", monospace';
+        c.textAlign = "left";
+        let left = incident.typed;
+        const shown = INCIDENT.map((l) => {
+          const s = l.slice(0, Math.max(0, left));
+          left -= l.length;
+          return s;
+        });
+        const w = Math.max(...INCIDENT.map((l) => c.measureText(l).width)) + 16;
+        const bx = Math.max(6, Math.min(VIEW_W - w - 6, px + 20 - w / 2));
+        // above the screen, unless that would sit on top of you
+        const ppx = player.x * TILE - cx;
+        const ppy = player.y * TILE - cy;
+        const overYou = ppx > bx - 12 && ppx < bx + w + 12 && ppy > py - 96 && ppy < py + 8;
+        const by = overYou ? py + TILE + 6 : py - 74;
+        c.globalCompositeOperation = "source-over";
+        c.fillStyle = "rgba(2,8,5,0.9)";
+        c.fillRect(bx, by, w, 66);
+        c.strokeStyle = "rgba(60,255,140,0.6)";
+        c.strokeRect(bx + 0.5, by + 0.5, w - 1, 65);
+        c.fillStyle = "#9fe8c4";
+        shown.forEach((s, i) => c.fillText(s, bx + 8, by + 20 + i * 20));
+        c.globalCompositeOperation = "lighter";
+      }
       // things the headlamp has found
       for (const g of glints) {
         if (!revealed.has(g.id) || !available(g, f)) continue;
@@ -1123,6 +1329,12 @@ export default function GameCanvas({ flags, paused, watch, onInteract, onCaught 
         },
         peek: () => peek && { ...peek, live: time < peek.until },
         watch: () => watchRef.current,
+        silenceNow: () => {
+          watchRef.current.act3Time = SILENCE_AFTER;
+        },
+        silence: () => ({ silenceT: +silenceT.toFixed(1), incident: !!incident }),
+        blackout: () => blackoutT,
+        tile: (x: number, y: number) => MAP[y][x],
         hold: (k: string, on: boolean) => (on ? keys.add(k) : keys.delete(k)),
         interact: () => {
           const t = nearestInteractable();

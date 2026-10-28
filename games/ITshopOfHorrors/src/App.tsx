@@ -14,7 +14,7 @@ import {
 import { controlOf } from "./game/tickets";
 import { getScript, buildWhisper, patternWhisper, WHISPERS } from "./game/story";
 import { initialFlags, type Flags, type Screen, type Script } from "./game/types";
-import { sfxUnlock, sfxDeny, sfxConfirm } from "./game/audio";
+import { sfxUnlock, sfxDeny, sfxConfirm, fadeHum } from "./game/audio";
 import { PIN_IDS, pinCount } from "./game/pickups";
 import { actOf } from "./game/acts";
 import { createWatch, type Dir } from "./game/watch";
@@ -42,6 +42,13 @@ export default function App() {
   // this run's telemetry (session-only) and the ending from your last visit
   const watchRef = useRef(createWatch());
   const [lastEnding] = useState(loadLastEnding);
+  // the silence beat: no hum, no whispers, until your own ticket has printed
+  const silentRef = useRef(false);
+  const handleSilence = useCallback((silent: boolean) => {
+    silentRef.current = silent;
+    fadeHum(!silent);
+    if (silent) setWhisper(null);
+  }, []);
 
   const paused = dialogue !== null;
 
@@ -120,7 +127,7 @@ export default function App() {
   useEffect(() => {
     if (screen !== "game") return;
     const iv = setInterval(() => {
-      if (Math.random() >= 0.65) return;
+      if (silentRef.current || Math.random() >= 0.65) return;
       const f = flagsRef.current;
       // from Act II, about one in three is about you
       if (actOf(f) >= 2 && Math.random() < 1 / 3)
@@ -168,6 +175,7 @@ export default function App() {
     setWhisper(null);
     setToast(null);
     watchRef.current = createWatch();
+    silentRef.current = false;
     setGameKey((k) => k + 1);
     setScreen("title");
   }, []);
@@ -196,6 +204,7 @@ export default function App() {
               watch={watchRef.current}
               onInteract={handleInteract}
               onCaught={handleCaught}
+              onSilence={handleSilence}
             />
             <HUD
               flags={flags}

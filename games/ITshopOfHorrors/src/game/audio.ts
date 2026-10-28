@@ -194,3 +194,25 @@ export function sfxPowerDown() {
 export function restoreHum() {
   if (humGain && ctx) humGain.gain.setValueAtTime(0.05, ctx.currentTime);
 }
+
+// the silence beat: the hum fades out, then (later) creeps back
+export function fadeHum(on: boolean) {
+  if (!humGain || !ctx) return;
+  humGain.gain.cancelScheduledValues(ctx.currentTime);
+  humGain.gain.setValueAtTime(Math.max(0.0001, humGain.gain.value), ctx.currentTime);
+  humGain.gain.exponentialRampToValueAtTime(on ? 0.05 : 0.0001, ctx.currentTime + (on ? 3 : 1.2));
+}
+
+// a single heavy dip in the lights, for the building moving
+export function sfxThunk() {
+  if (!ctx) return;
+  const g = env(0.5, 0.22);
+  if (!g) return;
+  const o = ctx.createOscillator();
+  o.type = "sine";
+  o.frequency.setValueAtTime(90, ctx.currentTime);
+  o.frequency.exponentialRampToValueAtTime(30, ctx.currentTime + 0.45);
+  o.connect(g);
+  o.start();
+  o.stop(ctx.currentTime + 0.5);
+}

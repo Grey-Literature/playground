@@ -47,6 +47,10 @@ games/ITshopOfHorrors/
     game/  types.ts  mapData.ts  story.ts  pickups.ts  audio.ts
            acts.ts (act from flags)  watch.ts (session telemetry)  memory.ts (last ending)
            tickets.ts (corrupted tickets, AI control)
+           shifts.ts (the building moving)  reach.ts (the never-trap BFS)
+  scripts/check-shifts.ts ← headless proof every shift keeps everything
+                           reachable; `npm run check`, and `npm run build`
+                           runs it first and stops if it fails
     components/  GameCanvas.tsx  HUD.tsx  DialogueBox.tsx  FinalSequence.tsx  T3Figure.tsx  Screens.tsx
                  Typed.tsx (typewriter for the intro and endings)
 ```
@@ -292,6 +296,28 @@ reuse the existing palette; glints are warm-white sparkles, never UI arrows.
      including ESCAPE. **STOP:** playtest.
    - **4c.** The map changes, the silence beat and the two printer voices.
      **STOP:** playtest.
+     Built 2026-10-27:
+     - **Shifts.** `shifts.ts` holds four shifts, and all of them use the
+       0.5 s blackout guard. Off-camera is supported, but the print-room
+       passage is in view from nearly everywhere, so it would almost never
+       fire.
+       - office-seal (Act II): the office doorway walls up, and a gap opens
+         at (13–15,18) into the print room.
+       - office-desks (Act II): the far desk cluster moves down a row.
+       - hall-bend (Act III): the den's hallway door walls up, and a passage
+         opens at (25–27,17) from the print room.
+       - hall-unbend: when the server-room door opens, the bend reverts.
+     - **Safety.** Each shift waits until `reach.ts` passes. It also never
+       walls over the player or the Min Pin.
+     - **Quarantine retry.** Shifts persist through it (`watch.shifted`, and
+       the map is rebuilt when the canvas mounts). A full restart resets
+       the map.
+     - **Silence.** It starts 20 s into Act III and lasts 25 s: no hum, no
+       whispers, no flicker, and the Min Pin is frozen. Then INC-0668 types
+       itself onto the nearest screen.
+     - **Printer.** In Act III it alternates real notes (crooked, cite
+       escalate.log) with fakes (neat, "trust", pointing at an open ticket
+       or asking for the lanyard).
 5. Wire a card into `games-index.html` (only once it's actually playable live).
 
 ## 7. Definition of done
@@ -300,7 +326,9 @@ reuse the existing palette; glints are warm-white sparkles, never UI arrows.
 - The built file runs opened straight from disk.
 - Full path playable with 0 pins and with 11; quarantine retry keeps items.
 - The dev hook (`window.__ishop`, dev server only) is absent from the build.
-- Phase 4: every scripted map change passes the reachability check, and every
+- Phase 4: every scripted map change passes the reachability check
+  (`npm run check`: every shift, every order, every standable tile, door
+  shut and open, plus a deliberate trap the checker must reject), and every
   ending is reachable from a 0-pin, 0-control run.
 
 ## 8. Non-goals

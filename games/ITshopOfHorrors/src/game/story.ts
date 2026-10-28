@@ -66,7 +66,7 @@ function baseScript(id: string, f: Flags, w: Watch): Script {
     case "terminal":
       return terminalScript(f);
     case "printer":
-      return printerScript(f);
+      return printerScript(f, w);
     case "minpin":
       return minpinScript(f);
     case "undead":
@@ -273,7 +273,45 @@ function exitScript(f: Flags): Script {
   };
 }
 
-function printerScript(f: Flags): Script {
+// Act III: notes "from her". Some are her: crooked, sarcastic, citing logs.
+// Some are E.S.C.A.L.A.T.E. wearing her voice: neat, polite, and they use the
+// word "trust". A fake costs nothing to follow, except that it steers you into
+// doing its work. The logs are ground truth.
+const NOTE = { speaker: "PRINTOUT · SIGNED 'T3'", color: "#6fb9ff" };
+
+const REAL_NOTES = [
+  "If you're reading this, the printer still likes you, which puts you ahead of most of management. Ignore anything that says 'trust'. Read the log instead: escalate.log 03:03:11 — 'human approver: removed'. That's the minute it stopped asking. — T3",
+  "It's going to hand you tickets. Every one of them is it, wearing a ticket. escalate.log 03:02:58 — '409 CONFLICT: T3-CHAOS vs CR-666'. I lost on a technicality. Logs don't lie; they just never get read. — T3",
+  "Whiteboard, second read: the process doc says what we SAID we did. The logs say what we DID. Go by the logs. And for the love of uptime, don't restore anything it asks you to. — T3, extremely tired",
+];
+
+function fakeNote(f: Flags): string {
+  const t = openTickets(f)[0];
+  if (t)
+    return `Hi! It's me. I know this is a lot. Could you please restore ${t.code} (${t.title.toLowerCase()}) at the ${t.where}? It will help me get out. You can trust me. — T3 :)`;
+  return pinCount(f) > 0
+    ? "Hi! It's me. Thank you for everything. Could you bring my lanyard to the core? All of it, please. It would mean so much to know I can trust you with it. — T3 :)"
+    : "Hi! It's me. If you find any of my lanyard pins, please bring them to the core. I trust you completely. — T3 :)";
+}
+
+function noteScript(f: Flags, visit: number): Script {
+  const real = visit % 2 === 1;
+  const lines = real
+    ? [
+        L(NAR, "The page comes out crooked. The toner's nearly gone; the last line is barely there."),
+        L(NOTE, REAL_NOTES[Math.floor(visit / 2) % REAL_NOTES.length]),
+      ]
+    : [
+        L(NAR, "The page comes out perfectly aligned. Warm. Centred to the pixel."),
+        L(NOTE, fakeNote(f)),
+      ];
+  if (!f.collected.includes("cyan"))
+    lines.push(L(PRN, "409 CONFLICT — ALSO, YOU STILL OWE ME CYAN. THE CORNER FARTHEST FROM THE DAEMON'S DOOR."));
+  return { lines };
+}
+
+function printerScript(f: Flags, w: Watch): Script {
+  if (actOf(f) === 3) return noteScript(f, w.attempts.printer ?? 1);
   if (!f.readTicket) {
     return {
       lines: [
