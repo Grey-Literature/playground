@@ -1,5 +1,11 @@
 import type { DialogueLine, Flags, Script } from "./types";
-import { PICKUPS, PICKUP_BY_ID, PINS, PIN_TOTAL, available, type Pickup } from "./pickups";
+import { PICKUPS, PICKUP_BY_ID, PINS, PIN_TOTAL, available, pinCount, type Pickup } from "./pickups";
+import { actOf } from "./acts";
+import { clock, type Watch } from "./watch";
+import type { Ending } from "./memory";
+import { tileAt } from "./mapData";
+
+const tileName = (x: number, y: number) => (tileAt(x, y) === "S" ? "rack" : "desk");
 
 const YOU = { speaker: "YOU (JR. TECH)", color: "#9fe8c4" };
 const SYS = { speaker: "E.S.C.A.L.A.T.E.", color: "#ff5252" };
@@ -41,17 +47,19 @@ export const CONTROLS_HINT =
 
 // ---------------------------------------------------------------- scripts
 
-export function getScript(id: string, f: Flags): Script {
+// `w` is this run's telemetry; App has already counted this attempt in
+// w.attempts but not yet recorded this search in w.searches.
+export function getScript(id: string, f: Flags, w: Watch): Script {
   if (id.startsWith("pickup:")) return pickupScript(PICKUP_BY_ID[id.slice(7)], f);
-  if (id.startsWith("search:")) return searchScript(id.slice(7), f);
+  if (id.startsWith("search:")) return searchScript(id.slice(7), f, w);
   // a hidden thing on this object outranks its usual script
   const hidden = PICKUPS.find((p) => p.reveal === "repeat" && p.at === id && available(p, f));
   if (hidden) return pickupScript(hidden, f);
-  const s = baseScript(id, f);
+  const s = baseScript(id, f, w);
   return { ...s, see: [id, ...(s.see ?? [])] };
 }
 
-function baseScript(id: string, f: Flags): Script {
+function baseScript(id: string, f: Flags, w: Watch): Script {
   switch (id) {
     case "terminal":
       return terminalScript(f);
@@ -60,9 +68,9 @@ function baseScript(id: string, f: Flags): Script {
     case "minpin":
       return minpinScript(f);
     case "undead":
-      return undeadScript(f);
+      return undeadScript(f, w);
     case "door":
-      return doorScript(f);
+      return doorScript(f, w.attempts.door ?? 1);
     case "core":
       return coreScript(f);
     case "coffee":
@@ -219,7 +227,23 @@ function minpinScript(f: Flags): Script {
   };
 }
 
-function undeadScript(f: Flags): Script {
+// From Act II there's a new session on the undead server, a few seconds
+// behind you, typing exactly what you typed.
+function undeadScript(f: Flags, w: Watch): Script {
+  const s = undeadBase(f);
+  if (actOf(f) < 2 || w.keyEcho.length < 4) return s;
+  return {
+    ...s,
+    lines: [
+      ...s.lines,
+      L(NAR, "There's a session on the list you haven't seen before. jr_tech. Logged in: tonight."),
+      L(SRV, `jr_tech: ${w.keyEcho.join("")}`),
+      L(YOU, "...That's what I just typed. That's what I JUST typed."),
+    ],
+  };
+}
+
+function undeadBase(f: Flags): Script {
   if (!f.hasRootCred) {
     return {
       lines: [
@@ -252,7 +276,7 @@ function undeadScript(f: Flags): Script {
   };
 }
 
-function doorScript(f: Flags): Script {
+function doorScript(f: Flags, attempt: number): Script {
   if (f.doorOpen) {
     return {
       lines: [L(NAR, "The server room doors stand open. Cold air and red light spill out.")],
@@ -268,6 +292,25 @@ function doorScript(f: Flags): Script {
         L(NAR, "The maglocks release. Beyond them: the hum of the core, and something that breathes in HTTP status codes."),
       ],
       effects: { doorOpen: true },
+    };
+  }
+  // it learns: every try is logged, and by the fourth it simply helps
+  if (attempt === 2) {
+    return {
+      lines: [L(SYS, "401 UNAUTHORIZED."), L(SYS, "SECOND ATTEMPT LOGGED.")],
+    };
+  }
+  if (attempt === 3) {
+    return {
+      lines: [L(SYS, "401 UNAUTHORIZED."), L(SYS, "THIRD ATTEMPT LOGGED. DO YOU REQUIRE ASSISTANCE?")],
+    };
+  }
+  if (attempt >= 4) {
+    return {
+      lines: [
+        L(SYS, `ATTEMPT ${attempt} LOGGED. ASSISTANCE PROVIDED.`),
+        L(NAR, "Your objective tracker updates itself. You didn't ask it to."),
+      ],
     };
   }
   const missing: string[] = [];
@@ -380,6 +423,48 @@ export const WHISPERS: string[] = [
   "Something small and enamelled glints at the edge of your headlamp, then doesn't.",
   "A ghost session types: 'her pins are still on the floor. eleven. we counted.'",
 ];
+
+// From Act II, some whispers are built from what you actually did this run.
+// Session-only: this tab's telemetry and the local clock, nothing else.
+export function buildWhisper(f: Flags, w: Watch, now: number, last: Ending | null): string {
+  const out: string[] = [];
+  const minutes = Math.floor((now - w.start) / 60000);
+  if (minutes >= 2)
+    out.push(`${minutes} minutes on shift. Your timesheet says 0. It has already corrected your timesheet.`);
+  const pins = pinCount(f);
+  out.push(
+    pins > 0
+      ? `${pins} of her pins on your lanyard. It's counting them too.`
+      : "You haven't picked up a single one of her pins. It noticed you don't pick things up.",
+  );
+  const searched = Object.keys(w.searches).length;
+  if (searched >= 3) out.push(`${searched} desks and racks searched. It has re-filed every one of them behind you.`);
+  if (w.catches.length > 0)
+    out.push(
+      w.catches.length === 1
+        ? "Caught once. It has opened a folder on you."
+        : `Caught ${w.catches.length} times. The folder on you is getting thick.`,
+    );
+  out.push(`It's ${clock(now)} where you are. Who's waiting for you?`);
+  if (last === "resist") out.push("Last time, you pulled the plug. It remembers. It took notes.");
+  if (last === "surrender") out.push("Last time, you gave in. It kept your seat warm.");
+  return out[Math.floor(Math.random() * out.length)];
+}
+
+// After two catches, it has a theory about you.
+export function patternWhisper(w: Watch): string | null {
+  if (w.catches.length < 2) return null;
+  const last = w.catches[w.catches.length - 1];
+  return last.dark
+    ? "PATTERN DETECTED: SUBJECT HIDES IN THE DARK."
+    : `PATTERN DETECTED: SUBJECT RUNS ${last.dir}.`;
+}
+
+export function welcomeBack(last: Ending | null): string | null {
+  if (last === "resist") return "Welcome back. You chose to resist last time.";
+  if (last === "surrender") return "Welcome back. You chose to give in last time.";
+  return null;
+}
 
 // ---------------------------------------------------------------- hidden things
 
@@ -497,12 +582,19 @@ const SEARCH_FLAVOR: string[] = [
   "A note: 'the whiteboard's held up by more than tape. so is the coffee machine. try things twice.'",
 ];
 
-function searchScript(key: string, f: Flags): Script {
+function searchScript(key: string, f: Flags, w: Watch): Script {
   const [x, y] = key.split(",").map(Number);
   const hidden = PICKUPS.find(
     (p) => p.reveal === "search" && p.x === x && p.y === y && available(p, f),
   );
   if (hidden) return pickupScript(hidden, f);
+  // from Act II it remembers which empty desks you've already turned over
+  const first = w.searches[`search:${key}`];
+  if (first !== undefined && actOf(f) >= 2) {
+    return {
+      lines: [L(NAR, `You checked this ${tileName(x, y)} at ${clock(first)}. Nothing has changed. You have.`)],
+    };
+  }
   const h = (((x * 73856093) ^ (y * 19349663)) >>> 0) % SEARCH_FLAVOR.length;
   return { lines: [L(NAR, SEARCH_FLAVOR[h])] };
 }

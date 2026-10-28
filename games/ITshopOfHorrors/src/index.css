@@ -202,6 +202,20 @@ body {
   100% { opacity: 0; filter: blur(2px); }
 }
 
+/* ---------- HUD takeover, entering Act II ---------- */
+/* three 0.4 s jolts: under 3 a second, no strobing */
+.hud-glitch {
+  animation: hud-glitch 0.4s steps(4, end) 3;
+}
+
+@keyframes hud-glitch {
+  0% { transform: translate(0, 0); clip-path: inset(0 0 0 0); border-color: rgba(220, 38, 38, 0.8); }
+  25% { transform: translate(-3px, 1px); clip-path: inset(18% 0 30% 0); }
+  50% { transform: translate(2px, -2px); clip-path: inset(0 0 0 0); filter: hue-rotate(-30deg); }
+  75% { transform: translate(-1px, 2px); clip-path: inset(40% 0 8% 0); }
+  100% { transform: translate(0, 0); clip-path: inset(0 0 0 0); }
+}
+
 /* ---------- T3-Chaos beside the core (T3Figure.tsx) ---------- */
 /* red/blue swaps are slow (well under 3 a second) — no strobing */
 .t3-rim {

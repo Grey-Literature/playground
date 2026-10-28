@@ -3,6 +3,7 @@
 // 'T' ticket-queue terminal   'P' printer   'U' undead server   'D' server room door
 // 'C' E.S.C.A.L.A.T.E. core   'K' coffee machine   'W' whiteboard
 // '~' cable tendril floor (walkable, decorative)
+// 'V' wall camera (solid; it's a wall with an eye in it)
 
 export const TILE = 40;
 export const MAP_W = 44;
@@ -81,8 +82,20 @@ function buildMap(): string[][] {
   put(31, 26, "~");
   put(38, 22, "~");
 
+  // ---- Wall cameras: one per room, set into the wall facing in ----
+  for (const c of CAMERAS) put(c.x, c.y, "V");
+
   return g;
 }
+
+// `facing` is the direction the lens points when it isn't looking at anyone.
+export const CAMERAS: { x: number; y: number; facing: number }[] = [
+  { x: 10, y: 13, facing: Math.PI / 2 }, // office, north wall
+  { x: 12, y: 9, facing: Math.PI / 2 }, // west hallway, north wall
+  { x: 22, y: 14, facing: Math.PI / 2 }, // print room, north wall
+  { x: 30, y: 13, facing: Math.PI / 2 }, // den, north wall
+  { x: 31, y: 29, facing: -Math.PI / 2 }, // annex, south wall
+];
 
 export const MAP: string[][] = buildMap();
 

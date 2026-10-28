@@ -8,12 +8,15 @@ import {
   MINPIN_SPAWN,
   MINPIN_PATROL,
   SAFE_POINTS,
+  CAMERAS,
   T3_POS,
   tileAt,
   isSolid,
   findTiles,
 } from "../game/mapData";
 import type { Flags } from "../game/types";
+import { actOf } from "../game/acts";
+import { echoKey, type Dir, type Watch } from "../game/watch";
 import { PICKUPS, GREEN_RACK, KEYCARD_SPOT, available } from "../game/pickups";
 import { sfxBark, sfxGrowl, sfxScare } from "../game/audio";
 
@@ -33,12 +36,17 @@ const LOSE_AFTER = 2.5; // seconds out of sight before it gives up
 const SNIFF_TIME = 1.5; // seconds it sniffs where it lost you
 const DARK_SPEED = 0.75; // you fumble in the dark
 const CHECKPOINT_R = 1.4;
+const PEEK_RANGE = 7; // desk monitors that report your position, Act II on
+const PEEK_OFF_CONE = 1.2; // ...only ones well outside the headlamp
+const WATCHING_CART = { x: 37, y: 10 }; // the triage cart that says I SEE YOU
+const GAME_KEYS = new Set(["w", "a", "s", "d", "e", "f", "arrowup", "arrowdown", "arrowleft", "arrowright", "enter", " "]);
 
 interface Props {
   flags: Flags;
   paused: boolean;
+  watch: Watch;
   onInteract: (id: string) => void;
-  onCaught: () => void;
+  onCaught: (dir: Dir) => void;
 }
 
 interface Interactable {
@@ -53,12 +61,14 @@ function hash(x: number, y: number): number {
   return ((h ^ (h >> 16)) >>> 0) / 4294967295;
 }
 
-export default function GameCanvas({ flags, paused, onInteract, onCaught }: Props) {
+export default function GameCanvas({ flags, paused, watch, onInteract, onCaught }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const flagsRef = useRef(flags);
   const pausedRef = useRef(paused);
+  const watchRef = useRef(watch);
   flagsRef.current = flags;
   pausedRef.current = paused;
+  watchRef.current = watch;
 
   const onInteractRef = useRef(onInteract);
   const onCaughtRef = useRef(onCaught);
@@ -90,6 +100,7 @@ export default function GameCanvas({ flags, paused, onInteract, onCaught }: Prop
     }));
     const glints = PICKUPS.filter((p) => p.reveal === "glint");
     const revealed = new Set<string>();
+    const desks = findTiles("=");
 
     // ---------- mutable state ----------
     const player = { x: SPAWN.x, y: SPAWN.y, dx: 0, dy: 1, moving: false };
@@ -112,6 +123,10 @@ export default function GameCanvas({ flags, paused, onInteract, onCaught }: Prop
     let flicker = 1;
     let flickerTimer = 0;
     let dips = 0;
+    // the building watching (Act II on): one desk monitor at a time reports you
+    let peekTimer = 6;
+    let peek: { x: number; y: number; until: number; text: string } | null = null;
+    let iSeeYouUntil = 0;
     let pacifyFired = false;
     let raf = 0;
     let last = performance.now();
@@ -128,6 +143,8 @@ export default function GameCanvas({ flags, paused, onInteract, onCaught }: Prop
       if (["arrowup", "arrowdown", "arrowleft", "arrowright", " "].includes(k))
         e.preventDefault();
       keys.add(k);
+      // only keys pressed while you're moving about, not while reading dialogue
+      if (!e.repeat && GAME_KEYS.has(k) && !pausedRef.current) echoKey(watchRef.current, k);
       if ((k === "e" || k === "enter") && !pausedRef.current) {
         const target = nearestInteractable();
         if (target) onInteractRef.current(target.id);
@@ -169,6 +186,45 @@ export default function GameCanvas({ flags, paused, onInteract, onCaught }: Prop
         let off = Math.abs(Math.atan2(g.y - player.y, g.x - player.x) - facing);
         if (off > Math.PI) off = Math.PI * 2 - off;
         if (d < GLINT_NEAR || (d < GLINT_SEE && off < CONE && !lampOff())) revealed.add(g.id);
+      }
+    }
+
+    // From Act II the building watches back: every so often a desk monitor
+    // behind you (never one you're looking at) flicks on with your position.
+    // And once, in Act II, the east triage cart says so out loud.
+    function watchBack(f: Flags, dt: number) {
+      const act = actOf(f);
+      if (act < 2) return;
+      peekTimer -= dt;
+      if (peekTimer <= 0) {
+        const facing = Math.atan2(player.dy, player.dx);
+        const behind = desks.filter((d) => {
+          const dx = d.x + 0.5 - player.x;
+          const dy = d.y + 0.5 - player.y;
+          const dist = Math.hypot(dx, dy);
+          let off = Math.abs(Math.atan2(dy, dx) - facing);
+          if (off > Math.PI) off = Math.PI * 2 - off;
+          return dist > 1.5 && dist < PEEK_RANGE && off > PEEK_OFF_CONE;
+        });
+        if (behind.length) {
+          const d = behind[Math.floor(Math.random() * behind.length)];
+          peek = {
+            x: d.x,
+            y: d.y,
+            until: time + 0.8,
+            text: `JR.TECH @ ${Math.floor(player.x)},${Math.floor(player.y)}`,
+          };
+          peekTimer = 6 + Math.random() * 4;
+        } else peekTimer = 2; // nothing behind you right now; try again soon
+      }
+      const w = watchRef.current;
+      if (
+        act === 2 &&
+        !w.saidISeeYou &&
+        Math.hypot(WATCHING_CART.x + 0.5 - player.x, WATCHING_CART.y + 0.5 - player.y) < 2
+      ) {
+        w.saidISeeYou = true;
+        iSeeYouUntil = time + 3;
       }
     }
 
@@ -244,6 +300,8 @@ export default function GameCanvas({ flags, paused, onInteract, onCaught }: Prop
 
       const f = flagsRef.current;
       revealGlints(f);
+      if (lampOff()) watchRef.current.usedDark = true;
+      watchBack(f, dt);
 
       // ---------- min pin ----------
       pin.cooldown = Math.max(0, pin.cooldown - dt);
@@ -311,7 +369,11 @@ export default function GameCanvas({ flags, paused, onInteract, onCaught }: Prop
           // caught!
           if (dist < 0.62 && !f.gotToken) {
             sfxScare();
-            onCaughtRef.current();
+            const dir: Dir =
+              Math.abs(player.dx) >= Math.abs(player.dy)
+                ? player.dx < 0 ? "LEFT" : "RIGHT"
+                : player.dy < 0 ? "UP" : "DOWN";
+            onCaughtRef.current(dir);
             player.x = checkpoint.x;
             player.y = checkpoint.y;
             pin.x = MINPIN_SPAWN.x;
@@ -419,13 +481,21 @@ export default function GameCanvas({ flags, paused, onInteract, onCaught }: Prop
       const py = ty * TILE - cy;
       const h = hash(tx, ty);
 
-      if (ch === "#") {
+      if (ch === "#" || ch === "V") {
         c.fillStyle = "#0d1219";
         c.fillRect(px, py, TILE, TILE);
         c.fillStyle = "#141c26";
         c.fillRect(px, py, TILE, 6);
         c.strokeStyle = "rgba(0,0,0,0.5)";
         c.strokeRect(px + 0.5, py + 0.5, TILE - 1, TILE - 1);
+        if (ch === "V") {
+          // camera housing on the room side of the wall
+          const down = Math.sin(CAMERAS.find((k) => k.x === tx && k.y === ty)?.facing ?? 1) > 0;
+          c.fillStyle = "#1d242e";
+          c.fillRect(px + 12, down ? py + TILE - 14 : py + 2, 16, 12);
+          c.strokeStyle = "#2c3644";
+          c.strokeRect(px + 12.5, down ? py + TILE - 13.5 : py + 2.5, 15, 11);
+        }
         return;
       }
 
@@ -736,6 +806,7 @@ export default function GameCanvas({ flags, paused, onInteract, onCaught }: Prop
     ) {
       c.save();
       c.globalCompositeOperation = "lighter";
+      const act = actOf(f);
       const dot = (x: number, y: number, r: number, col: string) => {
         c.fillStyle = col;
         c.beginPath();
@@ -766,9 +837,63 @@ export default function GameCanvas({ flags, paused, onInteract, onCaught }: Prop
             dot(px + TILE / 2, py + TILE / 2, 26, `rgba(255,50,50,${0.1 + pulse * 0.1})`);
           } else if (ch === "D" && !f.doorOpen) {
             dot(px + TILE / 2, py + TILE / 2, 12, "rgba(255,40,40,0.1)");
+          } else if (ch === "=" && act === 1) {
+            // Act I: nobody's here, but every dashboard is green
+            c.fillStyle = `rgba(60,255,140,${0.14 + 0.04 * Math.sin(time * 2 + h * 9)})`;
+            c.fillRect(px + 11, py + 13, 18, 12);
+            c.fillStyle = "rgba(60,255,140,0.3)";
+            for (let i = 0; i < 3; i++)
+              c.fillRect(px + 12, py + 15 + i * 3, 5 + Math.floor((h * 37 + i * 5) % 10), 1);
           }
         }
       }
+
+      // wall cameras: idle sweep in Act I, locked on you from Act II
+      for (const cam of CAMERAS) {
+        const px = (cam.x + 0.5) * TILE - cx;
+        const py = (cam.y + 0.5) * TILE - cy;
+        if (px < -200 || px > VIEW_W + 200 || py < -200 || py > VIEW_H + 200) continue;
+        const ex = px + Math.cos(cam.facing) * 12;
+        const ey = py + Math.sin(cam.facing) * 12;
+        let aim = cam.facing + Math.sin(time * 0.7 + cam.x) * 0.8;
+        if (act >= 2) {
+          let d = Math.atan2(player.y * TILE - cy - 14 - ey, player.x * TILE - cx - ex) - cam.facing;
+          d = Math.atan2(Math.sin(d), Math.cos(d));
+          aim = cam.facing + Math.max(-1.3, Math.min(1.3, d));
+        }
+        const col = act >= 2 ? "255,40,40" : "200,230,255";
+        const fade = c.createRadialGradient(ex, ey, 4, ex, ey, 150);
+        fade.addColorStop(0, `rgba(${col},${act >= 2 ? 0.07 : 0.045})`);
+        fade.addColorStop(1, `rgba(${col},0)`);
+        c.fillStyle = fade;
+        c.beginPath();
+        c.moveTo(ex, ey);
+        c.arc(ex, ey, 150, aim - 0.22, aim + 0.22);
+        c.closePath();
+        c.fill();
+        dot(ex + Math.cos(aim) * 3, ey + Math.sin(aim) * 3, 2.2, `rgba(${col},0.85)`);
+        if (act >= 2) {
+          dot(px + 22, ey - Math.sin(cam.facing) * 3, 1.6, "rgba(255,40,40,1)");
+          dot(px + 22, ey - Math.sin(cam.facing) * 3, 6, "rgba(255,40,40,0.18)");
+        } else if (Math.sin(time * 1.3 + cam.x) > 0.7) {
+          dot(px + 22, ey - Math.sin(cam.facing) * 3, 1.4, "rgba(60,255,140,0.8)");
+        }
+      }
+
+      // a monitor behind you, reporting your position
+      const monitor = (tx: number, ty: number, rgb: string, text: string) => {
+        const px = tx * TILE - cx;
+        const py = ty * TILE - cy;
+        c.fillStyle = `rgba(${rgb},0.7)`;
+        c.fillRect(px + 10, py + 12, 20, 14);
+        dot(px + 20, py + 19, 22, `rgba(${rgb},0.08)`);
+        c.font = '18px "VT323", monospace';
+        c.textAlign = "center";
+        c.fillStyle = `rgba(${rgb},0.95)`;
+        c.fillText(text, px + 20, py + 4);
+      };
+      if (peek && time < peek.until) monitor(peek.x, peek.y, "60,255,140", peek.text);
+      if (time < iSeeYouUntil) monitor(WATCHING_CART.x, WATCHING_CART.y, "255,50,50", "I SEE YOU");
       // things the headlamp has found
       for (const g of glints) {
         if (!revealed.has(g.id) || !available(g, f)) continue;
@@ -913,6 +1038,11 @@ export default function GameCanvas({ flags, paused, onInteract, onCaught }: Prop
           pin.y = y;
         },
         dips: () => dips,
+        peekNow: () => {
+          peekTimer = 0;
+        },
+        peek: () => peek && { ...peek, live: time < peek.until },
+        watch: () => watchRef.current,
         hold: (k: string, on: boolean) => (on ? keys.add(k) : keys.delete(k)),
         interact: () => {
           const t = nearestInteractable();

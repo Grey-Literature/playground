@@ -45,6 +45,7 @@ games/ITshopOfHorrors/
   scripts/release.mjs    ← dist/index.html → itshopofhorrors.html
   src/
     game/  types.ts  mapData.ts  story.ts  pickups.ts  audio.ts
+           acts.ts (act from flags)  watch.ts (session telemetry)  memory.ts (last ending)
     components/  GameCanvas.tsx  HUD.tsx  DialogueBox.tsx  FinalSequence.tsx  T3Figure.tsx  Screens.tsx
 ```
 
@@ -270,6 +271,12 @@ reuse the existing palette; glints are warm-white sparkles, never UI arrows.
    - **4a.** The watching (cameras, monitors), the HUD takeover, the attempt
      counters and the personalized whispers. **STOP:** playtest. Is it
      unsettling, or just noisy?
+     Built 2026-10-27: 5 `V` cameras (`CAMERAS` in mapData), Act I green
+     dashboards, Act II+ monitor peeks behind you every 6–10 s, `I SEE YOU`
+     on the east triage cart (37,10), the red assisted objective, door
+     attempts 2/3/4+, the desk re-search line, `PATTERN DETECTED` after two
+     catches, `jr_tech` on the undead server, personalized whispers (about 1
+     in 3 from Act II), and the welcome-back title line.
    - **4b.** The corrupted tickets, AI control, and the Act IV endings
      including ESCAPE. **STOP:** playtest.
    - **4c.** The map changes, the silence beat and the two printer voices.

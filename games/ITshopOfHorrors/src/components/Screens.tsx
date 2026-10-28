@@ -8,12 +8,21 @@ import {
   RESIST_LANYARD,
   RESIST_FINAL_VOICE,
   SURRENDER_LINES,
+  welcomeBack,
 } from "../game/story";
+import type { Ending } from "../game/memory";
 import { initAudio, sfxEnterKey, sfxConfirm, sfxPowerDown, restoreHum } from "../game/audio";
 
 // ---------------------------------------------------------------- Title
 
-export function TitleScreen({ onStart }: { onStart: () => void }) {
+export function TitleScreen({
+  onStart,
+  lastEnding,
+}: {
+  onStart: () => void;
+  lastEnding: Ending | null;
+}) {
+  const welcome = welcomeBack(lastEnding);
   return (
     <div className="crt relative flex h-full w-full flex-col items-center justify-center overflow-hidden bg-[#040607] px-6">
       <div className="pointer-events-none absolute inset-0 opacity-20">
@@ -46,6 +55,9 @@ export function TitleScreen({ onStart }: { onStart: () => void }) {
             Not every solution should be implemented.
           </span>
         </p>
+        {welcome && (
+          <p className="font-term flicker mt-4 text-sm tracking-[0.2em] text-red-400">{welcome}</p>
+        )}
 
         <button
           onClick={() => {

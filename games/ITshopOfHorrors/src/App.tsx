@@ -10,10 +10,13 @@ import {
   ResistEnding,
   SurrenderEnding,
 } from "./components/Screens";
-import { getScript, WHISPERS } from "./game/story";
+import { getScript, buildWhisper, patternWhisper, WHISPERS } from "./game/story";
 import { initialFlags, type Flags, type Screen, type Script } from "./game/types";
 import { sfxUnlock, sfxDeny, sfxConfirm } from "./game/audio";
 import { PIN_IDS, pinCount } from "./game/pickups";
+import { actOf } from "./game/acts";
+import { createWatch, type Dir } from "./game/watch";
+import { loadLastEnding, saveLastEnding } from "./game/memory";
 
 const merge = (a: string[], b?: string[]) =>
   b ? Array.from(new Set([...a, ...b])) : a;
@@ -29,6 +32,11 @@ export default function App() {
   const [gameKey, setGameKey] = useState(0);
   const integrityRef = useRef(integrity);
   integrityRef.current = integrity;
+  const flagsRef = useRef(flags);
+  flagsRef.current = flags;
+  // this run's telemetry (session-only) and the ending from your last visit
+  const watchRef = useRef(createWatch());
+  const [lastEnding] = useState(loadLastEnding);
 
   const paused = dialogue !== null;
 
@@ -50,7 +58,10 @@ export default function App() {
   const handleInteract = useCallback(
     (id: string) => {
       if (dialogue) return;
-      const s = getScript(id, flags);
+      const w = watchRef.current;
+      w.attempts[id] = (w.attempts[id] ?? 0) + 1;
+      const s = getScript(id, flags, w);
+      if (id.startsWith("search:") && !(id in w.searches)) w.searches[id] = Date.now();
       // a pin found on the floor is a toast, not a conversation
       if (s.lines.length === 0) applyScript(s);
       else setDialogue(s);
@@ -66,10 +77,15 @@ export default function App() {
   }, [dialogue, applyScript]);
 
   // ------- min pin catches you -------
-  const handleCaught = useCallback(() => {
+  const handleCaught = useCallback((dir: Dir) => {
     sfxDeny();
     setFlashKey((k) => k + 1);
-    setWhisper("QUARANTINE ATTEMPTED. BADGE INTEGRITY DEGRADED. IT REMEMBERS YOUR SMELL.");
+    const w = watchRef.current;
+    w.catches.push({ dir, dark: w.usedDark });
+    setWhisper(
+      patternWhisper(w) ??
+        "QUARANTINE ATTEMPTED. BADGE INTEGRITY DEGRADED. IT REMEMBERS YOUR SMELL.",
+    );
     const next = Math.max(0, integrityRef.current - 25);
     setIntegrity(next);
     if (next <= 0) setTimeout(() => setScreen("gameover"), 400);
@@ -79,11 +95,15 @@ export default function App() {
   useEffect(() => {
     if (screen !== "game") return;
     const iv = setInterval(() => {
-      if (Math.random() < 0.65)
-        setWhisper(WHISPERS[Math.floor(Math.random() * WHISPERS.length)]);
+      if (Math.random() >= 0.65) return;
+      const f = flagsRef.current;
+      // from Act II, about one in three is about you
+      if (actOf(f) >= 2 && Math.random() < 1 / 3)
+        setWhisper(buildWhisper(f, watchRef.current, Date.now(), lastEnding));
+      else setWhisper(WHISPERS[Math.floor(Math.random() * WHISPERS.length)]);
     }, 16000);
     return () => clearInterval(iv);
-  }, [screen]);
+  }, [screen, lastEnding]);
 
   useEffect(() => {
     if (!whisper) return;
@@ -107,8 +127,13 @@ export default function App() {
       givePins: (n = PIN_IDS.length) =>
         setFlags((f) => ({ ...f, collected: merge(f.collected, PIN_IDS.slice(0, n)) })),
       give: (patch: Partial<Flags>) => setFlags((f) => ({ ...f, ...patch })),
+      whisper: () => {
+        const text = buildWhisper(flags, watchRef.current, Date.now(), lastEnding);
+        setWhisper(text);
+        return text;
+      },
     };
-  }, [flags]);
+  }, [flags, lastEnding]);
 
   // ------- restarts -------
   const fullRestart = useCallback(() => {
@@ -117,6 +142,7 @@ export default function App() {
     setDialogue(null);
     setWhisper(null);
     setToast(null);
+    watchRef.current = createWatch();
     setGameKey((k) => k + 1);
     setScreen("title");
   }, []);
@@ -131,7 +157,9 @@ export default function App() {
   return (
     <div className="relative h-full w-full bg-black">
       <div className="relative mx-auto h-full w-full max-w-[1400px]">
-        {screen === "title" && <TitleScreen onStart={() => setScreen("intro")} />}
+        {screen === "title" && (
+          <TitleScreen lastEnding={lastEnding} onStart={() => setScreen("intro")} />
+        )}
         {screen === "intro" && <IntroScreen onDone={() => setScreen("game")} />}
 
         {screen === "game" && (
@@ -140,10 +168,16 @@ export default function App() {
               key={gameKey}
               flags={flags}
               paused={paused}
+              watch={watchRef.current}
               onInteract={handleInteract}
               onCaught={handleCaught}
             />
-            <HUD flags={flags} integrity={integrity} />
+            <HUD
+              flags={flags}
+              integrity={integrity}
+              act={actOf(flags)}
+              doorTries={watchRef.current.attempts.door ?? 0}
+            />
 
             {/* damage flash */}
             {flashKey > 0 && (
@@ -180,8 +214,14 @@ export default function App() {
         {screen === "final" && (
           <FinalSequence
             pinCount={pinCount(flags)}
-            onResist={() => setScreen("ending-resist")}
-            onSurrender={() => setScreen("ending-surrender")}
+            onResist={() => {
+              saveLastEnding("resist");
+              setScreen("ending-resist");
+            }}
+            onSurrender={() => {
+              saveLastEnding("surrender");
+              setScreen("ending-surrender");
+            }}
           />
         )}
 
