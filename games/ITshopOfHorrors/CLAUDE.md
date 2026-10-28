@@ -45,7 +45,7 @@ games/ITshopOfHorrors/
   scripts/release.mjs    ← dist/index.html → itshopofhorrors.html
   src/
     game/  types.ts  mapData.ts  story.ts  pickups.ts  audio.ts
-    components/  GameCanvas.tsx  HUD.tsx  DialogueBox.tsx  FinalSequence.tsx  Screens.tsx
+    components/  GameCanvas.tsx  HUD.tsx  DialogueBox.tsx  FinalSequence.tsx  T3Figure.tsx  Screens.tsx
 ```
 
 ## 4. Design spec: the hunt

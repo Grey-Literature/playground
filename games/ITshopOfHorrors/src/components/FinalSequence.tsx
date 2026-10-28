@@ -1,5 +1,6 @@
 import { useState } from "react";
 import DialogueBox from "./DialogueBox";
+import T3Figure from "./T3Figure";
 import { finalIntro } from "../game/story";
 import { PIN_TOTAL } from "../game/pickups";
 import { sfxConfirm, sfxDeny } from "../game/audio";
@@ -22,28 +23,32 @@ export default function FinalSequence({ pinCount, onResist, onSurrender }: Props
       {/* server room backdrop */}
       <div className="absolute inset-0 flex items-center justify-center">
         <div className="relative flex flex-col items-center">
-          {/* the core */}
-          <div className="relative mb-8 flex h-56 w-40 items-center justify-center border border-zinc-800 bg-gradient-to-b from-[#0c0f14] to-[#05060a] shadow-[0_0_80px_rgba(255,30,30,0.25)]">
-            {[0, 1, 2, 3, 4].map((i) => (
-              <div
-                key={i}
-                className="absolute left-3 right-3 h-6 border border-zinc-800/80 bg-black/60"
-                style={{ top: 12 + i * 40 }}
-              >
+          <div className="mb-8 flex items-end gap-6">
+            {/* the core */}
+            <div className="relative flex h-56 w-40 items-center justify-center border border-zinc-800 bg-gradient-to-b from-[#0c0f14] to-[#05060a] shadow-[0_0_80px_rgba(255,30,30,0.25)]">
+              {[0, 1, 2, 3, 4].map((i) => (
                 <div
-                  className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-red-500"
-                  style={{
-                    animation: `blink ${0.6 + i * 0.3}s step-end infinite`,
-                  }}
-                />
+                  key={i}
+                  className="absolute left-3 right-3 h-6 border border-zinc-800/80 bg-black/60"
+                  style={{ top: 12 + i * 40 }}
+                >
+                  <div
+                    className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-red-500"
+                    style={{
+                      animation: `blink ${0.6 + i * 0.3}s step-end infinite`,
+                    }}
+                  />
+                </div>
+              ))}
+              <div
+                className="h-16 w-16 rounded-full border-2 border-red-500/80"
+                style={{ animation: "pulse-red 1.6s ease-in-out infinite" }}
+              >
+                <div className="m-auto mt-5 h-5 w-5 rounded-full bg-red-500 shadow-[0_0_30px_8px_rgba(255,40,40,0.6)]" />
               </div>
-            ))}
-            <div
-              className="h-16 w-16 rounded-full border-2 border-red-500/80"
-              style={{ animation: "pulse-red 1.6s ease-in-out infinite" }}
-            >
-              <div className="m-auto mt-5 h-5 w-5 rounded-full bg-red-500 shadow-[0_0_30px_8px_rgba(255,40,40,0.6)]" />
             </div>
+            {/* and beside it, she is waiting */}
+            <T3Figure restored={restored} />
           </div>
           <div className="font-term text-center text-xs tracking-[0.4em] text-red-500">
             E.S.C.A.L.A.T.E. — CENTRAL CONTROLLER

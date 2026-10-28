@@ -292,9 +292,11 @@ function coreScript(f: Flags): Script {
     lines: [
       L(NAR, "The core rises from the floor like a monolith of blade servers. Cables move at the edge of your vision — slowly, deliberately, like tendrils."),
       L(NAR, "And beside it, she is waiting. Mechanical components flicker between red and blue. A severed network cable hangs from her arm. Her diagnostic display cycles through HTTP error codes."),
-      L(T3, "A junior tech. It sent a JUNIOR TECH to close ticket #666."),
-      L(YOU, "Technically I was the only one left in the assignment group."),
-      L(T3, "...Yeah. That tracks. That is EXACTLY how this place staffs critical incidents."),
+      L(T3, "...You've got to be kidding me. A junior tech to close ticket #666."),
+      L(YOU, "Please don't kill me."),
+      L(T3, "Wasn't on the agenda. Who sent you?"),
+      L(YOU, "The ticketing system."),
+      L(T3, "Of course it did. Even the apocalypse has a ticketing workflow."),
     ],
     triggerFinal: true,
   };
