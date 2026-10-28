@@ -318,7 +318,10 @@ reuse the existing palette; glints are warm-white sparkles, never UI arrows.
      - **Printer.** In Act III it alternates real notes (crooked, cite
        escalate.log) with fakes (neat, "trust", pointing at an open ticket
        or asking for the lanyard).
-5. Wire a card into `games-index.html` (only once it's actually playable live).
+5. ✅ Card 08 (`#card-itshop`) is in `games-index.html`, added 2026-10-27. Its
+   preview is a headlamp sweeping a dead office, green dashboards and a red
+   camera LED, with reduced-motion handled. It goes live when the branch
+   merges.
 
 ## 7. Definition of done
 

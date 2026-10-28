@@ -6,6 +6,12 @@
       "runtimeExecutable": "npx",
       "runtimeArgs": ["vite", "--port", "5179", "--strictPort"],
       "port": 5179
+    },
+    {
+      "name": "games-index",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["vite", "..", "--port", "5180", "--strictPort"],
+      "port": 5180
     }
   ]
 }
