@@ -9,7 +9,9 @@ import {
   GameOverScreen,
   ResistEnding,
   SurrenderEnding,
+  EscapeEnding,
 } from "./components/Screens";
+import { controlOf } from "./game/tickets";
 import { getScript, buildWhisper, patternWhisper, WHISPERS } from "./game/story";
 import { initialFlags, type Flags, type Screen, type Script } from "./game/types";
 import { sfxUnlock, sfxDeny, sfxConfirm } from "./game/audio";
@@ -26,6 +28,9 @@ export default function App() {
   const [flags, setFlags] = useState<Flags>(initialFlags);
   const [integrity, setIntegrity] = useState(100);
   const [dialogue, setDialogue] = useState<Script | null>(null);
+  // bumps per conversation so back-to-back ones (a choice, then its outcome)
+  // get a fresh DialogueBox
+  const [dialogueN, setDialogueN] = useState(0);
   const [whisper, setWhisper] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [flashKey, setFlashKey] = useState(0);
@@ -49,11 +54,27 @@ export default function App() {
       ...d.effects,
       collected: merge(f.collected, d.collect),
       seen: merge(f.seen, d.see),
+      restored: merge(f.restored, d.restore),
+      deferred: merge(f.deferred, d.defer),
     }));
     if (d.toast) setToast(d.toast);
     if (d.log) console.log(`%c${d.log}`, "color:#6effa8;font-family:monospace");
     if (d.triggerFinal) setScreen("final");
+    if (d.triggerEscape) {
+      saveLastEnding("escape");
+      setScreen("ending-escape");
+    }
   }, []);
+
+  // a script with lines opens a conversation; one without just happens
+  const play = useCallback(
+    (s: Script) => {
+      if (s.lines.length === 0) return applyScript(s);
+      setDialogue(s);
+      setDialogueN((n) => n + 1);
+    },
+    [applyScript],
+  );
 
   const handleInteract = useCallback(
     (id: string) => {
@@ -63,18 +84,22 @@ export default function App() {
       const s = getScript(id, flags, w);
       if (id.startsWith("search:") && !(id in w.searches)) w.searches[id] = Date.now();
       // a pin found on the floor is a toast, not a conversation
-      if (s.lines.length === 0) applyScript(s);
-      else setDialogue(s);
+      play(s);
     },
-    [dialogue, flags, applyScript],
+    [dialogue, flags, play],
   );
 
-  const closeDialogue = useCallback(() => {
-    if (!dialogue) return;
-    const d = dialogue;
-    setDialogue(null);
-    applyScript(d);
-  }, [dialogue, applyScript]);
+  const closeDialogue = useCallback(
+    (pick?: number) => {
+      if (!dialogue) return;
+      const d = dialogue;
+      setDialogue(null);
+      applyScript(d);
+      // RESTORE / LEAVE IT (or WALK OUT / NOT YET): play what was picked
+      if (pick !== undefined && d.choice) play(d.choice[pick].then);
+    },
+    [dialogue, applyScript, play],
+  );
 
   // ------- min pin catches you -------
   const handleCaught = useCallback((dir: Dir) => {
@@ -207,7 +232,14 @@ export default function App() {
               </div>
             )}
 
-            {dialogue && <DialogueBox lines={dialogue.lines} onClose={closeDialogue} />}
+            {dialogue && (
+              <DialogueBox
+                key={dialogueN}
+                lines={dialogue.lines}
+                choice={dialogue.choice}
+                onClose={closeDialogue}
+              />
+            )}
           </div>
         )}
 
@@ -222,13 +254,28 @@ export default function App() {
               saveLastEnding("surrender");
               setScreen("ending-surrender");
             }}
+            onEscape={() => {
+              saveLastEnding("escape");
+              setScreen("ending-escape");
+            }}
           />
         )}
 
         {screen === "ending-resist" && (
-          <ResistEnding onRestart={fullRestart} fullLanyard={pinCount(flags) === PIN_IDS.length} />
+          <ResistEnding
+            onRestart={fullRestart}
+            fullLanyard={pinCount(flags) === PIN_IDS.length}
+            replicated={controlOf(flags) >= 2}
+          />
         )}
         {screen === "ending-surrender" && <SurrenderEnding onRestart={fullRestart} />}
+        {screen === "ending-escape" && (
+          <EscapeEnding
+            onRestart={fullRestart}
+            hasCred={flags.hasRootCred}
+            fullLanyard={pinCount(flags) === PIN_IDS.length}
+          />
+        )}
         {screen === "gameover" && <GameOverScreen onRetry={retryFromQuarantine} />}
       </div>
     </div>

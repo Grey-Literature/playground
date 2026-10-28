@@ -46,7 +46,9 @@ games/ITshopOfHorrors/
   src/
     game/  types.ts  mapData.ts  story.ts  pickups.ts  audio.ts
            acts.ts (act from flags)  watch.ts (session telemetry)  memory.ts (last ending)
+           tickets.ts (corrupted tickets, AI control)
     components/  GameCanvas.tsx  HUD.tsx  DialogueBox.tsx  FinalSequence.tsx  T3Figure.tsx  Screens.tsx
+                 Typed.tsx (typewriter for the intro and endings)
 ```
 
 ## 4. Design spec: the hunt
@@ -240,7 +242,8 @@ Each one is built on a system that already exists.
   guard (off-camera or blackout) and must pass the BFS reachability check.
   Add a headless check proving every mutation keeps all objectives reachable.
 - `DialogueBox` gets an optional choice line, used for RESTORE / LEAVE IT.
-- `Flags` gains `control: number`.
+- `Flags` gains `restored` / `deferred` ticket ids; AI control is
+  `controlOf(f)` = `restored.length` (derived, so it can't drift).
 
 ### Decisions (confirmed by Rosetta, 2026-10-27)
 
@@ -277,6 +280,14 @@ reuse the existing palette; glints are warm-white sparkles, never UI arrows.
      attempts 2/3/4+, the desk re-search line, `PATTERN DETECTED` after two
      catches, `jr_tech` on the undead server, personalized whispers (about 1
      in 3 from Act II), and the welcome-back title line.
+     Built 2026-10-27 (4b): `src/game/tickets.ts`. The three tickets live on
+     wall-mounted gear (`N`): DNS on the hallway's north wall (26,9), trace on
+     the den's east wall (42,17), backup on the annex's south wall (36,29).
+     The choice has no default, so mashing E can't pick for you; it's 1/2, or
+     A/D then E. AI control is `restored.length`, derived rather than stored.
+     The front exit `X` is at (7,29) in the office. In Act III the terminal
+     reveals TKT-0666-B ("recover access credentials", created 2:46 AM).
+     Every ending, and the intro, now type out like dialogue (`Typed.tsx`).
    - **4b.** The corrupted tickets, AI control, and the Act IV endings
      including ESCAPE. **STOP:** playtest.
    - **4c.** The map changes, the silence beat and the two printer voices.

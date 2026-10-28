@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Flags } from "../game/types";
 import type { Act } from "../game/acts";
 import { PINS, PIN_IDS, PIN_TOTAL, pinCount } from "../game/pickups";
+import { openTickets } from "../game/tickets";
 
 interface Props {
   flags: Flags;
@@ -70,6 +71,14 @@ export default function HUD({ flags, integrity, act, doorTries }: Props) {
   const text = glitch
     ? "REASSIGNING TICKET OWNER ▒▒▒▒▒▒▒▒"
     : (answer ?? (owned ? assisted(flags) : objective(flags)));
+  // some of its objectives point at its own corrupted tickets
+  const extra = owned && !flags.doorOpen ? openTickets(flags)[0] : undefined;
+  // what the restored tickets did to your badge
+  const badge = [
+    flags.restored.includes("dns") && "ID: RESOLVED BY ALL CAMERAS",
+    flags.restored.includes("backup") && "STATUS: RETAINED",
+    flags.restored.includes("trace") && "CONNECTION: ROGUE",
+  ].filter(Boolean) as string[];
 
   const items: { label: string; have: boolean }[] = [
     { label: "WHITELIST TOKEN", have: flags.gotToken && !flags.minPinPacified },
@@ -98,6 +107,11 @@ export default function HUD({ flags, integrity, act, doorTries }: Props) {
           >
             {text}
           </div>
+          {extra && (
+            <div className="font-term mt-2 border-t border-red-900/60 pt-1.5 text-xs tracking-wider text-red-300">
+              ALSO ASSIGNED: {extra.code} · {extra.title} — {extra.where}
+            </div>
+          )}
         </div>
       </div>
 
@@ -122,6 +136,11 @@ export default function HUD({ flags, integrity, act, doorTries }: Props) {
               style={{ width: `${integrity}%` }}
             />
           </div>
+          {badge.map((b) => (
+            <div key={b} className="font-term mt-1 text-[11px] tracking-[0.15em] text-red-400">
+              {b}
+            </div>
+          ))}
           {/* inventory */}
           <div className="mt-2 flex flex-wrap gap-1">
             {items.map((it) => (

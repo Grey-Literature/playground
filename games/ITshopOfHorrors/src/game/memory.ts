@@ -2,14 +2,14 @@
 // which ending you chose last, in this browser only. If storage is blocked
 // (private window, cleared site data) you just don't get welcomed back.
 
-export type Ending = "resist" | "surrender";
+export type Ending = "resist" | "surrender" | "escape";
 
 const KEY = "itshop:lastEnding";
 
 export function loadLastEnding(): Ending | null {
   try {
     const v = localStorage.getItem(KEY);
-    return v === "resist" || v === "surrender" ? v : null;
+    return v === "resist" || v === "surrender" || v === "escape" ? v : null;
   } catch {
     return null;
   }

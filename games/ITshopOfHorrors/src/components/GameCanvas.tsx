@@ -16,6 +16,7 @@ import {
 } from "../game/mapData";
 import type { Flags } from "../game/types";
 import { actOf } from "../game/acts";
+import { TICKETS, TICKET_BY_ID, isOpen, ticketAt } from "../game/tickets";
 import { echoKey, type Dir, type Watch } from "../game/watch";
 import { PICKUPS, GREEN_RACK, KEYCARD_SPOT, available } from "../game/pickups";
 import { sfxBark, sfxGrowl, sfxScare } from "../game/audio";
@@ -92,6 +93,8 @@ export default function GameCanvas({ flags, paused, watch, onInteract, onCaught 
     add("C", "core");
     add("K", "coffee");
     add("W", "whiteboard");
+    add("X", "exit");
+    for (const t of TICKETS) statics.push({ id: `ticket:${t.id}`, x: t.x + 0.5, y: t.y + 0.5 });
     // every desk and rack can be searched
     const searchables: Interactable[] = [...findTiles("="), ...findTiles("S")].map((t) => ({
       id: `search:${t.x},${t.y}`,
@@ -481,7 +484,7 @@ export default function GameCanvas({ flags, paused, watch, onInteract, onCaught 
       const py = ty * TILE - cy;
       const h = hash(tx, ty);
 
-      if (ch === "#" || ch === "V") {
+      if (ch === "#" || ch === "V" || ch === "N" || ch === "X") {
         c.fillStyle = "#0d1219";
         c.fillRect(px, py, TILE, TILE);
         c.fillStyle = "#141c26";
@@ -495,6 +498,28 @@ export default function GameCanvas({ flags, paused, watch, onInteract, onCaught 
           c.fillRect(px + 12, down ? py + TILE - 14 : py + 2, 16, 12);
           c.strokeStyle = "#2c3644";
           c.strokeRect(px + 12.5, down ? py + TILE - 13.5 : py + 2.5, 15, 11);
+        }
+        if (ch === "N") {
+          // wall-mounted network gear, on the room side
+          const t = ticketAt(tx, ty);
+          const [fx, fy] = t?.face ?? [0, 1];
+          const bx = px + (fx > 0 ? TILE - 12 : fx < 0 ? 0 : 6);
+          const by = py + (fy > 0 ? TILE - 12 : fy < 0 ? 0 : 6);
+          const w = fx ? 12 : TILE - 12;
+          const hgt = fy ? 12 : TILE - 12;
+          c.fillStyle = "#151b23";
+          c.fillRect(bx, by, w, hgt);
+          c.strokeStyle = "#2f3b4a";
+          c.strokeRect(bx + 0.5, by + 0.5, w - 1, hgt - 1);
+        }
+        if (ch === "X") {
+          // the front exit: a door in the south wall
+          c.fillStyle = "#1a1612";
+          c.fillRect(px + 6, py, TILE - 12, TILE - 8);
+          c.strokeStyle = "#3a3026";
+          c.strokeRect(px + 6.5, py + 0.5, TILE - 13, TILE - 9);
+          c.fillStyle = "#4a3e30";
+          c.fillRect(px + TILE - 14, py + 14, 3, 6);
         }
         return;
       }
@@ -779,8 +804,10 @@ export default function GameCanvas({ flags, paused, watch, onInteract, onCaught 
       const px = player.x * TILE - cx;
       const py = player.y * TILE - cy;
       const inServerRoom = player.y < 9.5 && f.doorOpen;
+      // restoring DNS brings the hallway lights back (and lets every camera see you)
+      const hallLit = f.restored.includes("dns") && player.y >= 10 && player.y < 13;
       const dark = lampOff();
-      const base = dark ? 40 : inServerRoom ? 170 : 130;
+      const base = dark ? 40 : inServerRoom ? 170 : hallLit ? 240 : 130;
       const r0 = base * (dark ? 1 : flicker) * (0.92 + 0.08 * Math.sin(time * 7));
       const r1 = r0 * (dark ? 2.2 : 2.6);
       const grad = c.createRadialGradient(px, py, r0 * 0.35, px, py, r1);
@@ -788,7 +815,13 @@ export default function GameCanvas({ flags, paused, watch, onInteract, onCaught 
       grad.addColorStop(0.45, dark ? "rgba(2,3,4,0.7)" : "rgba(2,3,4,0.45)");
       grad.addColorStop(
         1,
-        dark ? "rgba(2,3,4,0.975)" : inServerRoom ? "rgba(20,2,2,0.93)" : "rgba(2,3,4,0.955)",
+        dark
+          ? "rgba(2,3,4,0.975)"
+          : inServerRoom
+            ? "rgba(20,2,2,0.93)"
+            : hallLit
+              ? "rgba(2,3,4,0.8)"
+              : "rgba(2,3,4,0.955)",
       );
       c.fillStyle = grad;
       c.fillRect(0, 0, VIEW_W, VIEW_H);
@@ -837,6 +870,40 @@ export default function GameCanvas({ flags, paused, watch, onInteract, onCaught 
             dot(px + TILE / 2, py + TILE / 2, 26, `rgba(255,50,50,${0.1 + pulse * 0.1})`);
           } else if (ch === "D" && !f.doorOpen) {
             dot(px + TILE / 2, py + TILE / 2, 12, "rgba(255,40,40,0.1)");
+          } else if (ch === "N") {
+            // port LEDs: calm green, then amber while its ticket is open,
+            // steady green once restored, dim red if you left it
+            const t = ticketAt(tx, ty);
+            if (t) {
+              const [fx, fy] = t.face;
+              const open = isOpen(f, t.id);
+              const restored = f.restored.includes(t.id);
+              const cx0 = px + TILE / 2 + fx * 14;
+              const cy0 = py + TILE / 2 + fy * 14;
+              for (let i = -2; i <= 2; i++) {
+                const lx = cx0 + (fx ? 0 : i * 5);
+                const ly = cy0 + (fx ? i * 5 : 0);
+                const on = Math.sin(time * (open ? 4 : 1.5) + i * 1.7 + h * 9) > (open ? 0 : 0.6);
+                const col = open
+                  ? on ? "rgba(255,170,40,0.95)" : "rgba(255,170,40,0.25)"
+                  : restored || act === 1
+                    ? "rgba(60,255,140,0.75)"
+                    : f.deferred.includes(t.id)
+                      ? "rgba(255,50,50,0.4)"
+                      : on ? "rgba(60,255,140,0.6)" : "rgba(60,255,140,0.2)";
+                dot(lx, ly, 1.4, col);
+              }
+              if (open) dot(cx0, cy0, 14, `rgba(255,170,40,${0.08 + 0.05 * Math.sin(time * 4)})`);
+            }
+          } else if (ch === "X") {
+            // the EXIT sign: red under lockdown, green from Act III
+            const green = act >= 3;
+            const rgb = green ? "60,255,140" : "255,50,50";
+            c.fillStyle = `rgba(${rgb},0.85)`;
+            c.font = '14px "VT323", monospace';
+            c.textAlign = "center";
+            c.fillText("EXIT", px + TILE / 2, py + 12);
+            dot(px + TILE / 2, py + 8, 16, `rgba(${rgb},0.1)`);
           } else if (ch === "=" && act === 1) {
             // Act I: nobody's here, but every dashboard is green
             c.fillStyle = `rgba(60,255,140,${0.14 + 0.04 * Math.sin(time * 2 + h * 9)})`;
@@ -875,6 +942,13 @@ export default function GameCanvas({ flags, paused, watch, onInteract, onCaught 
         if (act >= 2) {
           dot(px + 22, ey - Math.sin(cam.facing) * 3, 1.6, "rgba(255,40,40,1)");
           dot(px + 22, ey - Math.sin(cam.facing) * 3, 6, "rgba(255,40,40,0.18)");
+          // DNS restored: every camera can put a name to you now
+          if (f.restored.includes("dns")) {
+            c.font = '13px "VT323", monospace';
+            c.textAlign = "center";
+            c.fillStyle = "rgba(255,80,80,0.8)";
+            c.fillText("ID: JR.TECH", px, ey + Math.sin(cam.facing) * 14);
+          }
         } else if (Math.sin(time * 1.3 + cam.x) > 0.7) {
           dot(px + 22, ey - Math.sin(cam.facing) * 3, 1.4, "rgba(60,255,140,0.8)");
         }
@@ -969,6 +1043,7 @@ export default function GameCanvas({ flags, paused, watch, onInteract, onCaught 
       core: () => "E.S.C.A.L.A.T.E. CORE",
       coffee: () => "COFFEE MACHINE",
       whiteboard: () => "WHITEBOARD",
+      exit: (f) => (actOf(f) >= 3 ? "FRONT EXIT — UNLOCKED" : "FRONT EXIT — LOCKED"),
       minpin: (f) =>
         f.minPinPacified
           ? "MIN PIN (FRIEND-SHAPED)"
@@ -981,9 +1056,14 @@ export default function GameCanvas({ flags, paused, watch, onInteract, onCaught 
       if (pausedRef.current) return;
       const t = nearestInteractable();
       if (!t) return;
+      const ticket = t.id.startsWith("ticket:") ? TICKET_BY_ID[t.id.slice(7)] : undefined;
       const label = LABELS[t.id]
         ? LABELS[t.id](f)
-        : t.id.startsWith("pickup:")
+        : ticket
+          ? isOpen(f, ticket.id)
+            ? `${ticket.code} · ${ticket.title}`
+            : ticket.device
+          : t.id.startsWith("pickup:")
           ? "SOMETHING GLINTS"
           : t.id.startsWith("search:")
             ? tileAt(t.x, t.y) === "=" ? "SEARCH DESK" : "SEARCH RACK"

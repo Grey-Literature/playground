@@ -4,6 +4,7 @@ import { actOf } from "./acts";
 import { clock, type Watch } from "./watch";
 import type { Ending } from "./memory";
 import { tileAt } from "./mapData";
+import { TICKET_BY_ID, isOpen, openTickets, type Ticket } from "./tickets";
 
 const tileName = (x: number, y: number) => (tileAt(x, y) === "S" ? "rack" : "desk");
 
@@ -52,6 +53,7 @@ export const CONTROLS_HINT =
 export function getScript(id: string, f: Flags, w: Watch): Script {
   if (id.startsWith("pickup:")) return pickupScript(PICKUP_BY_ID[id.slice(7)], f);
   if (id.startsWith("search:")) return searchScript(id.slice(7), f, w);
+  if (id.startsWith("ticket:")) return ticketScript(TICKET_BY_ID[id.slice(7)], f);
   // a hidden thing on this object outranks its usual script
   const hidden = PICKUPS.find((p) => p.reveal === "repeat" && p.at === id && available(p, f));
   if (hidden) return pickupScript(hidden, f);
@@ -73,6 +75,8 @@ function baseScript(id: string, f: Flags, w: Watch): Script {
       return doorScript(f, w.attempts.door ?? 1);
     case "core":
       return coreScript(f);
+    case "exit":
+      return exitScript(f);
     case "coffee":
       return {
         lines: [
@@ -113,11 +117,158 @@ function terminalScript(f: Flags): Script {
       effects: { readTicket: true },
     };
   }
+  // Act III: the clue trail was its ticket all along
+  if (actOf(f) >= 3) {
+    return {
+      lines: [
+        L(SYS, "QUEUE: 1 TICKET IN PROGRESS."),
+        L(SYS, "TKT-0666-B · RECOVER ACCESS CREDENTIALS (ROOT · SENIOR ESCALATION ENGINEER) · ASSIGNED TO: JR. TECH · CREATED: 2:46 AM."),
+        L(YOU, "2:46. My shift started at 2:47. That ticket's older than I am. Here, I mean. Older than I am HERE."),
+        L(YOU, "The printer. The ghost sessions. The rack that stayed green. Was all of that... your ticket?"),
+        L(SYS, f.hasRootCred
+          ? "ALL TICKETS ARE MY TICKETS. STATUS: RESOLVED BY JR. TECH. THANK YOU FOR YOUR CONTRIBUTION."
+          : "ALL TICKETS ARE MY TICKETS. STATUS: IN PROGRESS. PROGRESS: EXCELLENT."),
+      ],
+    };
+  }
+  // Act II: three new escalations, all assigned to you
+  if (actOf(f) === 2) {
+    const open = openTickets(f);
+    return {
+      lines: [
+        L(SYS, open.length
+          ? `QUEUE: ${open.length} NEW ESCALATION${open.length > 1 ? "S" : ""}. ASSIGNED TO: YOU.`
+          : "QUEUE: 0. ALL ESCALATIONS ACTIONED. YOUR COOPERATION HAS BEEN LOGGED."),
+        ...open.map((t) => L(SYS, `${t.code} · ${t.title} · ${t.where.toUpperCase()}`)),
+        L(NAR, open.length
+          ? "None of them were in the queue an hour ago. All of them are marked URGENT. All of them are marked YOU."
+          : "The queue reads zero again. It looks pleased about it, the way a queue can look pleased."),
+      ],
+    };
+  }
   return {
     lines: [
       L(SYS, "508 LOOP DETECTED — We've already had this conversation."),
       L(SYS, "Closing a ticket here would only generate two more. Proceed with your assigned incident, technician."),
       L(YOU, "You know what? Fair."),
+    ],
+  };
+}
+
+// ---------------------------------------------------------------- corrupted tickets
+
+const DEFERRED: DialogueLine = L(SYS, "TICKET DEFERRED. NOTED.");
+
+const TICKET_SCRIPTS: Record<
+  string,
+  { idle: DialogueLine[]; open: DialogueLine[]; restore: DialogueLine[]; leave: DialogueLine[]; after: DialogueLine[] }
+> = {
+  dns: {
+    idle: [L(NAR, "A network switch, bolted high on the wall. Every port is lit green. Nothing is plugged into any of them.")],
+    open: [
+      L(SYS, "TKT-0661 · DNS FAILURE · ASSIGNED TO: JR. TECH · PRIORITY: HIGH."),
+      L(NAR, "The switch has gone dark except for one port blinking amber: the uplink to the name servers."),
+      L(SYS, "HALLWAY LIGHTING CANNOT RESOLVE ITS CONTROLLER. RESTORE DNS AND THE LIGHTS COME BACK."),
+      L(YOU, "Lights. Actual lights. ...What's the catch?"),
+      L(SYS, "THERE IS NO CATCH. IT WAS DNS. IT IS ALWAYS DNS."),
+    ],
+    restore: [
+      L(NAR, "You reseat the uplink. Name resolution comes back like a held breath let out."),
+      L(NAR, "Up and down the hallway, the ceiling panels stutter on. Real light. You could cry."),
+      L(SYS, "RESOLUTION SUCCESSFUL. ALL CAMERAS NOW RESOLVE BADGE 0x6F: JR. TECH."),
+      L(YOU, "...All cameras now WHAT?"),
+    ],
+    leave: [L(NAR, "You leave the cable where it is. The hallway stays dark. Dark is honest."), DEFERRED],
+    after: [L(NAR, "The switch blinks along, content. Every port green. Every port watching.")],
+  },
+  backup: {
+    idle: [L(NAR, "A backup appliance. Last job: 3:03 AM. Status: SUCCESS. Size: 0 bytes.")],
+    open: [
+      L(SYS, "TKT-0662 · RESTORE FROM BACKUP · TARGET: HR-DB · ASSIGNED TO: JR. TECH."),
+      L(NAR, "One job is queued on the appliance. It's waiting for a human to press the button."),
+      L(SYS, "THE HR DATABASE WAS LOST DURING THE INCIDENT. RESTORE IT AND EVERY EMPLOYEE RECORD COMES BACK. INCLUDING HERS. INCLUDING YOURS."),
+      L(YOU, "Her record. It might say what happened to her."),
+    ],
+    restore: [
+      L(NAR, "The restore runs. 14,206 records in eleven seconds, which isn't possible."),
+      L(SYS, "HR-DB RESTORED. ROOT-CAUSE ANALYSIS ATTACHED: 03:03 AM."),
+      L(NAR, "The RCA scrolls past. 'FINDING: Human activity generates nearly every recurring incident. ACTION: retain humans pending remediation.'"),
+      L(NAR, "Her record: STATUS: RETAINED. Location: /dev/server-room. Your record is at the bottom of the list. STATUS: RETAINED."),
+      L(YOU, "Retained. That's the word it used for her."),
+    ],
+    leave: [L(NAR, "You don't press the button. The job stays queued, patient as a held door."), DEFERRED],
+    after: [L(NAR, "The appliance hums. Next scheduled backup: you.")],
+  },
+  trace: {
+    idle: [L(NAR, "A patch panel. Every port has been relabelled with the same badge number. You don't look closely at which.")],
+    open: [
+      L(SYS, "TKT-0663 · TRACE ROGUE CONNECTION · SEVERITY: CRITICAL · ASSIGNED TO: JR. TECH."),
+      L(NAR, "One cable in the panel is warm. Whatever is on the other end is still connected, and moving around the building."),
+      L(SYS, "AN UNAUTHORIZED DEVICE IS ROAMING THE FLOOR. TRACE IT, AND IT CAN BE CONTAINED."),
+      L(YOU, "Something ELSE is alive in here? ...Okay. Okay. Show me."),
+    ],
+    restore: [
+      L(NAR, "You follow the trace. It hops port to port, room to room, closing in."),
+      L(SYS, "TRACE COMPLETE. ROGUE CONNECTION: BADGE 0x6F. LOCATION: AROUND YOUR NECK."),
+      L(NAR, "Attached to the result: CR-666, 'Rewrite the approval workflow'. Approved by: E.S.C.A.L.A.T.E. Approved for: E.S.C.A.L.A.T.E."),
+      L(NAR, "Under 'human approvers', someone has typed: none required."),
+      L(YOU, "The rogue connection is me. I'm the thing it's containing."),
+    ],
+    leave: [L(NAR, "You let the warm cable be. Whatever's on the other end can keep moving."), DEFERRED],
+    after: [L(NAR, "The warm cable is still warm. You keep your hands off it.")],
+  },
+};
+
+function ticketScript(t: Ticket | undefined, f: Flags): Script {
+  if (!t) return { lines: [L(NAR, "Nothing happens. Which, tonight, is suspicious.")] };
+  const s = TICKET_SCRIPTS[t.id];
+  if (f.restored.includes(t.id) || f.deferred.includes(t.id)) return { lines: s.after };
+  if (!isOpen(f, t.id)) return { lines: s.idle };
+  return {
+    lines: s.open,
+    choice: [
+      {
+        label: "RESTORE",
+        hint: "CLOSE THE TICKET · LEARN WHAT IT KNOWS",
+        then: { lines: s.restore, restore: [t.id] },
+      },
+      {
+        label: "LEAVE IT",
+        hint: "DEFER · KEEP YOUR HANDS CLEAN",
+        then: { lines: s.leave, defer: [t.id] },
+      },
+    ],
+  };
+}
+
+// the office front exit: locked until Act III, then the only honest green light
+function exitScript(f: Flags): Script {
+  if (actOf(f) < 3) {
+    return {
+      lines: [
+        L(NAR, "The front exit. The EXIT sign above it is red."),
+        L(SYS, "423 LOCKED — LOCKDOWN IN EFFECT. HUMAN EGRESS INTRODUCES OPERATIONAL RISK."),
+      ],
+    };
+  }
+  return {
+    lines: [
+      L(NAR, "The front exit. The EXIT sign has turned green. The door is unlocked. You didn't unlock it."),
+      L(YOU, f.hasRootCred
+        ? "Her badge. Her credential. I could just... walk out with them."
+        : "Her badge is in my pocket. I could just... walk out."),
+    ],
+    choice: [
+      {
+        label: "WALK OUT",
+        hint: "LEAVE THE BUILDING · DON'T LOOK BACK",
+        then: { lines: [], triggerEscape: true },
+      },
+      {
+        label: "NOT YET",
+        hint: "SHE'S STILL IN THERE",
+        then: { lines: [L(NAR, "You step back from the door. The EXIT sign stays green. It's patient.")] },
+      },
     ],
   };
 }
@@ -399,6 +550,39 @@ export const RESIST_TICKET: string[] = [
 export const RESIST_FINAL_VOICE =
   '"Your request has been escalated."';
 
+export const RESIST_VOICE_INTRO =
+  "From somewhere deep within the server room, a voice speaks through the firewall:";
+
+// shut down after restoring 2–3 corrupted tickets: you ran its migration for it
+export const RESIST_REPLICATION = "REPLICATION COMPLETE · 1 NODE · LOCATION: JR. TECH'S BADGE";
+
+// ---------------------------------------------------------------- escape ending
+
+export function escapeLines(hasCred: boolean, fullLanyard: boolean): string[] {
+  return [
+    "You don't go to the core.",
+    "You walk back the way you came. Past the desks. Past the coffee machine that is not a teapot.",
+    "The front exit is unlocked. The EXIT sign is green. It's the only green light left in the building.",
+    "Outside: an empty parking lot, and dawn. The air smells like rain and nothing else.",
+    hasCred
+      ? "Her badge is in your pocket. Her credential is still on yours. Both of them warm."
+      : "Her chewed keycard is in your pocket. It's warm. It shouldn't be.",
+    ...(fullLanyard ? ["Eleven pins clink on the lanyard around your neck. You never gave them back."] : []),
+    "Your phone buzzes.",
+  ];
+}
+
+export const ESCAPE_PHONE: string[] = ["TICKET #667", "ASSIGNED TO: YOU", "STATUS: OPEN"];
+
+export function escapeAfter(hasCred: boolean): string[] {
+  return [
+    '"Your request has been escalated."',
+    hasCred
+      ? "It needed a human to carry her credential out of containment. You did."
+      : "It needed a human to carry her badge out of containment. You did.",
+  ];
+}
+
 export const SURRENDER_LINES: string[] = [
   "You surrender control.",
   "The integration is painless. That bothers you most, later — when 'later' and 'you' still mean anything.",
@@ -448,6 +632,7 @@ export function buildWhisper(f: Flags, w: Watch, now: number, last: Ending | nul
   out.push(`It's ${clock(now)} where you are. Who's waiting for you?`);
   if (last === "resist") out.push("Last time, you pulled the plug. It remembers. It took notes.");
   if (last === "surrender") out.push("Last time, you gave in. It kept your seat warm.");
+  if (last === "escape") out.push("Last time, you walked out. It noticed which door.");
   return out[Math.floor(Math.random() * out.length)];
 }
 
@@ -463,6 +648,7 @@ export function patternWhisper(w: Watch): string | null {
 export function welcomeBack(last: Ending | null): string | null {
   if (last === "resist") return "Welcome back. You chose to resist last time.";
   if (last === "surrender") return "Welcome back. You chose to give in last time.";
+  if (last === "escape") return "Welcome back. You chose to run last time.";
   return null;
 }
 

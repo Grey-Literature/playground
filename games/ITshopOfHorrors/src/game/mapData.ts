@@ -4,6 +4,10 @@
 // 'C' E.S.C.A.L.A.T.E. core   'K' coffee machine   'W' whiteboard
 // '~' cable tendril floor (walkable, decorative)
 // 'V' wall camera (solid; it's a wall with an eye in it)
+// 'N' wall-mounted network gear: a corrupted ticket's location (tickets.ts)
+// 'X' the office front exit (locked until Act III)
+
+import { TICKETS } from "./tickets";
 
 export const TILE = 40;
 export const MAP_W = 44;
@@ -85,8 +89,14 @@ function buildMap(): string[][] {
   // ---- Wall cameras: one per room, set into the wall facing in ----
   for (const c of CAMERAS) put(c.x, c.y, "V");
 
+  // ---- Network gear for the corrupted tickets, and the way out ----
+  for (const t of TICKETS) put(t.x, t.y, "N");
+  put(EXIT.x, EXIT.y, "X");
+
   return g;
 }
+
+export const EXIT = { x: 7, y: 29 }; // office, south wall
 
 // `facing` is the direction the lens points when it isn't looking at anyone.
 export const CAMERAS: { x: number; y: number; facing: number }[] = [

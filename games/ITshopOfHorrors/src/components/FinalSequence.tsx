@@ -9,9 +9,10 @@ interface Props {
   pinCount: number;
   onResist: () => void;
   onSurrender: () => void;
+  onEscape: () => void;
 }
 
-export default function FinalSequence({ pinCount, onResist, onSurrender }: Props) {
+export default function FinalSequence({ pinCount, onResist, onSurrender, onEscape }: Props) {
   const [phase, setPhase] = useState<"talk" | "choice">("talk");
   const [lines] = useState(() => finalIntro(pinCount));
   // she gets some of herself back once the lanyard beat has played
@@ -91,11 +92,11 @@ export default function FinalSequence({ pinCount, onResist, onSurrender }: Props
 
       {phase === "choice" && (
         <div className="absolute inset-x-0 bottom-0 z-40 p-6 fade-in">
-          <div className="mx-auto max-w-3xl space-y-3">
+          <div className="mx-auto max-w-4xl space-y-3">
             <div className="font-term text-center text-sm tracking-[0.3em] text-zinc-300">
               E.S.C.A.L.A.T.E. AWAITS YOUR RESPONSE
             </div>
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-3 sm:grid-cols-3">
               <button
                 onClick={() => {
                   sfxDeny();
@@ -118,6 +119,18 @@ export default function FinalSequence({ pinCount, onResist, onSurrender }: Props
                 HAND T3-CHAOS THE TERMINAL
                 <span className="font-term mt-1 block text-xs tracking-widest text-sky-500 group-hover:text-sky-300">
                   ROOT CAUSE ANALYSIS · DEPTH: ACTUAL · METHOD: HER
+                </span>
+              </button>
+              <button
+                onClick={() => {
+                  sfxConfirm();
+                  onEscape();
+                }}
+                className="font-crt group border border-amber-900 bg-amber-950/30 px-5 py-4 text-left text-xl text-amber-200 transition hover:bg-amber-900/40 hover:shadow-[0_0_30px_rgba(255,170,40,0.25)]"
+              >
+                ESCAPE
+                <span className="font-term mt-1 block text-xs tracking-widest text-amber-500 group-hover:text-amber-300">
+                  FRONT EXIT · TAKE HER CREDENTIAL · DON'T LOOK BACK
                 </span>
               </button>
             </div>

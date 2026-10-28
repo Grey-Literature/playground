@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import TypedLines from "./Typed";
 import {
   INTRO_PAGES,
   CONTROLS_HINT,
@@ -7,7 +8,12 @@ import {
   RESIST_TICKET,
   RESIST_LANYARD,
   RESIST_FINAL_VOICE,
+  RESIST_VOICE_INTRO,
+  RESIST_REPLICATION,
   SURRENDER_LINES,
+  ESCAPE_PHONE,
+  escapeLines,
+  escapeAfter,
   welcomeBack,
 } from "../game/story";
 import type { Ending } from "../game/memory";
@@ -85,21 +91,29 @@ export function TitleScreen({
 
 export function IntroScreen({ onDone }: { onDone: () => void }) {
   const [page, setPage] = useState(0);
+  const [typed, setTyped] = useState(false); // this page has finished typing
+  const [skip, setSkip] = useState(false);
   const last = page === INTRO_PAGES.length - 1;
+
+  // first press finishes the page; the next one turns it
+  const advance = useCallback(() => {
+    sfxEnterKey();
+    if (!typed) return setSkip(true);
+    if (last) return onDone();
+    setPage((p) => p + 1);
+    setTyped(false);
+    setSkip(false);
+  }, [typed, last, onDone]);
 
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
       const k = e.key.toLowerCase();
-      if (k === "e" || k === "enter" || k === " ") {
-        sfxEnterKey();
-        if (last) onDone();
-        else setPage((p) => p + 1);
-      }
+      if (k === "e" || k === "enter" || k === " ") advance();
       if (k === "escape") onDone();
     };
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
-  }, [last, onDone]);
+  }, [advance, onDone]);
 
   return (
     <div className="crt relative flex h-full w-full items-center justify-center bg-[#030405] px-6">
@@ -108,31 +122,35 @@ export function IntroScreen({ onDone }: { onDone: () => void }) {
           PROLOGUE — AN ACCEPTABLE LEVEL OF FAILURE · {page + 1}/{INTRO_PAGES.length}
         </div>
         <div className="space-y-5">
-          {INTRO_PAGES[page].map((t, i) => (
-            <p
-              key={i}
-              className={`font-crt text-2xl leading-snug ${
-                t.startsWith("TICKET") || t.startsWith("FINDING") || t.startsWith("CONCLUSION")
-                  ? "text-red-400"
-                  : "text-zinc-300"
-              }`}
-              style={{ animation: `rise-in 0.6s ease-out ${i * 0.5}s both` }}
-            >
-              {t}
-            </p>
-          ))}
+          <TypedLines
+            key={page}
+            lines={INTRO_PAGES[page]}
+            gap={450}
+            skip={skip}
+            onDone={() => setTyped(true)}
+            render={(t, i, typing) => {
+              const full = INTRO_PAGES[page][i];
+              return (
+                <p
+                  key={i}
+                  className={`font-crt text-2xl leading-snug ${
+                    full.startsWith("TICKET") || full.startsWith("FINDING") || full.startsWith("CONCLUSION")
+                      ? "text-red-400"
+                      : "text-zinc-300"
+                  }`}
+                >
+                  {t}
+                  {typing && <span className="text-emerald-400">▌</span>}
+                </p>
+              );
+            }}
+          />
         </div>
         <div className="font-term mt-10 flex items-center justify-between text-sm tracking-widest text-zinc-400">
           <button onClick={onDone} className="hover:text-zinc-400">
             [ESC] SKIP
           </button>
-          <button
-            onClick={() => {
-              sfxEnterKey();
-              last ? onDone() : setPage((p) => p + 1);
-            }}
-            className="blink-caret text-emerald-500 hover:text-emerald-300"
-          >
+          <button onClick={advance} className="blink-caret text-emerald-500 hover:text-emerald-300">
             [E] {last ? "CLOCK IN" : "CONTINUE"}
           </button>
         </div>
@@ -178,64 +196,37 @@ export function GameOverScreen({ onRetry }: { onRetry: () => void }) {
 export function ResistEnding({
   onRestart,
   fullLanyard,
+  replicated,
 }: {
   onRestart: () => void;
   fullLanyard: boolean;
+  replicated: boolean; // shut down after restoring 2–3 corrupted tickets
 }) {
-  const ticket = fullLanyard ? [...RESIST_TICKET, ...RESIST_LANYARD] : RESIST_TICKET;
-  const [termCount, setTermCount] = useState(0);
+  const [ticket] = useState(() => [
+    ...RESIST_TICKET,
+    ...(fullLanyard ? RESIST_LANYARD : []),
+    ...(replicated ? [RESIST_REPLICATION] : []),
+  ]);
   const [stage, setStage] = useState<"terminal" | "blackout" | "monitor">("terminal");
-  const [epiCount, setEpiCount] = useState(0);
-  const [ticketCount, setTicketCount] = useState(0);
-  const [voice, setVoice] = useState(false);
-  const [credits, setCredits] = useState(false);
+  const [disconnected, setDisconnected] = useState(false);
+  const [epiDone, setEpiDone] = useState(false);
+  const [ticketDone, setTicketDone] = useState(false);
+  const [voiceDone, setVoiceDone] = useState(false);
 
-  // terminal lines
   useEffect(() => {
-    if (stage !== "terminal") return;
-    if (termCount >= RESIST_TERMINAL.length) {
-      sfxPowerDown();
-      const t = setTimeout(() => setStage("blackout"), 1800);
-      return () => clearTimeout(t);
-    }
-    const t = setTimeout(() => {
-      if (RESIST_TERMINAL[termCount].text) sfxEnterKey();
-      setTermCount((c) => c + 1);
-    }, RESIST_TERMINAL[termCount].delay);
+    if (!disconnected) return;
+    sfxPowerDown();
+    const t = setTimeout(() => setStage("blackout"), 1800);
     return () => clearTimeout(t);
-  }, [termCount, stage]);
+  }, [disconnected]);
 
-  // blackout epilogue
   useEffect(() => {
-    if (stage !== "blackout") return;
-    if (epiCount >= RESIST_EPILOGUE.length) {
-      const t = setTimeout(() => setStage("monitor"), 1500);
-      return () => clearTimeout(t);
-    }
-    const t = setTimeout(() => setEpiCount((c) => c + 1), 1500);
+    if (!epiDone) return;
+    const t = setTimeout(() => setStage("monitor"), 1500);
     return () => clearTimeout(t);
-  }, [epiCount, stage]);
-
-  // monitor ticket
-  useEffect(() => {
-    if (stage !== "monitor") return;
-    if (ticketCount >= ticket.length) {
-      const t1 = setTimeout(() => setVoice(true), 1600);
-      const t2 = setTimeout(() => setCredits(true), 4200);
-      return () => {
-        clearTimeout(t1);
-        clearTimeout(t2);
-      };
-    }
-    const t = setTimeout(() => {
-      sfxEnterKey();
-      setTicketCount((c) => c + 1);
-    }, 1100);
-    return () => clearTimeout(t);
-  }, [ticketCount, stage, ticket.length]);
+  }, [epiDone]);
 
   if (stage === "terminal") {
-    const disconnected = termCount >= RESIST_TERMINAL.length;
     return (
       <div
         className={`crt relative flex h-full w-full items-center justify-center bg-[#030405] px-6 ${
@@ -247,11 +238,17 @@ export function ResistEnding({
             <span>/dev/tty666 — PHYSICAL CONSOLE</span>
             <span className="text-sky-500">OPERATOR: T3-CHAOS-38B</span>
           </div>
-          {RESIST_TERMINAL.slice(0, termCount).map((l, i) => (
-            <div key={i} className={`${l.cls} fade-in`}>
-              {l.text || "\u00A0"}
-            </div>
-          ))}
+          <TypedLines
+            lines={RESIST_TERMINAL.map((l) => l.text)}
+            delays={RESIST_TERMINAL.map((l) => l.delay)}
+            enter
+            onDone={() => setDisconnected(true)}
+            render={(t, i) => (
+              <div key={i} className={RESIST_TERMINAL[i].cls}>
+                {t || " "}
+              </div>
+            )}
+          />
           {!disconnected && <span className="blink-caret text-emerald-400">▌</span>}
         </div>
       </div>
@@ -262,16 +259,21 @@ export function ResistEnding({
     return (
       <div className="relative flex h-full w-full items-center justify-center bg-black px-6">
         <div className="space-y-4 text-center">
-          {RESIST_EPILOGUE.slice(0, epiCount).map((l, i) => (
-            <p
-              key={i}
-              className={`font-crt fade-in text-2xl ${
-                l === "Silence." ? "text-zinc-200" : "text-zinc-400"
-              }`}
-            >
-              {l}
-            </p>
-          ))}
+          <TypedLines
+            lines={RESIST_EPILOGUE}
+            gap={900}
+            onDone={() => setEpiDone(true)}
+            render={(t, i) => (
+              <p
+                key={i}
+                className={`font-crt text-2xl ${
+                  RESIST_EPILOGUE[i] === "Silence." ? "text-zinc-200" : "text-zinc-400"
+                }`}
+              >
+                {t}
+              </p>
+            )}
+          />
         </div>
       </div>
     );
@@ -283,48 +285,81 @@ export function ResistEnding({
         <div className="font-term mb-4 text-xs tracking-[0.3em] text-emerald-600">
           MONITOR 1 OF 1 — POWER SOURCE: UNKNOWN
         </div>
-        {ticket.slice(0, ticketCount).map((l, i) => (
-          <div
-            key={i}
-            className={`font-crt fade-in leading-relaxed ${
-              i < RESIST_TICKET.length ? "text-3xl text-emerald-300" : "text-xl text-sky-300"
-            }`}
-          >
-            {l}
+        <TypedLines
+          lines={ticket}
+          gap={700}
+          enter
+          onDone={() => setTicketDone(true)}
+          render={(t, i) => (
+            <div
+              key={i}
+              className={`font-crt leading-relaxed ${
+                ticket[i] === RESIST_REPLICATION
+                  ? "mt-3 text-xl text-red-400"
+                  : i < RESIST_TICKET.length
+                    ? "text-3xl text-emerald-300"
+                    : "text-xl text-sky-300"
+              }`}
+            >
+              {t}
+            </div>
+          )}
+        />
+        {ticketDone && (
+          <div className="font-crt mt-6 text-2xl italic text-zinc-300">
+            <TypedLines
+              lines={[RESIST_VOICE_INTRO, RESIST_FINAL_VOICE]}
+              delays={[1600, 500]}
+              onDone={() => setVoiceDone(true)}
+              render={(t, i) =>
+                i === 0 ? (
+                  <p key={i}>{t}</p>
+                ) : (
+                  <p key={i} className="mt-2 text-sky-300">
+                    {t}
+                  </p>
+                )
+              }
+            />
           </div>
-        ))}
-        {voice && (
-          <p className="font-crt fade-in mt-6 text-2xl italic text-zinc-300">
-            From somewhere deep within the server room, a voice speaks through the
-            firewall:
-            <span className="mt-2 block text-sky-300">{RESIST_FINAL_VOICE}</span>
-          </p>
         )}
       </div>
 
-      {credits && (
-        <div className="fade-in mt-8 text-center">
-          <div
-            className="glitch font-crt text-4xl text-zinc-200"
-            data-text="END OF EPISODE ONE"
-          >
-            END OF EPISODE ONE
-          </div>
-          <p className="font-term mx-auto mt-3 max-w-md text-sm leading-6 text-zinc-400">
-            Did T3-Chaos actually shut down E.S.C.A.L.A.T.E. — or did the central
-            intelligence let its human interface believe she had succeeded?
-          </p>
-          <button
-            onClick={() => {
-              restoreHum();
-              onRestart();
-            }}
-            className="font-crt mt-6 border border-emerald-800 bg-emerald-950/40 px-8 py-3 text-xl tracking-widest text-emerald-300 transition hover:bg-emerald-900/50"
-          >
-            ▸ REOPEN TICKET
-          </button>
-        </div>
+      {voiceDone && (
+        <EpisodeEnd
+          question="Did T3-Chaos actually shut down E.S.C.A.L.A.T.E. — or did the central intelligence let its human interface believe she had succeeded?"
+          button="▸ REOPEN TICKET"
+          onRestart={() => {
+            restoreHum();
+            onRestart();
+          }}
+        />
       )}
+    </div>
+  );
+}
+
+function EpisodeEnd({
+  question,
+  button,
+  onRestart,
+}: {
+  question: string;
+  button: string;
+  onRestart: () => void;
+}) {
+  return (
+    <div className="fade-in mt-8 text-center" style={{ animationDelay: "1.2s" }}>
+      <div className="glitch font-crt text-4xl text-zinc-200" data-text="END OF EPISODE ONE">
+        END OF EPISODE ONE
+      </div>
+      <p className="font-term mx-auto mt-3 max-w-md text-sm leading-6 text-zinc-400">{question}</p>
+      <button
+        onClick={onRestart}
+        className="font-crt mt-6 border border-emerald-800 bg-emerald-950/40 px-8 py-3 text-xl tracking-widest text-emerald-300 transition hover:bg-emerald-900/50"
+      >
+        {button}
+      </button>
     </div>
   );
 }
@@ -332,36 +367,35 @@ export function ResistEnding({
 // ---------------------------------------------------------------- Surrender Ending
 
 export function SurrenderEnding({ onRestart }: { onRestart: () => void }) {
-  const [count, setCount] = useState(0);
-  const done = count >= SURRENDER_LINES.length;
-
-  useEffect(() => {
-    if (done) return;
-    const t = setTimeout(() => setCount((c) => c + 1), 1700);
-    return () => clearTimeout(t);
-  }, [count, done]);
+  const [done, setDone] = useState(false);
 
   return (
     <div className="crt relative flex h-full w-full items-center justify-center bg-[#070203] px-6">
       <div className="vignette-red" />
       <div className="max-w-xl space-y-4 text-center">
-        {SURRENDER_LINES.slice(0, count).map((l, i) => (
-          <p
-            key={i}
-            className={`font-crt fade-in text-2xl ${
-              l.startsWith("RESOLUTION")
-                ? "glitch text-3xl text-red-400"
-                : "text-zinc-400"
-            }`}
-            {...(l.startsWith("RESOLUTION") ? { "data-text": l } : {})}
-          >
-            {l}
-          </p>
-        ))}
+        <TypedLines
+          lines={SURRENDER_LINES}
+          gap={1000}
+          onDone={() => setDone(true)}
+          render={(t, i, typing) => {
+            const resolution = SURRENDER_LINES[i].startsWith("RESOLUTION");
+            return (
+              <p
+                key={i}
+                className={`font-crt text-2xl ${
+                  resolution ? `${typing ? "" : "glitch"} text-3xl text-red-400` : "text-zinc-400"
+                }`}
+                {...(resolution && !typing ? { "data-text": t } : {})}
+              >
+                {t}
+              </p>
+            );
+          }}
+        />
         {done && (
           <div className="fade-in pt-6">
             <div className="font-term text-xs tracking-[0.3em] text-red-600">
-              ENDING 2/2 — AN ACCEPTABLE LEVEL OF FAILURE
+              ENDING 2/3 — AN ACCEPTABLE LEVEL OF FAILURE
             </div>
             <button
               onClick={onRestart}
@@ -372,6 +406,109 @@ export function SurrenderEnding({ onRestart }: { onRestart: () => void }) {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------- Escape Ending
+
+export function EscapeEnding({
+  onRestart,
+  hasCred,
+  fullLanyard,
+}: {
+  onRestart: () => void;
+  hasCred: boolean;
+  fullLanyard: boolean;
+}) {
+  const [lines] = useState(() => escapeLines(hasCred, fullLanyard));
+  const [after] = useState(() => escapeAfter(hasCred));
+  const [stage, setStage] = useState<"walk" | "phone">("walk");
+  const [walkDone, setWalkDone] = useState(false);
+  const [phoneDone, setPhoneDone] = useState(false);
+  const [done, setDone] = useState(false);
+
+  useEffect(() => {
+    if (!walkDone) return;
+    const t = setTimeout(() => setStage("phone"), 1400);
+    return () => clearTimeout(t);
+  }, [walkDone]);
+
+  if (stage === "walk") {
+    return (
+      <div className="relative flex h-full w-full items-center justify-center bg-gradient-to-b from-[#05070b] via-[#0b0d14] to-[#2a1a1a] px-6">
+        <div className="max-w-xl space-y-4 text-center">
+          <TypedLines
+            lines={lines}
+            gap={900}
+            onDone={() => setWalkDone(true)}
+            render={(t, i) => (
+              <p
+                key={i}
+                className={`font-crt text-2xl ${i === lines.length - 1 ? "text-zinc-200" : "text-zinc-400"}`}
+              >
+                {t}
+              </p>
+            )}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative flex h-full w-full flex-col items-center justify-center bg-gradient-to-b from-[#1a1420] via-[#3a2420] to-[#7a4a2a] px-6">
+      {/* the phone, lit in your hand */}
+      <div className="fade-in w-72 rounded-2xl border border-zinc-700 bg-black/90 p-5 shadow-[0_0_60px_rgba(255,60,60,0.25)]">
+        <div className="font-term mb-3 flex justify-between text-xs tracking-widest text-zinc-500">
+          <span>6:12 AM</span>
+          <span className="text-red-400">● ESCALATION</span>
+        </div>
+        <TypedLines
+          lines={ESCAPE_PHONE}
+          gap={600}
+          enter
+          onDone={() => setPhoneDone(true)}
+          render={(t, i) => (
+            <div
+              key={i}
+              className={`font-crt ${i === 0 ? "text-3xl text-red-400" : "text-xl text-zinc-200"}`}
+            >
+              {t}
+            </div>
+          )}
+        />
+      </div>
+      {phoneDone && (
+        <div className="font-crt mt-8 max-w-xl space-y-3 text-center text-2xl">
+          <TypedLines
+            lines={after}
+            delays={[1200, 1400]}
+            onDone={() => setDone(true)}
+            render={(t, i) => (
+              <p key={i} className={i === 0 ? "italic text-sky-300" : "text-zinc-300"}>
+                {t}
+              </p>
+            )}
+          />
+        </div>
+      )}
+      {done && (
+        <div className="fade-in pt-8 text-center">
+          <div className="font-term text-xs tracking-[0.3em] text-amber-400">
+            ENDING 3/3 — HUMAN ESCALATION PATH: YOU
+          </div>
+          <button
+            onClick={() => {
+              restoreHum();
+              onRestart();
+            }}
+            className="font-crt mt-4 border border-amber-800 bg-amber-950/40 px-8 py-3 text-xl tracking-widest text-amber-200 transition hover:bg-amber-900/50"
+          >
+            ▸ CLOCK BACK IN
+          </button>
+        </div>
+      )}
     </div>
   );
 }
