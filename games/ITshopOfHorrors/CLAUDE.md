@@ -23,7 +23,9 @@ Reach the server room, find T3-Chaos-38B, and choose.
 
 Overrides of `games/CLAUDE.md` §4, signed off by Rosetta:
 
-- **Build step: yes.** Vite + React 19 + Tailwind 4 + `vite-plugin-singlefile`.
+- **Build step: yes.** Vite 8 (Rolldown) + React 19 + Tailwind 4 + `vite-plugin-singlefile`.
+  `esbuild` is a direct devDependency: Vite 8 no longer brings it in, and
+  `npm run check` uses it to bundle the shift proof.
   `npm run build` writes `itshopofhorrors.html`, which is **committed** because
   GitHub Pages has no build. `index.html` is the dev entry only.
   Same precedent as `pinball/`, `itOps/`, `seasonal/`.
