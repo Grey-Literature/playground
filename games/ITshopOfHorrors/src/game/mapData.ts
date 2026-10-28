@@ -94,9 +94,18 @@ export const MINPIN_PATROL: { x: number; y: number }[] = [
   { x: 39.5, y: 16.5 },
   { x: 33.5, y: 13.5 },
   { x: 33.5, y: 11.0 },
-  { x: 25.5, y: 11.0 },
+  { x: 29.5, y: 11.0 }, // turns back well short of the print-room door (x 18–19)
   { x: 33.5, y: 11.0 },
   { x: 33.5, y: 14.5 },
+];
+
+// A catch sends you back to the last of these you walked past. None are in
+// the den or the annex.
+export const SAFE_POINTS: { x: number; y: number }[] = [
+  SPAWN,
+  { x: 6.5, y: 14.5 }, // inside the office doorway
+  { x: 6.5, y: 11.5 }, // west hallway, just outside the office
+  { x: 19.0, y: 15.5 }, // inside the print-room doorway
 ];
 
 export const T3_POS = { x: 24.5, y: 5.5 }; // standing beside the core

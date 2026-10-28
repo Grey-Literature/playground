@@ -48,16 +48,40 @@ function env(dur: number, peak = 0.3): GainNode | null {
   return g;
 }
 
-export function sfxBlip() {
+// Keyboard sounds: a short burst of decaying noise through a bandpass, with a
+// little random pitch so a run of them sounds like hands, not a metronome.
+let noise: AudioBuffer | null = null;
+
+function keyClick(dur: number, peak: number, freq: number, q: number) {
   if (!ctx) return;
-  const g = env(0.08, 0.12);
+  if (!noise) {
+    noise = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 0.06), ctx.sampleRate);
+    const d = noise.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length) ** 4;
+  }
+  const g = env(dur, peak);
   if (!g) return;
-  const o = ctx.createOscillator();
-  o.type = "square";
-  o.frequency.value = 820;
-  o.connect(g);
-  o.start();
-  o.stop(ctx.currentTime + 0.09);
+  const src = ctx.createBufferSource();
+  src.buffer = noise;
+  src.playbackRate.value = 0.85 + Math.random() * 0.3;
+  const f = ctx.createBiquadFilter();
+  f.type = "bandpass";
+  f.frequency.value = freq;
+  f.Q.value = q;
+  src.connect(f);
+  f.connect(g);
+  src.start();
+  src.stop(ctx.currentTime + dur);
+}
+
+// one keystroke while dialogue types out
+export function sfxKeyTap() {
+  keyClick(0.035, 0.08, 2200 + Math.random() * 1400, 1.2);
+}
+
+// a heavier clack: advancing dialogue, terminal lines landing
+export function sfxEnterKey() {
+  keyClick(0.07, 0.2, 1100 + Math.random() * 250, 0.9);
 }
 
 export function sfxConfirm() {
@@ -117,6 +141,24 @@ export function sfxBark() {
   o.connect(g);
   o.start();
   o.stop(ctx.currentTime + 0.15);
+}
+
+// low rising growl: it has noticed you, and you have a moment to back off
+export function sfxGrowl() {
+  if (!ctx) return;
+  const g = env(0.5, 0.16);
+  if (!g) return;
+  const o = ctx.createOscillator();
+  o.type = "sawtooth";
+  o.frequency.setValueAtTime(70, ctx.currentTime);
+  o.frequency.linearRampToValueAtTime(96, ctx.currentTime + 0.45);
+  const f = ctx.createBiquadFilter();
+  f.type = "lowpass";
+  f.frequency.value = 320;
+  o.connect(f);
+  f.connect(g);
+  o.start();
+  o.stop(ctx.currentTime + 0.52);
 }
 
 export function sfxUnlock() {

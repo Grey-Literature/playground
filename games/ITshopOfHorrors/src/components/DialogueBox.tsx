@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import type { DialogueLine } from "../game/types";
-import { sfxBlip } from "../game/audio";
+import { sfxEnterKey, sfxKeyTap } from "../game/audio";
+
+const TYPE_MS = 24; // per character: ~40 a second, slow enough to watch it type
 
 interface Props {
   lines: DialogueLine[];
@@ -11,22 +13,27 @@ export default function DialogueBox({ lines, onClose }: Props) {
   const [idx, setIdx] = useState(0);
   const [chars, setChars] = useState(0);
   const doneRef = useRef(false);
+  // typed count lives in a ref so the click sound fires once per key, outside
+  // React's state updater, and a skip can jump it to the end
+  const typedRef = useRef(0);
 
   const line = lines[idx];
   const fullyTyped = chars >= line.text.length;
 
   // typewriter
   useEffect(() => {
+    const text = lines[idx].text;
+    typedRef.current = 0;
     setChars(0);
     const iv = setInterval(() => {
-      setChars((c) => {
-        if (c >= lines[idx].text.length) {
-          clearInterval(iv);
-          return c;
-        }
-        return c + 2;
-      });
-    }, 16);
+      if (typedRef.current >= text.length) {
+        clearInterval(iv);
+        return;
+      }
+      if (text[typedRef.current] !== " ") sfxKeyTap();
+      typedRef.current++;
+      setChars(typedRef.current);
+    }, TYPE_MS);
     return () => clearInterval(iv);
   }, [idx, lines]);
 
@@ -34,10 +41,11 @@ export default function DialogueBox({ lines, onClose }: Props) {
     const advance = () => {
       if (doneRef.current) return;
       if (chars < lines[idx].text.length) {
+        typedRef.current = lines[idx].text.length;
         setChars(lines[idx].text.length);
         return;
       }
-      sfxBlip();
+      sfxEnterKey();
       if (idx < lines.length - 1) setIdx(idx + 1);
       else {
         doneRef.current = true;

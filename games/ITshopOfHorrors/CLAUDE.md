@@ -83,10 +83,34 @@ second read · 410 annex floor (nods to the Interpretive Networking ghost host /
 itOps KIN-1007) · 418 coffee machine, second try · 422 hallway far west ·
 429 hallway far east · 500 tendril by the coffee machine.
 
+### The Min Pin (the one physical threat)
+
+It should be dangerous but fair. Getting caught should feel like your
+mistake, not the game cheating.
+
+- **Line of sight.** It sees you within 6 tiles, and only if no wall, desk
+  or rack is in the way.
+- **Alert meter.** While it can see you, a red `?` grows over it with a low
+  growl. After about 0.6 s it charges, so you get a moment to back off.
+- **Losing you.** After 2.5 s without seeing you (or once you're 8+ tiles
+  away), it goes to the last place it saw you, sniffs, and goes back to
+  patrol.
+- **Patrol.** It stays in the den and the east half of the hallway, well
+  clear of the print-room door.
+- **Checkpoints.** A catch costs 25 integrity and puts you back at the last
+  safe point you passed: the office, the office doorway, the west hallway or
+  the print room. Never in the den or the annex.
+- **Headlamp off.** Hold **F**. You see almost nothing, you move slower and
+  glints don't show, but it can only spot you from 2.2 tiles away.
+
 ### Easter egg (approved per `AGENTS.md`)
 
 The printer says you owe it a cyan cartridge. The Min Pin quarantined the cyan
-ink; it glints in the den after the pacify. Bring it to the printer → credits
+ink; it glints (the one cyan sparkle) in the den's far south-east corner after
+the pacify. Hints, because playtest showed nobody finds it unprompted: the
+printer says the daemon ate it, then (after the pacify) "IT HOARDS IN THE
+CORNER FARTHEST FROM ITS DOOR"; the pacified Min Pin keeps glancing at that
+corner. Bring it to the printer → credits
 page + `console.log` signature: Fable 5 (arena.ai battle mode) and
 Claude Opus 5.5 (Claude Code). Don't remove the signature.
 
@@ -222,9 +246,10 @@ Each one is built on a system that already exists.
 - Corrupted tickets are **optional**, with the AI-control trade-off.
 - **ESCAPE** is in, as the third ending.
 - Local clock time in whispers is OK. Nothing leaves the browser.
-- Still open, ask before building: should it remember your *last run*
-  (localStorage, this browser only), e.g. "Welcome back. You chose to escape
-  last time."? That would break the no-persistence non-goal.
+- **Remember the last ending: yes.** It stores only which ending you chose
+  (`itshop:lastEnding` in localStorage, this browser only), for lines like
+  "Welcome back. You chose to escape last time." Every read and write is
+  wrapped in try/catch, so blocked storage changes nothing.
 
 ## 5. Visual style
 
@@ -238,7 +263,10 @@ reuse the existing palette; glints are warm-white sparkles, never UI arrows.
 2. ✅ Hidden-pieces hunt + lanyard + cyan egg.
 3. **STOP — Rosetta playtests.** Tune glint distances / hide spots from that.
 4. **Psychological horror pass** (§4b). Confirm the open decisions first, then
-   build it in three slices:
+   build it in slices:
+   - **4.0.** The Min Pin fights fair (§4): line of sight, the alert meter,
+     checkpoints, headlamp-off hiding, and the no-strobe flicker fix.
+     **STOP:** playtest the den approach.
    - **4a.** The watching (cameras, monitors), the HUD takeover, the attempt
      counters and the personalized whispers. **STOP:** playtest. Is it
      unsettling, or just noisy?
@@ -259,7 +287,8 @@ reuse the existing palette; glints are warm-white sparkles, never UI arrows.
 
 ## 8. Non-goals
 
-- No save/persistence across reloads.
+- No save/persistence across reloads, except the last ending
+  (localStorage, this browser only; see §4b Decisions).
 - No new monsters and no new jump scares. The horror pass works on the player's
   trust, not their reflexes.
 - No map redesign — small additions only.

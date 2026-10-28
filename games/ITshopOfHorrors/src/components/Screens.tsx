@@ -9,7 +9,7 @@ import {
   RESIST_FINAL_VOICE,
   SURRENDER_LINES,
 } from "../game/story";
-import { initAudio, sfxBlip, sfxConfirm, sfxPowerDown, restoreHum } from "../game/audio";
+import { initAudio, sfxEnterKey, sfxConfirm, sfxPowerDown, restoreHum } from "../game/audio";
 
 // ---------------------------------------------------------------- Title
 
@@ -79,7 +79,7 @@ export function IntroScreen({ onDone }: { onDone: () => void }) {
     const key = (e: KeyboardEvent) => {
       const k = e.key.toLowerCase();
       if (k === "e" || k === "enter" || k === " ") {
-        sfxBlip();
+        sfxEnterKey();
         if (last) onDone();
         else setPage((p) => p + 1);
       }
@@ -116,7 +116,7 @@ export function IntroScreen({ onDone }: { onDone: () => void }) {
           </button>
           <button
             onClick={() => {
-              sfxBlip();
+              sfxEnterKey();
               last ? onDone() : setPage((p) => p + 1);
             }}
             className="blink-caret text-emerald-500 hover:text-emerald-300"
@@ -187,7 +187,7 @@ export function ResistEnding({
       return () => clearTimeout(t);
     }
     const t = setTimeout(() => {
-      if (RESIST_TERMINAL[termCount].text) sfxBlip();
+      if (RESIST_TERMINAL[termCount].text) sfxEnterKey();
       setTermCount((c) => c + 1);
     }, RESIST_TERMINAL[termCount].delay);
     return () => clearTimeout(t);
@@ -216,7 +216,7 @@ export function ResistEnding({
       };
     }
     const t = setTimeout(() => {
-      sfxBlip();
+      sfxEnterKey();
       setTicketCount((c) => c + 1);
     }, 1100);
     return () => clearTimeout(t);

@@ -37,7 +37,7 @@ export const INTRO_PAGES: string[][] = [
 ];
 
 export const CONTROLS_HINT =
-  "WASD / ARROWS — move · E — interact / search · Your headlamp finds what the dark hides. Avoid the Min Pin until you can prove you're not malware.";
+  "WASD / ARROWS — move · E — interact / search · hold F — headlamp off · Your headlamp finds what the dark hides. Avoid the Min Pin until you can prove you're not malware. It can't see you through walls, or in the dark.";
 
 // ---------------------------------------------------------------- scripts
 
@@ -150,6 +150,24 @@ function printerScript(f: Flags): Script {
       ],
     };
   }
+  // the cyan only exists once the daemon is pacified; until then, just a grudge
+  if (!f.minPinPacified) {
+    return {
+      lines: [
+        L(PRN, "409 CONFLICT — YOU STILL OWE ME CYAN. THE DAEMON IN THE EAST WING ATE MY LAST ONE."),
+        L(NAR, "It prints a page that is just a drawing of you being judged. The likeness is unflattering and accurate."),
+      ],
+    };
+  }
+  if (!f.collected.includes("cyan")) {
+    return {
+      lines: [
+        L(PRN, "409 CONFLICT — YOU STILL OWE ME CYAN."),
+        L(PRN, "406 — THE DAEMON QUARANTINED MY LAST CARTRIDGE AS MALWARE. IT HOARDS IN THE CORNER FARTHEST FROM ITS DOOR."),
+        L(NAR, "The next page is a floor plan of the den. One corner is circled so hard the pen went through."),
+      ],
+    };
+  }
   return {
     lines: [
       L(PRN, "409 CONFLICT — YOU STILL OWE ME CYAN."),
@@ -172,6 +190,9 @@ function minpinScript(f: Flags): Script {
       lines: [
         L(PIN, "200 OK. FRIEND-SHAPED. PATROL CONTINUES."),
         L(NAR, "The Min Pin does a tight little circle and sits. Its tail-antenna wags, sweeping for threats."),
+        ...(f.collected.includes("cyan")
+          ? []
+          : [L(NAR, "Between wags it keeps glancing at the far corner of the den, the one farthest from its door. Like it buried a second thing.")]),
       ],
     };
   }

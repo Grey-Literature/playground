@@ -7,6 +7,7 @@ import {
   SPAWN,
   MINPIN_SPAWN,
   MINPIN_PATROL,
+  SAFE_POINTS,
   T3_POS,
   tileAt,
   isSolid,
@@ -14,7 +15,7 @@ import {
 } from "../game/mapData";
 import type { Flags } from "../game/types";
 import { PICKUPS, GREEN_RACK, KEYCARD_SPOT, available } from "../game/pickups";
-import { sfxBark, sfxScare } from "../game/audio";
+import { sfxBark, sfxGrowl, sfxScare } from "../game/audio";
 
 const VIEW_W = 960;
 const VIEW_H = 600;
@@ -25,6 +26,13 @@ const PLAYER_R = 0.3;
 const CONE = 0.45; // headlamp half-angle, radians
 const GLINT_SEE = 3.2; // how far the headlamp finds a glint
 const GLINT_NEAR = 1.2; // close enough to notice without the lamp
+const SIGHT = 6; // how far the Min Pin sees you, with a clear line
+const SIGHT_DARK = 2.2; // ...and with your headlamp off
+const ALERT_RATE = 1.7; // alert per second while seen: ~0.6 s to charge
+const LOSE_AFTER = 2.5; // seconds out of sight before it gives up
+const SNIFF_TIME = 1.5; // seconds it sniffs where it lost you
+const DARK_SPEED = 0.75; // you fumble in the dark
+const CHECKPOINT_R = 1.4;
 
 interface Props {
   flags: Flags;
@@ -89,14 +97,21 @@ export default function GameCanvas({ flags, paused, onInteract, onCaught }: Prop
       x: MINPIN_SPAWN.x,
       y: MINPIN_SPAWN.y,
       wp: 0,
-      mode: "patrol" as "patrol" | "chase" | "follow",
+      mode: "patrol" as "patrol" | "chase" | "search" | "follow",
       cooldown: 0,
       barked: false,
+      alert: 0, // 0–1; charges at 1
+      unseen: 0, // seconds since it last saw you
+      sniff: 0,
+      lastSeen: { x: MINPIN_SPAWN.x, y: MINPIN_SPAWN.y },
     };
+    let checkpoint = SPAWN;
     const keys = new Set<string>();
+    const lampOff = () => keys.has("f");
     let time = 0;
     let flicker = 1;
     let flickerTimer = 0;
+    let dips = 0;
     let pacifyFired = false;
     let raf = 0;
     let last = performance.now();
@@ -119,8 +134,11 @@ export default function GameCanvas({ flags, paused, onInteract, onCaught }: Prop
       }
     };
     const up = (e: KeyboardEvent) => keys.delete(e.key.toLowerCase());
+    // a key held while the tab loses focus never gets its keyup
+    const blur = () => keys.clear();
     window.addEventListener("keydown", down);
     window.addEventListener("keyup", up);
+    window.addEventListener("blur", blur);
 
     // Nearest wins; story objects get a small head start so a desk beside
     // the ticket terminal doesn't steal its prompt.
@@ -150,8 +168,19 @@ export default function GameCanvas({ flags, paused, onInteract, onCaught }: Prop
         const d = Math.hypot(g.x - player.x, g.y - player.y);
         let off = Math.abs(Math.atan2(g.y - player.y, g.x - player.x) - facing);
         if (off > Math.PI) off = Math.PI * 2 - off;
-        if (d < GLINT_NEAR || (d < GLINT_SEE && off < CONE)) revealed.add(g.id);
+        if (d < GLINT_NEAR || (d < GLINT_SEE && off < CONE && !lampOff())) revealed.add(g.id);
       }
+    }
+
+    // walls, desks and racks block the Min Pin's view
+    function hasLOS(ax: number, ay: number, bx: number, by: number): boolean {
+      const dOpen = flagsRef.current.doorOpen;
+      const n = Math.ceil(Math.hypot(bx - ax, by - ay) / 0.25);
+      for (let i = 1; i < n; i++) {
+        const t = i / n;
+        if (isSolid(tileAt(ax + (bx - ax) * t, ay + (by - ay) * t), dOpen)) return false;
+      }
+      return true;
     }
 
     // ---------- collision ----------
@@ -175,11 +204,20 @@ export default function GameCanvas({ flags, paused, onInteract, onCaught }: Prop
     function update(dt: number) {
       time += dt;
 
-      // flashlight flicker
+      // flashlight flicker: each dip lasts ≥120 ms and is followed by ≥350 ms
+      // steady, so it never strobes faster than ~2 dips a second
       flickerTimer -= dt;
       if (flickerTimer <= 0) {
-        flicker = Math.random() < 0.12 ? 0.55 + Math.random() * 0.3 : 1;
-        flickerTimer = 0.06 + Math.random() * 0.25;
+        if (flicker < 1) {
+          flicker = 1;
+          flickerTimer = 0.35 + Math.random() * 0.25;
+        } else if (Math.random() < 0.12) {
+          flicker = 0.55 + Math.random() * 0.3;
+          flickerTimer = 0.12 + Math.random() * 0.15;
+          dips++;
+        } else {
+          flickerTimer = 0.06 + Math.random() * 0.25;
+        }
       }
 
       if (pausedRef.current) return;
@@ -198,8 +236,11 @@ export default function GameCanvas({ flags, paused, onInteract, onCaught }: Prop
         vy /= len;
         player.dx = vx;
         player.dy = vy;
-        move(player, vx * PLAYER_SPEED * dt, vy * PLAYER_SPEED * dt);
+        const sp = PLAYER_SPEED * (lampOff() ? DARK_SPEED : 1) * dt;
+        move(player, vx * sp, vy * sp);
       }
+      for (const s of SAFE_POINTS)
+        if (Math.hypot(s.x - player.x, s.y - player.y) < CHECKPOINT_R) checkpoint = s;
 
       const f = flagsRef.current;
       revealGlints(f);
@@ -224,52 +265,87 @@ export default function GameCanvas({ flags, paused, onInteract, onCaught }: Prop
           move(pin, ((player.x - pin.x) / dist) * sp * 1.2, ((player.y - pin.y) / dist) * sp * 1.2);
         }
       } else {
-        const canSee = dist < 6 && pin.cooldown <= 0;
-        if (canSee && pin.mode !== "chase") {
-          pin.mode = "chase";
-          if (!pin.barked) {
-            sfxBark();
-            pin.barked = true;
+        const range = lampOff() ? SIGHT_DARK : SIGHT;
+        const sees =
+          pin.cooldown <= 0 && dist < range && hasLOS(pin.x, pin.y, player.x, player.y);
+        if (sees) {
+          pin.lastSeen = { x: player.x, y: player.y };
+          pin.unseen = 0;
+        } else pin.unseen += dt;
+
+        if (pin.mode === "chase") {
+          if (pin.unseen > LOSE_AFTER || dist > 8) {
+            // lost you: go and sniff where it last saw you
+            pin.mode = "search";
+            pin.sniff = SNIFF_TIME;
+            pin.alert = 0;
+            pin.barked = false;
           }
-        }
-        if (!canSee && dist > 8) {
-          pin.mode = "patrol";
-          pin.barked = false;
+        } else if (sees) {
+          if (pin.alert === 0) sfxGrowl();
+          pin.alert = Math.min(1, pin.alert + ALERT_RATE * dt);
+          if (pin.alert >= 1) {
+            pin.mode = "chase";
+            if (!pin.barked) {
+              sfxBark();
+              pin.barked = true;
+            }
+          }
+        } else {
+          pin.alert = Math.max(0, pin.alert - 0.8 * dt);
         }
 
+        const walkTo = (tx: number, ty: number, speed: number) => {
+          const d = Math.hypot(tx - pin.x, ty - pin.y);
+          if (d > 0.05) {
+            const sp = Math.min(speed * dt, d);
+            move(pin, ((tx - pin.x) / d) * sp, ((ty - pin.y) / d) * sp);
+          }
+          return d;
+        };
+
         if (pin.mode === "chase" && pin.cooldown <= 0) {
-          const sp = CHASE_SPEED * dt;
-          move(pin, ((player.x - pin.x) / dist) * sp, ((player.y - pin.y) / dist) * sp);
+          // straight at you while it can see you; to where it lost you if not
+          if (sees) walkTo(player.x, player.y, CHASE_SPEED);
+          else walkTo(pin.lastSeen.x, pin.lastSeen.y, CHASE_SPEED);
           // caught!
           if (dist < 0.62 && !f.gotToken) {
             sfxScare();
             onCaughtRef.current();
-            player.x = SPAWN.x;
-            player.y = SPAWN.y;
+            player.x = checkpoint.x;
+            player.y = checkpoint.y;
             pin.x = MINPIN_SPAWN.x;
             pin.y = MINPIN_SPAWN.y;
             pin.mode = "patrol";
             pin.cooldown = 4;
             pin.barked = false;
+            pin.alert = 0;
           }
-          // token in hand → it scans you instead of shredding you
-          if (dist < 1.9 && f.gotToken && !pacifyFired) {
-            pacifyFired = true;
-            onInteractRef.current("minpin");
+        } else if (pin.mode === "search") {
+          // sniffs once it gets there; gives up anyway if a wall is in the way
+          const d = walkTo(pin.lastSeen.x, pin.lastSeen.y, PATROL_SPEED);
+          pin.sniff -= d < 0.3 ? dt : dt * 0.25;
+          if (pin.sniff <= 0) {
+            // back to the nearest stop on its route
+            let best = 0;
+            MINPIN_PATROL.forEach((wp, i) => {
+              const b = MINPIN_PATROL[best];
+              if (Math.hypot(wp.x - pin.x, wp.y - pin.y) < Math.hypot(b.x - pin.x, b.y - pin.y))
+                best = i;
+            });
+            pin.wp = best;
+            pin.mode = "patrol";
           }
         } else {
           // patrol
           const wp = MINPIN_PATROL[pin.wp];
-          const d = Math.hypot(wp.x - pin.x, wp.y - pin.y);
-          if (d < 0.25) pin.wp = (pin.wp + 1) % MINPIN_PATROL.length;
-          else {
-            const sp = PATROL_SPEED * dt;
-            move(pin, ((wp.x - pin.x) / d) * sp, ((wp.y - pin.y) / d) * sp);
-          }
-          if (dist < 1.9 && f.gotToken && !pacifyFired) {
-            pacifyFired = true;
-            onInteractRef.current("minpin");
-          }
+          if (walkTo(wp.x, wp.y, PATROL_SPEED) < 0.25) pin.wp = (pin.wp + 1) % MINPIN_PATROL.length;
+        }
+
+        // token in hand → it scans you instead of shredding you
+        if (dist < 1.9 && f.gotToken && !pacifyFired) {
+          pacifyFired = true;
+          onInteractRef.current("minpin");
         }
       }
     }
@@ -318,6 +394,15 @@ export default function GameCanvas({ flags, paused, onInteract, onCaught }: Prop
         ctx.font = '20px "VT323", monospace';
         ctx.textAlign = "center";
         ctx.fillText("⚠ 406 NOT ACCEPTABLE — THREAT DETECTED: YOU", VIEW_W / 2, 34);
+      }
+
+      if (lampOff()) {
+        ctx.font = '20px "VT323", monospace';
+        ctx.textAlign = "left";
+        ctx.fillStyle = "rgba(3,6,8,0.82)";
+        ctx.fillRect(14, VIEW_H - 46, 150, 28);
+        ctx.fillStyle = "#a1a1aa";
+        ctx.fillText("HEADLAMP: OFF", 24, VIEW_H - 26);
       }
     }
 
@@ -616,7 +701,7 @@ export default function GameCanvas({ flags, paused, onInteract, onCaught }: Prop
       c.arc(px, py - 13, 6, 0, Math.PI * 2);
       c.fill();
       // headlamp
-      c.fillStyle = "#ffe9a3";
+      c.fillStyle = lampOff() ? "#4a463a" : "#ffe9a3";
       c.fillRect(px - 2 + player.dx * 3, py - 16 + player.dy * 2, 4, 3);
     }
 
@@ -624,13 +709,17 @@ export default function GameCanvas({ flags, paused, onInteract, onCaught }: Prop
       const px = player.x * TILE - cx;
       const py = player.y * TILE - cy;
       const inServerRoom = player.y < 9.5 && f.doorOpen;
-      const base = inServerRoom ? 170 : 130;
-      const r0 = base * flicker * (0.92 + 0.08 * Math.sin(time * 7));
-      const r1 = r0 * 2.6;
+      const dark = lampOff();
+      const base = dark ? 40 : inServerRoom ? 170 : 130;
+      const r0 = base * (dark ? 1 : flicker) * (0.92 + 0.08 * Math.sin(time * 7));
+      const r1 = r0 * (dark ? 2.2 : 2.6);
       const grad = c.createRadialGradient(px, py, r0 * 0.35, px, py, r1);
       grad.addColorStop(0, "rgba(2,3,4,0)");
-      grad.addColorStop(0.45, "rgba(2,3,4,0.45)");
-      grad.addColorStop(1, inServerRoom ? "rgba(20,2,2,0.93)" : "rgba(2,3,4,0.955)");
+      grad.addColorStop(0.45, dark ? "rgba(2,3,4,0.7)" : "rgba(2,3,4,0.45)");
+      grad.addColorStop(
+        1,
+        dark ? "rgba(2,3,4,0.975)" : inServerRoom ? "rgba(20,2,2,0.93)" : "rgba(2,3,4,0.955)",
+      );
       c.fillStyle = grad;
       c.fillRect(0, 0, VIEW_W, VIEW_H);
     }
@@ -712,6 +801,14 @@ export default function GameCanvas({ flags, paused, onInteract, onCaught }: Prop
         dot(px + 12, py - 8, 1.7, col);
         if (pin.mode === "chase" && !f.minPinPacified)
           dot(px + 10, py - 8, 10, "rgba(255,30,30,0.15)");
+        // it has noticed you: the ? fills in as it makes up its mind
+        if (!f.minPinPacified && pin.mode !== "chase" && (pin.alert > 0 || pin.mode === "search")) {
+          const a = pin.mode === "search" ? 0.45 : 0.4 + 0.6 * pin.alert;
+          c.font = `${Math.round(18 + 12 * pin.alert)}px "VT323", monospace`;
+          c.textAlign = "center";
+          c.fillStyle = pin.mode === "search" ? `rgba(255,150,60,${a})` : `rgba(255,40,40,${a})`;
+          c.fillText("?", px + 10, py - 20);
+        }
       }
       // T3's diagnostic eye
       {
@@ -722,7 +819,7 @@ export default function GameCanvas({ flags, paused, onInteract, onCaught }: Prop
         dot(px + 3, py - 16, 9, red ? "rgba(255,50,50,0.15)" : "rgba(80,160,255,0.15)");
       }
       // player headlamp cone
-      {
+      if (!lampOff()) {
         const px = player.x * TILE - cx;
         const py = player.y * TILE - cy;
         const ang = Math.atan2(player.dy, player.dx);
@@ -803,6 +900,20 @@ export default function GameCanvas({ flags, paused, onInteract, onCaught }: Prop
           player.dy = dy;
         },
         revealed: () => [...revealed],
+        pin: () => ({
+          mode: pin.mode,
+          alert: +pin.alert.toFixed(2),
+          unseen: +pin.unseen.toFixed(2),
+          x: +pin.x.toFixed(2),
+          y: +pin.y.toFixed(2),
+          checkpoint,
+        }),
+        putPin: (x: number, y: number) => {
+          pin.x = x;
+          pin.y = y;
+        },
+        dips: () => dips,
+        hold: (k: string, on: boolean) => (on ? keys.add(k) : keys.delete(k)),
         interact: () => {
           const t = nearestInteractable();
           if (t) onInteractRef.current(t.id);
@@ -815,6 +926,7 @@ export default function GameCanvas({ flags, paused, onInteract, onCaught }: Prop
       cancelAnimationFrame(raf);
       window.removeEventListener("keydown", down);
       window.removeEventListener("keyup", up);
+      window.removeEventListener("blur", blur);
     };
   }, []);
 
