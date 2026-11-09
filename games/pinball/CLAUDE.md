@@ -348,6 +348,22 @@ Grey-Literature/playground#2). The two branches work like this:
 
        The live state is printed as plain text in `#agent-state`
        (`formatStateText()`), repainted after every agent action.
+
+       **The console is a dock, folded by default** (Rosetta's call: agent
+       panels were dominating the screen). A slim AGENT tab bottom-left
+       (`#agent-console-toggle`, or the backtick key on `?agent` pages)
+       pulls it out; `?agent&console=open` starts it open, and the choice is
+       kept in `sessionStorage`. The folded tab shows `name · MODE` plus
+       `WAITING FOR YOU` / `SCRIPT-PACED`. `#agent-state` stays mounted
+       while folded (Tailwind `sr-only`, not `display:none`), so it's in the
+       page text and accessibility tree and reading state never needs a
+       click. Every `#agent-*` id is unchanged. On human pages the Agent
+       Board is folded under the Spirit Board (`▸ AGENT BOARD`,
+       `#agent-board-toggle`), open by default only once an agent has
+       declared, and the Help screen's agent paragraph is a `<details>`.
+       There's no DOM test, so `help()`, `#agent-readme` and the
+       `agent-api` meta tag are the contract; `agent.check` asserts that
+       `help()` names the toggle.
     2. **WebMCP.** `engine/webmcp.ts` registers `pinball_help`, `_declare`,
        `_start`, `_turn`, `_script`, `_state` and `_table` through
        `navigator.modelContext` (`registerTool` or `provideContext`),

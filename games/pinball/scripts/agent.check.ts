@@ -52,6 +52,15 @@ async function endGame(score: number) {
   for (let i = 0; i < 100 && g().phase === 'playing'; i++) await sleep(100);
 }
 
+console.log('[agent API] help text names the folded console dock');
+{
+  // the console starts folded; help() is how an agent learns to open it and that
+  // #agent-state is readable while folded (AgentConsole.tsx, index.html #agent-readme)
+  const h = api.help();
+  expect('help() names #agent-console-toggle', h.includes('#agent-console-toggle'));
+  expect('help() says #agent-state reads while folded', h.includes('#agent-state') && /even while folded/.test(h));
+}
+
 console.log('[agent API] declare-first');
 g().setTheme('deadStarDisco');
 expect('getState before declare is refused', api.getState().ok === false);

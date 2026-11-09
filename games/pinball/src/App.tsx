@@ -3,6 +3,7 @@ import { Canvas } from '@react-three/fiber';
 import './themes';
 import { PinballScene } from './engine/scene/PinballScene';
 import { HUD } from './engine/hud/HUD';
+import { toggleAgentConsole } from './engine/hud/AgentConsole';
 import { useGame, bootTheme, scriptRunActive } from './engine/store';
 import { themeById } from './engine/theme';
 import { gameRef, spawnBallAt } from './engine/runtime';
@@ -44,6 +45,8 @@ function useKeyboard() {
         e.preventDefault();
       }
       if (e.repeat) return;
+      // ` folds / unfolds the Agent Console dock (?agent pages only)
+      if (e.code === 'Backquote' && st.agentPage) { e.preventDefault(); toggleAgentConsole(); return; }
       sound.ensure();
       // a declared agent's extra keys (lockstep stepping, digit plunges, flip+step)
       if (agentKey(e.code, e.shiftKey)) { e.preventDefault(); return; }

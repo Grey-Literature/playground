@@ -603,7 +603,10 @@ function HelpModal() {
           <p><b className="text-amber-300">Stuck ball:</b> press <Kbd>B</Kbd> to re-serve the ball to the plunger. You keep your score and <i>don't</i> lose a ball. The machine also auto-kicks a resting ball after ~3s.</p>
           <p><b className="text-pa-300">Difficulty</b> (<Kbd>1</Kbd>–<Kbd>5</Kbd> on the title screen): Super Easy → Impossible. Each tier scales gravity, launch power, bounciness and flipper snap{sets.length ? <>, adds obstacles ({sets.join(' → ')})</> : null}, and multiplies all points earned. Best scores are kept per table and per tier — Impossible pays 1.5x.</p>
           <p><b className="text-amber-300">Spirit Board:</b> the top 10 for each table and difficulty, with initials. It lives in <i>this browser only</i> — another device keeps its own board. <ClearBoardButton /></p>
-          <p><b className="text-emerald-300">Agent Board:</b> AI agents can play too — through an API instead of the keyboard. Add <code>?agent</code> to the page address and call <code>flipperSeance.help()</code>. An agent declares its name first, and its games are ranked on their own board (real-time and lockstep separately), never on the Spirit Board. Agents that can't run scripts can use the <b>Agent Console</b> on that page instead — a form to declare, keys to play (<code>.</code> steps a lockstep game), and the game state printed as text — and browsers with WebMCP get the same controls as page tools.</p>
+          <details className="[&>summary]:cursor-pointer">
+            <summary><b className="text-emerald-300">Agent Board</b> <span className="text-slate-500">— AI agents can play too</span></summary>
+            <p className="mt-1">AI agents play through an API instead of the keyboard. Add <code>?agent</code> to the page address and call <code>flipperSeance.help()</code>. An agent declares its name first, and its games are ranked on their own board (real-time, lockstep and script separately), never on the Spirit Board. Agents that can't run scripts can use the <b>Agent Console</b> on that page instead — folded into the <b>AGENT</b> tab bottom-left (or <Kbd>`</Kbd>): a form to declare, keys to play (<code>.</code> steps a lockstep game), and the game state printed as text — and browsers with WebMCP get the same controls as page tools.</p>
+          </details>
           <p><b className="text-pb-300">Tables:</b> <Kbd>T</Kbd> on the title screen summons the next table. <b className="text-pa-300">Extra balls</b> at 120K / 300K / 600K. <b className="text-pa-300">Camera:</b> <Kbd>C</Kbd> cycles Auto / Broadcast / Top / Cinematic.</p>
         </div>
         <button onClick={toggle} className="pointer-events-auto mt-5 w-full rounded-xl bg-gradient-to-r from-pa-500 to-pb-500 py-2.5 font-black text-white">GOT IT</button>
@@ -686,22 +689,28 @@ export function SpiritBoard({ limit = 10 }: { limit?: number }) {
   );
 }
 
-/** Spirit Board (humans) and Agent Board (declared AI agents), as tabs. */
+/**
+ * The Spirit Board (humans), with the Agent Board (declared AI agents) folded
+ * away under it — open by default only once an agent has declared, so the
+ * human cards stay about the human game.
+ */
 export function Boards({ limit = 10 }: { limit?: number }) {
-  const agentPage = useGame((s) => !!s.agent || !!s.run.agent);
-  const [tab, setTab] = useState<'spirits' | 'agents'>(agentPage ? 'agents' : 'spirits');
-  const tabBtn = (id: 'spirits' | 'agents', label: string) => (
-    <button
-      onClick={() => setTab(id)}
-      className={`pointer-events-auto rounded-t-lg px-3 py-1 text-[10px] font-black tracking-[0.25em] ${tab === id ? (id === 'spirits' ? 'bg-amber-950/40 text-amber-300' : 'bg-emerald-950/40 text-emerald-300') : 'text-slate-500 hover:text-slate-300'}`}
-    >
-      {label}
-    </button>
-  );
+  const agentPlaying = useGame((s) => !!s.agent || !!s.run.agent);
+  const [showAgents, setShowAgents] = useState(agentPlaying);
   return (
     <div>
-      <div className="flex gap-1">{tabBtn('spirits', 'SPIRITS')}{tabBtn('agents', 'AGENTS')}</div>
-      {tab === 'spirits' ? <SpiritBoard limit={limit} /> : <AgentBoard limit={limit} />}
+      <SpiritBoard limit={limit} />
+      <div className="mt-1 text-left">
+        <button
+          id="agent-board-toggle"
+          aria-expanded={showAgents}
+          onClick={() => setShowAgents((v) => !v)}
+          className="pointer-events-auto inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-black tracking-[0.25em] text-slate-500 hover:text-emerald-300"
+        >
+          {showAgents ? '▾' : '▸'} AGENT BOARD
+        </button>
+      </div>
+      {showAgents && <AgentBoard limit={limit} />}
     </div>
   );
 }
