@@ -5,8 +5,10 @@
 import { registerTheme } from '../engine/theme';
 import { deadStarDisco } from './deadStarDisco';
 import { salamander } from './salamander';
+import { lastEscalation } from './lastEscalation';
 import { layerLab } from './layerLab';
 
 registerTheme(deadStarDisco);
 registerTheme(salamander);
+registerTheme(lastEscalation);
 registerTheme(layerLab);

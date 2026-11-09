@@ -60,7 +60,7 @@ export function webMcpTools(): WebMcpTool[] {
       inputSchema: {
         type: 'object',
         properties: {
-          theme: { type: 'string', enum: ['deadStarDisco', 'salamander'], description: 'Which table' },
+          theme: { type: 'string', enum: ['deadStarDisco', 'salamander', 'lastEscalation'], description: 'Which table' },
           tier: { type: 'string', enum: ['supereasy', 'easy', 'medium', 'hard', 'impossible'] },
           mode: { type: 'string', enum: ['realtime', 'lockstep', 'script'] },
         },

@@ -16,7 +16,16 @@ export interface ThemeRules {
   onAttractEvent?(e: PhysEvent): void;
   /** The player just released the plunger at `power` (0..1). */
   onLaunch?(power: number): void;
+  /**
+   * The LAST ball in play just drained (not tilted). Return a `BallSave` to
+   * re-serve it to the plunger without costing a ball (like the B key), with
+   * the theme's own copy; return null/undefined to let the ball end normally.
+   */
+  onDrain?(): BallSave | null | undefined;
 }
+
+/** A theme-granted ball save (see ThemeRules.onDrain). */
+export interface BallSave { big: string; message: string }
 
 /** 50..950-style shade ramp used to repaint the HUD's two accent families. */
 export type Shades = Record<'50' | '100' | '200' | '300' | '400' | '500' | '600' | '700' | '800' | '900' | '950', string>;

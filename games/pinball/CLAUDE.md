@@ -18,7 +18,7 @@ copy.
 | --------------- | -------------------- | ----------------------------------- |
 | `deadStarDisco` | Dead Star Disco      | Phase 1: the reference chassis      |
 | `salamander`    | Salamander           | Phase 2b: built, awaiting playtest  |
-| _tbd_           | a MISFIRE ARCADE callback | Phase 4                        |
+| `lastEscalation` | The Last Escalation (TICKET #666) | Phase 4 B1: graybox, awaiting playtest |
 | _tbd_           | a Snoopy Axolotl     | Phase 5                             |
 
 The origin prototypes are kept for reference in `examples/`:
@@ -105,6 +105,12 @@ Grey-Literature/playground#2). The two branches work like this:
   API: `addScore`, `popup`, `message`, `bigMessage`, `startMultiball`,
   `flash`, `shake` and sound. Any theme-only state lives in that theme's own
   store.
+  - **Ball saves (Phase 4).** `ThemeRules.onDrain?()` runs when the LAST
+    ball in play drains (not tilted, not mid-bonus; `sim.ts` `drained()`).
+    Return `{ big, message }` and the engine re-serves the ball through
+    `reserveBall(save)`, the same path as the `B` key, with the theme's copy.
+    Return nothing and the ball ends as usual. The Last Escalation uses it for
+    ASSISTANCE PROVIDED.
 - **Layers (decks).** A table may list `layers: LayerDef[]`. Each is a raised
   deck with a footprint `outline`, drop `holes` and a render `height`. Any
   body can carry `layer: '<deck id>'`; leaving it out means `'field'`.
@@ -446,6 +452,58 @@ touches geometry, physics or difficulty.
   about 20% through a hole and 80% over the waterfall.
 - Cross-layer collisions: 0.
 
+### Phase 4 B1 results (The Last Escalation, graybox)
+
+- **The table** is Dead Star Disco's lower chassis with IT Shop of Horrors'
+  Act IV as toys:
+  - D·N·S top lanes
+  - three server-rack pop bumpers
+  - THE CORE (top-centre saucer)
+  - THE UNDEAD SERVER (a drop bank at DSD's door spot that rises again)
+  - THE TICKET QUEUE (a left-lane spinner)
+  - THE CABLE RUN (DSD's wire path, now with `carry`)
+  - THE PRINTER THAT KNOWS (a right saucer)
+  - THE MIN PIN (an orbiter, every tier)
+
+  The gated sets are the Firewall (easy+), the Change Advisory Board
+  (medium+), the Rollback (hard+, DSD's Wrecker) and Auto-Remediation
+  (impossible, DSD's frickies).
+- **The rules** (`themes/lastEscalation/rules.ts`) are four acts kept for the
+  whole game:
+  1. Escalate 2 of the 4 entities.
+  2. Two corrupted tickets, each RESTORED (+AI CONTROL) or LEFT.
+  3. THE SILENCE: 25 s of game time at 2×, then the Core lights.
+  4. T3-CHAOS multiball. The third Core jackpot is REMOVE FROM PRODUCTION,
+     and Ticket #666 reopens at Act I.
+
+  Alongside them run the 11-pin lanyard (HTTP codes) and the AI CONTROL ball
+  save. `rules.check` covers all of it (35 checks).
+- **Results:**
+  - `stuck=0` at every tier (878–907 trials), and the Min Pin and Rollback
+    pin tests report 0.
+  - The cable run enters and ejects, and its wires clear the shooter lane.
+  - Every skill-zone plunge reaches a lane at every tier.
+- **Feel:** flipper and bumper exits are identical to Dead Star Disco's.
+  Median ball life sits between DSD's and Salamander's:
+
+  | Tier       | flipExit (min) | bumpExit | life  | mid/off/out % |
+  | ---------- | -------------- | -------- | ----- | ------------- |
+  | SUPER EASY | 202 (166)      | 80       | 45.0s | 100/0/0       |
+  | EASY       | 225 (199)      | 93       | 37.0s | 100/0/0       |
+  | MEDIUM     | 249 (235)      | 105      | 45.0s | 100/0/0       |
+  | HARD       | 282 (236)      | 121      | 45.0s | 80/14/6       |
+  | IMPOSSIBLE | 196 (146)      | 138      | 17.9s | 92/4/5        |
+
+- **B2 to do:**
+  - the scene art
+  - `sound.ts`
+  - restyled panels and a glitch title
+  - the takeover tint
+  - E.S.C.A.L.A.T.E.'s rail camera
+  - the power-down dip (a single dip of at least 250 ms, never more than 3
+    flashes a second)
+  - its own cabinet; it borrows Dead Star Disco's for now
+
 ### Phase 2b results (Salamander)
 
 **After Rosetta's first playtest** she reported that the ramps killed the
@@ -592,7 +650,11 @@ The current numbers:
    envelope. Run death-trap and ball-trap audits, do Dead Star Disco's
    obstacle-placement pass, and check 30/60/144 Hz parity in a real
    browser. **STOP**
-4. **A third theme** pulled from MISFIRE ARCADE. **STOP**
+4. **A third theme** pulled from MISFIRE ARCADE: **The Last Escalation**
+   (`lastEscalation`, IT Shop of Horrors' Act IV). **(B1) Graybox:** the
+   table, the four-act rules and the `onDrain` ball-save hook, drawn with
+   generic parts and plain markers. **STOP** **(B2) Art, sound and HUD.**
+   **STOP**
 5. **Expansion:** hall transitions, more modes and themes, mobile polish.
 
 The easter egg is **deferred** by Rosetta's call. When it comes back, propose

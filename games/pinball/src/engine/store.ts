@@ -143,7 +143,8 @@ export interface GameStore {
   setDifficulty: (id: DiffId) => void;
   cycleDifficulty: (dir: 1 | -1) => void;
   ballSearch: () => void;
-  reserveBall: () => void;
+  /** Re-serve to the plunger without costing a ball; `save` overrides the copy (theme ball saves). */
+  reserveBall: (save?: { big: string; message: string }) => void;
   startGame: () => void;
   toAttract: () => void;
   setFlipper: (side: 'left' | 'right', pressed: boolean) => void;
@@ -338,7 +339,7 @@ export const useGame = create<GameStore>()((set, get) => ({
   },
 
   // Re-serves a fresh ball to the plunger without costing the player a ball.
-  reserveBall: () => {
+  reserveBall: (save) => {
     if (get().phase !== 'playing') return;
     for (const b of gameRef.balls) b.active = false;
     gameRef.balls = [];
@@ -357,13 +358,14 @@ export const useGame = create<GameStore>()((set, get) => ({
       multiballT: 0,
       mbExtensions: 0,
       stuckHint: false,
-      message: 'BALL RE-SERVED — NO BALL LOST',
+      message: save?.message ?? 'BALL RE-SERVED — NO BALL LOST',
       messageT: Date.now(),
-      bigMessage: 'BALL RESET',
+      bigMessage: save?.big ?? 'BALL RESET',
       bigMessageT: Date.now(),
     });
+    const big = save?.big ?? 'BALL RESET';
     setTimeout(() => {
-      if (get().bigMessage === 'BALL RESET') set({ bigMessage: '' });
+      if (get().bigMessage === big) set({ bigMessage: '' });
     }, 1500);
   },
 

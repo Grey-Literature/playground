@@ -382,7 +382,7 @@ const HELP = `FLIPPER SÉANCE — agent API (window.flipperSeance)
        last set, until your next step/input. Reading state doesn't reset the clock; acting does.
        getState().limits shows latencyFloorMs, effectiveHoldMs and holdRemainingMs.
      Scores are ranked separately per mode (and per tier) on the AGENT BOARD.
-3. flipperSeance.start({ theme?: 'deadStarDisco' | 'salamander', tier?: 'supereasy'|'easy'|'medium'|'hard'|'impossible' })
+3. flipperSeance.start({ theme?: 'deadStarDisco' | 'salamander' | 'lastEscalation', tier?: 'supereasy'|'easy'|'medium'|'hard'|'impossible' })
 4. Play:
      plunge(power 0..1)          launch the ball waiting in the shooter lane (0.32–0.48 = skill shot zone;
                                  ≥0.85 on Salamander = Skyshot; below 0.05 counts as a tap = standard 0.6)
