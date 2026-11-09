@@ -634,6 +634,19 @@ h1 {
   background: radial-gradient(ellipse at 50% 50%, #0c0817, #030207);
 }
 
+.stalacpipe-preview {
+  overflow: hidden;
+  background: radial-gradient(ellipse at 50% 35%, #161f30 0%, #070a12 72%, #04060b 100%);
+}
+
+.stalacpipe-preview::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 130'><defs><filter id='sglow' x='-30%25' y='-30%25' width='160%25' height='160%25'><feGaussianBlur stdDeviation='2.2' result='blur'/><feMerge><feMergeNode in='blur'/><feMergeNode in='SourceGraphic'/></feMerge></filter></defs><g filter='url(%23sglow)'><polygon points='28,0 38,68 48,0' fill='%23f0a84b' opacity='0.85'/><polygon points='62,0 69,52 76,0' fill='%2348e5e0' opacity='0.75'/><polygon points='92,0 102,78 112,0' fill='%23ffd166' opacity='0.92'/><polygon points='128,0 135,58 142,0' fill='%23e883a8' opacity='0.8'/><polygon points='158,0 166,46 174,0' fill='%2348e5e0' opacity='0.7'/><circle cx='102' cy='86' r='2.3' fill='%23fff0b8'/><ellipse cx='102' cy='106' rx='28' ry='6.5' fill='none' stroke='%23ffd166' stroke-width='1.2' opacity='0.78'/><ellipse cx='102' cy='106' rx='14' ry='3.2' fill='none' stroke='%2348e5e0' stroke-width='0.9' opacity='0.65'/><ellipse cx='38' cy='109' rx='18' ry='4.2' fill='none' stroke='%23f0a84b' stroke-width='0.9' opacity='0.5'/></g></svg>");
+  background-size: 100% 100%;
+}
+
 .gravity-preview::before {
   content: '';
   position: absolute;

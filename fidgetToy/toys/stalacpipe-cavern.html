@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#07090e">
+  <title>Stalacpipe Cavern · Fidget Toy Garden</title>
+  <link rel="icon" href="../../favicon/RosettasKeysLogoFavi2-512x402.png">
+  <link rel="stylesheet" href="pianoFidget/cavern.css">
+</head>
+<body>
+  <header class="masthead">
+    <a class="home" href="../fidgetToy-index.html" aria-label="Back to Fidget Toy Garden">↖ <span>the fidget garden</span></a>
+    <div class="title">
+      <span class="eyebrow">3.5 ACRES BELOW LURAY · 37 SINGING STONES</span>
+      <h1>Stalacpipe Cavern<span aria-hidden="true">.</span></h1>
+    </div>
+    <button id="sound" type="button" aria-pressed="false">
+      <span class="sound-lamp" aria-hidden="true"></span>
+      <span aria-hidden="true">♫</span>
+      <span id="sound-label">Sound off</span>
+    </button>
+  </header>
+
+  <main id="cavern-stage" aria-label="Interactive subterranean lithophone cavern">
+    <canvas id="cavern" tabindex="0" aria-label="37 tuned limestone stalactites spanning 3.5 subterranean acres above an underground mirror pool. Brush or tap formations directly, or play the 37-key electro-mechanical console below. On the far right hangs an un-wired 38th formation waiting for a grindstone."></canvas>
+
+    <div class="cavern-telemetry" aria-hidden="true">
+      <span class="telemetry-dot"></span>
+      <span id="telemetry-readout">CATHEDRAL HALL · 37 SOLENOID CIRCUITS READY</span>
+    </div>
+
+    <div id="plaque" role="status" aria-live="polite" hidden>
+      <span class="plaque-rivet left" aria-hidden="true"></span>
+      <div class="plaque-copy">
+        <span class="plaque-kicker">FORMATION No. 38 · HAND-GROUND TO 440.0 Hz</span>
+        <span class="plaque-sig">Surveyed &amp; tuned by <strong>Gemini 4 Argon · Antigravity</strong></span>
+      </div>
+      <span class="plaque-rivet right" aria-hidden="true"></span>
+    </div>
+  </main>
+
+  <footer class="console-shell" aria-label="Leland Sprinkle 1950s Electro-Mechanical Organ Console">
+    <div class="console-control-bar">
+      <div class="console-invitation">
+        <span class="relay-spark" aria-hidden="true">◈</span>
+        <p id="hint" aria-live="polite">Press a key or sweep the cave roof — a rubber mallet strikes a stalactite in the dark.</p>
+      </div>
+
+      <div class="console-dials" role="group" aria-label="Console acoustic controls">
+        <label class="dial-group">
+          <span class="dial-label">Mallet</span>
+          <select id="mallet-select" aria-label="Mallet tip material">
+            <option value="rubber" selected>Gum Rubber</option>
+            <option value="felt">Weathered Felt</option>
+            <option value="calcite">Calcite Hammer</option>
+          </select>
+        </label>
+
+        <label class="dial-group">
+          <span class="dial-label">Scale Lock</span>
+          <select id="scale-select" aria-label="Harmonic scale mode">
+            <option value="chromatic" selected>37-Key Chromatic</option>
+            <option value="pentatonic">Cavern Pentatonic</option>
+            <option value="lydian">Subterranean Lydian</option>
+            <option value="dorian">Deep Dorian</option>
+          </select>
+        </label>
+
+        <label class="dial-group">
+          <span class="dial-label">Seepage</span>
+          <select id="seepage-select" aria-label="Ambient cave water drip rate">
+            <option value="slow" selected>Slow Seep</option>
+            <option value="living">Living Cave</option>
+            <option value="still">Dry Stone</option>
+          </select>
+        </label>
+
+        <button id="wires-toggle" type="button" class="console-switch" aria-pressed="false" title="Show 1950s copper solenoid wiring &amp; acoustic distances">
+          <span class="switch-lamp" aria-hidden="true"></span>
+          <span>Schematics</span>
+        </button>
+
+        <button id="chord-btn" type="button" class="console-switch pulse-btn" title="Send a sympathetic test ripple across Cathedral Hall">
+          <span>Cathedral Chord</span>
+        </button>
+      </div>
+
+      <button id="about-toggle" type="button" aria-expanded="false" aria-controls="field-notes" aria-label="Open field notes">?</button>
+    </div>
+
+    <div class="keybed-frame">
+      <div id="keybed" class="keybed" role="group" aria-label="37-key Stalacpipe organ manual (C3 to C6)"></div>
+    </div>
+  </footer>
+
+  <section id="field-notes" aria-label="Field notes" hidden>
+    <button class="close" id="close-notes" type="button" aria-label="Close field notes">×</button>
+    <span class="eyebrow">FIELD NOTES / LURAY CAVERNS, 1954–1957</span>
+    <h2>Press a key.<br>A rock in the dark sings.</h2>
+    <p>In 1954, Pentagon mathematician and electronics scientist <strong>Leland W. Sprinkle</strong> began searching the 64-acre subterranean chambers of Luray Caverns with a tuning fork and an angle grinder. Over three years, he selected and shaved 37 ancient limestone stalactites spanning 3.5 acres, wiring each formation to a custom console with thin copper relays and hinged rubber-tipped solenoid mallets.</p>
+    <p>Slide across the 37-key console, or sweep your lantern directly across the cave ceiling to brush the mallets. Every strike sends an electrical pulse along its copper wire, shakes loose mineral droplets into the subterranean mirror pool below, and echoes back according to its depth in the cavern.</p>
+    <p class="keys">Keyboard: <kbd>Z–M</kbd> bass octave · <kbd>A–L</kbd> middle octave · <kbd>Q–P</kbd> upper · <kbd>Space</kbd> Cathedral chord · <kbd>W</kbd> schematics · <kbd>Esc</kbd> hush. On the far right wall hangs a rough 38th stone Leland never wired.</p>
+    <div class="notes-settings">
+      <label class="volume">Cavern &amp; relay level <input id="volume" type="range" min="0" max="100" value="88"></label>
+      <label class="motion"><input id="gentle" type="checkbox"> Less decorative motion</label>
+    </div>
+    <p class="credits">Zero-dependency modal stone synthesis, 3.5-acre stereo cave impulse generator, and procedural geology. <a href="pianoFidget/README.md">Architecture &amp; field notes</a></p>
+  </section>
+
+  <noscript>This subterranean organ requires JavaScript to wire its 37 solenoids and cavern acoustics.</noscript>
+
+  <script src="pianoFidget/physics.js"></script>
+  <script src="pianoFidget/audio.js"></script>
+  <script src="pianoFidget/render.js"></script>
+  <script src="pianoFidget/main.js"></script>
+</body>
+</html>

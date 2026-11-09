@@ -12,6 +12,7 @@ node_modules/
 .vite/
 .tmp.driveupload/
 *.tsbuildinfo
+fidgetToy/toys/**/*.cjs
 
 # NOTE: dist/ is deliberately NOT ignored.  seasonal/.../dist/thresholds-index.html
 # is the deployable — without it the atlas is dead on GitHub Pages.
