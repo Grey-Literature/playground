@@ -4,6 +4,7 @@
 import type { ComponentType, ReactNode } from 'react';
 import type { TableDef, PhysEvent } from './types';
 import type { DiffOverrides } from './difficulty';
+import { sound, type Voice, type RollLook } from './audio';
 
 export interface ThemeRules {
   /** New game: clear all theme state. */
@@ -82,6 +83,10 @@ export interface ThemeDef {
    * classes stay in the HUD. Leave it out for the palette gradient.
    */
   ctaClass?: string;
+  /** Optional replacements for the engine's table sounds while this table is active (engine/audio.ts). */
+  voice?: Voice;
+  /** Optional level / colour for the rolling-ball noise. */
+  roll?: RollLook;
 }
 
 const registry = new Map<string, ThemeDef>();
@@ -114,4 +119,5 @@ export function activeTheme(): ThemeDef {
 
 export function setActiveTheme(def: ThemeDef) {
   active = def;
+  sound.setVoice(def.voice, def.roll);
 }

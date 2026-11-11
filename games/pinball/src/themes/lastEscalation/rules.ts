@@ -445,7 +445,7 @@ function onRack(id: string) {
   flash(`bumper:${id}`);
   addShake(0.08);
   const combo = gameRef.bumperCombo;
-  sound.bumper(combo);
+  esc.rack(id, combo);
   score(120 + Math.min(combo, 15) * 25);
   if (combo > 0 && combo % 8 === 0) core().popup(`COMBO x${combo}`, 'ALL DASHBOARDS GREEN');
 }

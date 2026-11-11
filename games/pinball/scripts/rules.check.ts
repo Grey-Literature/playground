@@ -15,6 +15,8 @@ import {
   rules as escRules, useEscalation, debugNextAct, PINS, SERVER_RISE, TICKET_WINDOW, SILENCE_S, QUEUE_LOOP_AT,
 } from '../src/themes/lastEscalation/rules';
 import { drained } from '../src/engine/sim';
+import { voice as escVoice, roll as escRoll } from '../src/themes/lastEscalation/sound';
+import { sound } from '../src/engine/audio';
 
 // in-memory localStorage so per-theme × per-tier bests are really exercised
 const mem = new Map<string, string>();
@@ -38,7 +40,7 @@ registerTheme({
 });
 
 registerTheme({
-  id: 'lastEscalation', table: escTable, diffOverrides: escOverrides, rules: escRules,
+  id: 'lastEscalation', table: escTable, diffOverrides: escOverrides, rules: escRules, voice: escVoice, roll: escRoll,
   copy: { name: 'The Last Escalation', tagline: '', dmdTitle: '', attractHint: '', attractFooter: '', obstacleSets: [] },
   palette: {} as ThemeDef['palette'], Playfield: none, Surroundings: none, Title: none, help: null,
 });
@@ -220,6 +222,12 @@ const esc = () => useEscalation.getState();
 const efire = (e: Record<string, unknown>) => escRules.onEvent({ ...at, ...e } as PhysEvent);
 const tick = (s: number) => { gameRef.time += s; runDue(); };
 expect('lastEscalation is the active table, Act I', g().phase === 'playing' && esc().act === 1);
+expect('its own voice and quieter roll are active (no Dead Star Disco beeps)', sound.voice === escVoice && sound.rollMax === escRoll.max);
+let heard = '';
+sound.setVoice({ bumper: () => { heard = 'theme'; } });
+sound.bumper(0);
+expect('a theme voice replaces the engine sound it names', heard === 'theme');
+sound.setVoice(escVoice, escRoll);
 
 gameRef.skillWindow = 0;
 for (const i of [0, 1, 2]) efire({ type: 'sensor', kind: 'lane', id: `lane${i}` });
@@ -314,6 +322,10 @@ const actBeforeSkip = esc().act;
 debugNextAct();
 expect('the ?debug skip key (]) does nothing on a ranked game', esc().act === actBeforeSkip);
 
+g().toAttract();
+g().setTheme('deadStarDisco');
+expect('switching to Dead Star Disco restores the default sounds', Object.keys(sound.voice).length === 0 && sound.rollMax === 0.16);
+g().setTheme('lastEscalation');
 escRules.reset();
 expect('a new game resets the story', esc().act === 1 && esc().aiControl === 0 && !esc().pins[100]);
 

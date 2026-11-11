@@ -1,11 +1,42 @@
 // Synthesized pinball sounds via WebAudio — no external assets needed.
+//
+// Themes can re-voice the table sounds: a theme's `voice` replaces any of the
+// named sounds below (bumper, sling, lane, jackpot, flippers, …) while it is
+// the active table, and `roll` sets the level and colour of the rolling-ball
+// noise. Anything a theme leaves out keeps the default (Dead Star Disco's).
+
+/** Table sounds a theme may re-voice. */
+export const VOICES = [
+  'flipperUp', 'flipperDown', 'bumper', 'sling', 'post', 'target', 'lane', 'inlane', 'spinner',
+  'orbit', 'scoop', 'eject', 'launch', 'drain', 'nudge', 'tilt', 'warn', 'jackpot', 'skillshot',
+  'multiball', 'start', 'gameOver', 'extraBall', 'bonusTick', 'plungerTick', 'ramp', 'tunnel',
+] as const;
+export type VoiceName = (typeof VOICES)[number];
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type Voice = Partial<Record<VoiceName, (...args: any[]) => void>>;
+/** The rolling-ball noise: peak gain (default 0.16) and band-pass centre in Hz (default 900). */
+export interface RollLook { max?: number; freq?: number }
+
 class SoundManager {
   ctx: AudioContext | null = null;
   master: GainNode | null = null;
   rollGain: GainNode | null = null;
   rollSrc: AudioBufferSourceNode | null = null;
+  rollFilt: BiquadFilterNode | null = null;
+  rollMax = 0.16;
+  rollFreq = 900;
   enabled = true;
   lastPlay: Record<string, number> = {};
+  /** The active theme's replacements for the named table sounds. */
+  voice: Voice = {};
+
+  /** Called when a table becomes active (engine/theme.ts setActiveTheme). */
+  setVoice(voice: Voice = {}, roll: RollLook = {}) {
+    this.voice = voice;
+    this.rollMax = roll.max ?? 0.16;
+    this.rollFreq = roll.freq ?? 900;
+    if (this.rollFilt && this.ctx) this.rollFilt.frequency.setTargetAtTime(this.rollFreq, this.ctx.currentTime, 0.05);
+  }
 
   ensure() {
     if (this.ctx) {
@@ -28,8 +59,9 @@ class SoundManager {
       this.rollSrc.loop = true;
       const filt = this.ctx.createBiquadFilter();
       filt.type = 'bandpass';
-      filt.frequency.value = 900;
+      filt.frequency.value = this.rollFreq;
       filt.Q.value = 0.8;
+      this.rollFilt = filt;
       this.rollGain = this.ctx.createGain();
       this.rollGain.gain.value = 0;
       this.rollSrc.connect(filt);
@@ -50,7 +82,7 @@ class SoundManager {
 
   setRoll(intensity: number) {
     if (!this.ctx || !this.rollGain) return;
-    const g = Math.min(0.16, intensity * 0.16);
+    const g = Math.min(this.rollMax, intensity * this.rollMax);
     this.rollGain.gain.setTargetAtTime(this.enabled ? g : 0, this.ctx.currentTime, 0.08);
   }
 
@@ -216,6 +248,16 @@ class SoundManager {
     this.noise(0.3, 400, 0.3, 'lowpass');
     this.tone(880, 0.12, 'triangle', 0.14, undefined, 0.28);
   }
+}
+
+// Route each named table sound through the active theme's voice, if it has one.
+for (const name of VOICES) {
+  const base = SoundManager.prototype[name] as (...args: unknown[]) => void;
+  (SoundManager.prototype as unknown as Record<string, unknown>)[name] = function (this: SoundManager, ...args: unknown[]) {
+    const v = this.voice[name];
+    if (v) v(...args);
+    else base.apply(this, args);
+  };
 }
 
 export const sound = new SoundManager();

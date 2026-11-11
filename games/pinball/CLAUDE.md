@@ -152,6 +152,12 @@ Grey-Literature/playground#2). The two branches work like this:
   look props; `only` filters let a theme custom-draw some bumpers, posts,
   kickers or rides. `ThemeDef.ctaClass` optionally reskins the big PLAY /
   PLAY AGAIN / GOT IT buttons (default: the palette gradient).
+- **Sound.** `engine/audio.ts` synthesizes every sound. A theme can re-voice
+  any of the named table sounds (`VOICES`: flippers, bumper, sling, lane,
+  jackpot, multiball, start, drain…) with `ThemeDef.voice`, and set the
+  rolling-ball noise's level and colour with `ThemeDef.roll`; whatever it
+  leaves out keeps the default (Dead Star Disco's). `setActiveTheme` applies
+  both, and `rules.check` confirms switching tables swaps them.
   `engine/scene/cabinet.tsx` is the shared cabinet, coloured by a
   `CabinetLook` (Dead Star Disco's is the default).
 - **Spirit Board (scores).** `src/engine/scores.ts` keeps a top 10 per
@@ -524,7 +530,11 @@ touches geometry, physics or difficulty.
     it prints, the Min Pin as a small black-and-tan dog (it wags once it's
     friend-shaped), and E.S.C.A.L.A.T.E.'s camera on the right cabinet rail
     (it sweeps in Act I and follows the ball from Act II).
-  - **Sound** (`themes/lastEscalation/sound.ts`, synthesized): a 55/58.3 Hz
+  - **Sound** (`themes/lastEscalation/sound.ts`, synthesized): its own
+    `voice` for every common table sound (relay-clack flippers, a network
+    ping for the lanes, a terminal chime for jackpots, an incident alarm for
+    multiball…), with each middle bumper in its own voice (dot-matrix, china
+    clink, drive seek), and a quieter, lower rolling noise. Plus a 55/58.3 Hz
     server hum (with harmonics small speakers can play) that runs while a
     ball is in play and fades out for THE SILENCE; typing, printer chatter,
     the Min Pin's growl and bark (a yip once friend-shaped), a quack, a
