@@ -485,6 +485,11 @@ touches geometry, physics or difficulty.
   The Min Pin is off duty on Super Easy, and the printer never predicts it
   there. The table has its own cabinet (TICKET #666 side art, green/red
   trim), and its PLAY / PLAY AGAIN buttons use `ThemeDef.ctaClass`.
+- **Floor inserts** show where to shoot: chevrons in front of each goal
+  (green = an Act I entity still to escalate, amber = the printer's
+  prediction, red = the Act II printer and the lit Core), an act ladder
+  I–IV, and the lanyard's 11 code lamps in an arc above the flippers. The
+  chase is 1.4 Hz per chevron; during THE SILENCE they hold still.
 - **The rules** (`themes/lastEscalation/rules.ts`) are four acts kept for the
   whole game:
   1. Escalate 2 of the 4 entities.
@@ -636,6 +641,9 @@ The current numbers:
 - Board first: the table is the focal point. Score, switches and toggles sit
   at the edges and stay out of the way, and the playfield is never covered
   during play.
+- The attract card must fit a laptop screen without scrolling: wide screens
+  get the two-column layout, and PLAY stays pinned when a short screen
+  scrolls.
 - Each theme restyles the HUD chrome through its palette tokens and fonts.
 - Dead Star Disco is a synthwave grid over a collapsing star: neon cyan and
   magenta on near-black.

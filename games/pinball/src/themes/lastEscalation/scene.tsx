@@ -17,7 +17,7 @@ import { PX, PZ } from '../../engine/scene/track';
 import { ACTIVE, TABLE, kinematicPose } from '../../engine/table';
 import { gameRef, flashOf, spinnerOf } from '../../engine/runtime';
 import { SLING_LEFT, SLING_RIGHT } from '../deadStarDisco/table';
-import { useEscalation, silent, MINPIN_FRIEND_AT, type Shot } from './rules';
+import { useEscalation, silent, MINPIN_FRIEND_AT, PINS, type Shot } from './rules';
 import { CORE_AT, PRINTER_AT, MINPIN_ORBIT } from './table';
 
 const GREEN = '#39ff8e';
@@ -62,6 +62,149 @@ function LaneLamps() {
         <mesh key={l.id} position={[PX(l.x), 0.08, PZ(l.y - 3)]} rotation={[-Math.PI / 2, 0, 0]}>
           <circleGeometry args={[1.25, 28]} />
           <meshStandardMaterial ref={(el) => { mats.current[i] = el; }} color="#04140b" emissive={GREEN} emissiveIntensity={0.15} transparent opacity={0.6} toneMapped={false} />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
+// ---------------- floor inserts: the floor shows you where to shoot ----------------
+// Chevron arrows in front of each goal, an act ladder (I–IV) and the lanyard's
+// 11 HTTP-code lamps. They read the story store every frame:
+//   green chase  — an Act I entity still to escalate
+//   amber chase  — the shot the printer predicted
+//   red          — the printer in Act II (chasing while a corrupted ticket is live),
+//                  the Core once it's lit
+// The chase steps at 1.4 Hz per chevron (well under 3 flashes a second), and
+// during THE SILENCE everything holds a steady, dim glow: no movement at all.
+
+type ArrowId = 'printer' | 'minpin' | 'server' | 'lane' | 'core';
+const ARROWS: { id: ArrowId; x: number; y: number; angle: number }[] = [
+  { id: 'printer', x: 7, y: -2, angle: Math.PI / 4 },      // up-right, into the printer saucer
+  { id: 'minpin', x: 1, y: -5, angle: Math.PI / 2 },       // up the middle, at the Min Pin's loop
+  { id: 'server', x: -10.5, y: 13.2, angle: Math.PI },     // left, at the Undead Server's blades
+  { id: 'lane', x: -18.6, y: -5, angle: Math.PI / 2 },     // up the left lane: the queue, then the cable run
+  { id: 'core', x: 0, y: 20.6, angle: Math.PI / 2 },       // up between the racks, at the Core
+];
+const ACT_LAMPS = [-4.5, -1.5, 1.5, 4.5].map((x, i) => ({ x, y: -9.5, label: ['I', 'II', 'III', 'IV'][i] }));
+const LANYARD_LAMPS = PINS.map((p, i) => {
+  const a = (130 - (80 * i) / (PINS.length - 1)) * (Math.PI / 180);
+  return { pin: p, x: Math.cos(a) * 9, y: -27 + Math.sin(a) * 9 };
+});
+
+function chevronGeometry() {
+  const s = new THREE.Shape();
+  s.moveTo(0.5, 0);
+  s.lineTo(-0.3, 0.8);
+  s.lineTo(-0.7, 0.8);
+  s.lineTo(0.1, 0);
+  s.lineTo(-0.7, -0.8);
+  s.lineTo(-0.3, -0.8);
+  s.closePath();
+  return new THREE.ShapeGeometry(s);
+}
+
+/** A round lamp lens with a label printed on it (white on grey, so the material colour tints it). */
+function lampTexture(label: string) {
+  const c = document.createElement('canvas');
+  c.width = 128; c.height = 128;
+  const g = c.getContext('2d')!;
+  g.fillStyle = '#6b6b6b';
+  g.beginPath(); g.arc(64, 64, 60, 0, Math.PI * 2); g.fill();
+  g.fillStyle = '#ffffff';
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.font = `${label.length > 2 ? 54 : 70}px "VT323", "Share Tech Mono", monospace`;
+  g.fillText(label, 64, 68);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+const tint = (m: THREE.MeshBasicMaterial | null | undefined, hex: string, k: number) => {
+  if (m) m.color.set(hex).multiplyScalar(k);
+};
+
+function FloorInserts() {
+  const chev = useMemo(() => chevronGeometry(), []);
+  const actTex = useMemo(() => ACT_LAMPS.map((l) => lampTexture(l.label)), []);
+  const pinTex = useMemo(() => LANYARD_LAMPS.map((l) => lampTexture(String(l.pin))), []);
+  const arrowMats = useRef<(THREE.MeshBasicMaterial | null)[][]>(ARROWS.map(() => []));
+  const actMats = useRef<(THREE.MeshBasicMaterial | null)[]>([]);
+  const pinMats = useRef<(THREE.MeshBasicMaterial | null)[]>([]);
+
+  useFrame((state) => {
+    const t = state.clock.elapsedTime;
+    const s = useEscalation.getState();
+    const quiet = silent();
+    const pred = s.prediction && gameRef.time <= s.predictionUntil ? s.prediction : null;
+    const minpinOn = ACTIVE.kinematics.some((k) => k.id === 'minpin');
+    const act1 = s.act === 1;
+
+    const want = (id: ArrowId): { color: string; chase: boolean } | null => {
+      switch (id) {
+        case 'printer':
+          if (s.act === 2) return { color: RED, chase: !!s.corrupted };
+          return act1 && !s.escalated.printer ? { color: GREEN, chase: true } : null;
+        case 'minpin':
+          if (pred === 'minpin') return { color: AMBER, chase: true };
+          return act1 && minpinOn && !s.escalated.minpin ? { color: GREEN, chase: true } : null;
+        case 'server':
+          if (pred === 'server') return { color: AMBER, chase: true };
+          return act1 && !s.escalated.server ? { color: GREEN, chase: true } : null;
+        case 'lane':
+          if (pred === 'queue' || pred === 'cableRun') return { color: AMBER, chase: true };
+          return act1 && !s.escalated.queue ? { color: GREEN, chase: true } : null;
+        case 'core':
+          return s.coreLit || s.act === 4 ? { color: RED, chase: true } : null;
+      }
+    };
+
+    const step = Math.floor((t * 1.4) % 3); // which chevron is lit (back to front)
+    ARROWS.forEach((a, ai) => {
+      const w = want(a.id);
+      arrowMats.current[ai].forEach((m, ci) => {
+        if (!w) tint(m, '#2f5a43', 0.9);
+        else if (quiet || !w.chase) tint(m, w.color, quiet ? 0.35 : 0.8);
+        else tint(m, w.color, ci === step ? 1.6 : 0.3);
+      });
+    });
+
+    ACT_LAMPS.forEach((_, i) => {
+      const n = i + 1;
+      const color = n === 4 ? RED : GREEN;
+      if (n < s.act) tint(actMats.current[i], GREEN, 0.7);
+      else if (n === s.act) tint(actMats.current[i], color, quiet ? 0.6 : 0.9 + Math.sin(t * 2.2) * 0.45);
+      else tint(actMats.current[i], '#46564d', 1.0);
+    });
+
+    LANYARD_LAMPS.forEach((l, i) => {
+      if (s.pins[l.pin]) tint(pinMats.current[i], s.lanyardPaid ? AMBER : GREEN, 1.0);
+      else tint(pinMats.current[i], '#46564d', 1.0);
+    });
+  });
+
+  return (
+    <group>
+      {ARROWS.map((a, ai) => (
+        <group key={a.id} position={[PX(a.x), 0.07, PZ(a.y)]} rotation={[0, a.angle, 0]}>
+          {[-1.1, 0, 1.1].map((ox, ci) => (
+            <mesh key={ox} geometry={chev} position={[ox, 0, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+              <meshBasicMaterial ref={(el) => { arrowMats.current[ai][ci] = el; }} color="#1c3326" transparent opacity={0.9} toneMapped={false} depthWrite={false} />
+            </mesh>
+          ))}
+        </group>
+      ))}
+      {ACT_LAMPS.map((l, i) => (
+        <mesh key={l.label} position={[PX(l.x), 0.07, PZ(l.y)]} rotation={[-Math.PI / 2, 0, 0]}>
+          <circleGeometry args={[1.05, 28]} />
+          <meshBasicMaterial ref={(el) => { actMats.current[i] = el; }} map={actTex[i]} transparent toneMapped={false} depthWrite={false} />
+        </mesh>
+      ))}
+      {LANYARD_LAMPS.map((l, i) => (
+        <mesh key={l.pin} position={[PX(l.x), 0.07, PZ(l.y)]} rotation={[-Math.PI / 2, 0, 0]}>
+          <circleGeometry args={[0.6, 20]} />
+          <meshBasicMaterial ref={(el) => { pinMats.current[i] = el; }} map={pinTex[i]} transparent toneMapped={false} depthWrite={false} />
         </mesh>
       ))}
     </group>
@@ -707,6 +850,7 @@ export function Playfield() {
   return (
     <>
       <Floor />
+      <FloorInserts />
       <SilenceVeil />
       <Walls />
       <Slings tris={SLINGS} glow={GREEN} rubber="#14532d" />

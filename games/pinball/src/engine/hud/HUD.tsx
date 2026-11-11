@@ -346,6 +346,8 @@ function KeyHints() {
     { keys: <><Kbd>A</Kbd><Kbd>W</Kbd><Kbd>D</Kbd></>, label: 'NUDGE' },
     { keys: <Kbd>B</Kbd>, label: 'BALL RESET' },
     { keys: <><Kbd>1</Kbd><Kbd>…</Kbd><Kbd>5</Kbd></>, label: 'MODE' },
+    { keys: <Kbd>C</Kbd>, label: 'CAMERA' },
+    ...(phase === 'playing' ? [] : [{ keys: <Kbd>T</Kbd>, label: 'NEXT TABLE' }]),
     { keys: <Kbd>⏎</Kbd>, label: phase === 'playing' ? 'START' : 'PLAY' },
   ];
   return (
@@ -427,35 +429,42 @@ function AttractScreen() {
   const phase = useGame((s) => s.phase);
   const selected = useGame((s) => s.difficulty);
   const themeId = useGame((s) => s.themeId);
+  const agentPage = useGame((s) => s.agentPage);
   const theme = themeById(themeId);
   if (phase !== 'attract' || !theme) return null;
   const { Title } = theme;
+  // Fits a laptop screen without scrolling: on wide screens the card widens,
+  // the table picker sits in one row, and the boards and the difficulty/PLAY
+  // column sit side by side. The key grid only shows where the corner legend
+  // doesn't (phones, agent pages). If a short screen still scrolls, PLAY stays
+  // pinned to the bottom of the card.
   return (
     <div className="absolute inset-0 z-40 flex items-center justify-center bg-gradient-to-b from-slate-950/60 via-slate-950/40 to-slate-950/80 p-4">
-      <div className="attract-in max-h-[calc(100dvh-2rem)] w-full max-w-2xl overflow-y-auto rounded-3xl border border-pa-400/25 bg-[color-mix(in_srgb,var(--pb-bg,#020617)_85%,transparent)] p-6 sm:p-10 text-center shadow-[0_0_80px_color-mix(in_srgb,var(--color-pa-400)_25%,transparent)] backdrop-blur-xl">
+      <div className="attract-in relative max-h-[calc(100dvh-2rem)] w-full max-w-2xl overflow-y-auto rounded-3xl border border-pa-400/25 bg-[color-mix(in_srgb,var(--pb-bg,#020617)_85%,transparent)] px-6 pt-6 text-center shadow-[0_0_80px_color-mix(in_srgb,var(--color-pa-400)_25%,transparent)] backdrop-blur-xl sm:px-10 sm:pt-7 lg:max-w-5xl">
         <div className="mb-3 inline-flex items-center gap-1.5 rounded-full border border-amber-400/40 bg-amber-950/40 px-3 py-0.5 text-[10px] font-black tracking-[0.3em] text-amber-300">
           WORK IN PROGRESS · MORE TABLES BEING SUMMONED
         </div>
         <ThemePicker />
-        <div className="mb-1 mt-5 text-[11px] font-black tracking-[0.5em] text-pa-400">INSERT COIN • 3 BALLS</div>
+        <div className="mb-1 mt-4 text-[11px] font-black tracking-[0.5em] text-pa-400">INSERT COIN • 3 BALLS</div>
         <Title />
 
-        <div className="mx-auto mt-5 max-w-md">
-          <Boards limit={5} />
+        <div className="mt-5 grid gap-5 text-left lg:grid-cols-[2fr_3fr] lg:items-start">
+          <div className="mx-auto w-full max-w-md lg:max-w-none">
+            <Boards limit={5} />
+          </div>
+          <div className="mx-auto w-full max-w-xl lg:max-w-none">
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-[10px] font-black tracking-[0.35em] text-slate-400">SELECT DIFFICULTY</span>
+              <span className="text-[10px] font-bold text-slate-500">keys 1–5</span>
+            </div>
+            <DifficultyPicker />
+            <div className="mt-2 text-center text-[11px] font-semibold text-slate-400" style={{ color: diffFor(selected).accent }}>
+              {diffFor(selected).blurb}
+            </div>
+          </div>
         </div>
 
-        <div className="mx-auto mt-5 max-w-xl text-left">
-          <div className="mb-2 flex items-center justify-between">
-            <span className="text-[10px] font-black tracking-[0.35em] text-slate-400">SELECT DIFFICULTY</span>
-            <span className="text-[10px] font-bold text-slate-500">keys 1–5</span>
-          </div>
-          <DifficultyPicker />
-          <div className="mt-2 text-center text-[11px] font-semibold text-slate-400" style={{ color: diffFor(selected).accent }}>
-            {diffFor(selected).blurb}
-          </div>
-        </div>
-
-        <div className="mx-auto mt-5 grid max-w-lg grid-cols-2 gap-2 text-left sm:grid-cols-4">
+        <div className={`mx-auto mt-5 grid max-w-lg grid-cols-2 gap-2 text-left sm:grid-cols-4 ${agentPage ? '' : 'sm:hidden'}`}>
           {[
             { k: ['Z', '◀'], label: 'Left flipper' },
             { k: ['M', '▶'], label: 'Right flipper' },
@@ -476,14 +485,16 @@ function AttractScreen() {
           ))}
         </div>
 
-        <button
-          onClick={() => useGame.getState().startGame()}
-          className={`group pointer-events-auto mt-6 inline-flex items-center gap-2 rounded-2xl px-8 py-3.5 font-display text-lg font-black tracking-wide transition-all hover:scale-105 active:scale-95 ${ctaSkin()}`}
-        >
-          <Play className="h-5 w-5 fill-current" /> PRESS ENTER / TAP TO PLAY
-        </button>
-        <div className="mt-3 animate-pulse text-xs font-bold tracking-widest text-pa-300/80">{theme.copy.attractHint}</div>
-        <div className="mt-4 text-[11px] text-slate-500">{theme.copy.attractFooter}</div>
+        <div className="sticky bottom-0 -mx-6 mt-4 bg-gradient-to-t from-[color-mix(in_srgb,var(--pb-bg,#020617)_96%,transparent)] from-60% to-transparent px-6 pb-5 pt-3 sm:-mx-10 sm:px-10 sm:pb-6">
+          <button
+            onClick={() => useGame.getState().startGame()}
+            className={`group pointer-events-auto inline-flex items-center gap-2 rounded-2xl px-8 py-3.5 font-display text-lg font-black tracking-wide transition-all hover:scale-105 active:scale-95 ${ctaSkin()}`}
+          >
+            <Play className="h-5 w-5 fill-current" /> PRESS ENTER / TAP TO PLAY
+          </button>
+          <div className="mt-2 animate-pulse text-xs font-bold tracking-widest text-pa-300/80">{theme.copy.attractHint}</div>
+        </div>
+        <div className="pb-5 text-[11px] text-slate-500">{theme.copy.attractFooter}</div>
       </div>
     </div>
   );
@@ -628,14 +639,14 @@ function ThemePicker() {
   // a hidden fixture table shows itself in the picker only while it's active
   const themes = current?.hidden ? [...hallThemes(), current] : hallThemes();
   return (
-    <div className="mx-auto max-w-xl text-left">
+    <div className="mx-auto max-w-xl text-left lg:max-w-none">
       <div className="mb-2 flex items-center justify-between">
         <span className="flex items-center gap-1.5 text-[10px] font-black tracking-[0.35em] text-slate-400">
           <Ghost className="h-3 w-3" /> FLIPPER SÉANCE — SUMMON A TABLE
         </span>
         {themes.length > 1 && <span className="text-[10px] font-bold text-slate-500">key T</span>}
       </div>
-      <div className={`grid gap-2 ${themes.length > 1 ? 'sm:grid-cols-2' : ''}`}>
+      <div className={`grid gap-2 ${themes.length > 1 ? 'sm:grid-cols-2' : ''} ${themes.length > 2 ? 'lg:grid-cols-3' : ''}`}>
         {themes.map((t) => {
           const on = t.id === themeId;
           return (
