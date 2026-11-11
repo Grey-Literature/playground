@@ -27,6 +27,7 @@ import { useGame } from '../../engine/store';
 import { gameRef, flash, addShake, spinnerOf, later } from '../../engine/runtime';
 import { TABLE, ACTIVE } from '../../engine/table';
 import { sound } from '../../engine/audio';
+import { esc } from './sound';
 
 export const SILENCE_S = 25;
 export const TICKET_WINDOW = 8;
@@ -97,6 +98,9 @@ export interface EscalationState {
   lanyardPaid: boolean;
   /** Game time of the last plunger launch (ball-save window). */
   launchedAt: number;
+  /** Bumped when E.S.C.A.L.A.T.E. takes over (Act II) / at each REMOVE FROM PRODUCTION; the HUD plays its one-shot effect. */
+  takeovers: number;
+  powerdowns: number;
   savesThisBall: number;
   saves: number;
 }
@@ -125,6 +129,8 @@ const fresh = (): EscalationState => ({
   pins: Object.fromEntries(PINS.map((p) => [p, false])) as Record<Pin, boolean>,
   lanyardPaid: false,
   launchedAt: -99,
+  takeovers: 0,
+  powerdowns: 0,
   savesThisBall: 0,
   saves: 0,
 });
@@ -161,6 +167,7 @@ function pin(code: Pin) {
     score(50000, 'HUMAN ESCALATION PATH: RESTORED');
     core().setBigMessage('ESCALATION PATH RESTORED');
     sound.jackpot();
+    esc.unlock();
     flash('jackpot');
   }
 }
@@ -186,6 +193,8 @@ function advance(to: Act) {
   sound.jackpot();
   if (to === 2) {
     flash('takeover');
+    set({ takeovers: get().takeovers + 1 });
+    esc.glitch();
     score(10000, `ACT II · ${ACT_NAMES[2]}`);
     g.setBigMessage('SOMETHING KNOWS YOU\'RE HERE');
     g.setMessage('THE PRINTER IS PRINTING SOMETHING ELSE NOW. SHOOT IT.');
@@ -218,6 +227,8 @@ function endSilence() {
   set({ silenceUntil: 0, coreLit: true, inc: Math.max(s.inc, 669) });
   flash('core');
   core().setBigMessage('THE CORE IS LIT');
+  esc.type(16);
+  esc.unlock();
   core().setMessage('INC-0668 · SUBMITTED BY: YOU · "I CAN\'T FIND THE WAY OUT." · SUBMITTED: 4 MINUTES FROM NOW');
 }
 
@@ -229,7 +240,8 @@ function finale() {
   g.setBigMessage('REMOVE FROM PRODUCTION');
   flash('powerdown');
   addShake(0.6);
-  sound.jackpot();
+  esc.powerdown();
+  set({ powerdowns: get().powerdowns + 1 });
   const replicated = s.aiControl >= 2;
   set({
     act: 1, level: s.level + 1, coreLit: false, jackpots: 0,
@@ -244,6 +256,22 @@ function finale() {
   }
 }
 
+/**
+ * ?debug pages only (they file no scores): skip to the next beat of the
+ * story, so the later acts can be playtested without playing up to them.
+ * Act I → II → III (the Silence) → the Core lit → IV (multiball) → the finale.
+ */
+export function debugNextAct() {
+  if (!useGame.getState().unranked || core().phase !== 'playing') return;
+  const s = get();
+  if (s.act === 1) advance(2);
+  else if (s.act === 2) advance(3);
+  else if (s.act === 3) {
+    if (s.silenceUntil > 0) endSilence();
+    else advance(4);
+  } else finale();
+}
+
 // ---------------- the printer ----------------
 function predict() {
   const g = core();
@@ -253,6 +281,7 @@ function predict() {
   const shots = (Object.keys(SHOT_NAMES) as Shot[]).filter((x) => x !== s.prediction && (x !== 'minpin' || minpinOn));
   const shot = shots[Math.floor(Math.random() * shots.length)] ?? 'cableRun';
   set({ prediction: shot, predictionUntil: now() + PREDICTION_S, inc: s.inc + 1 });
+  esc.printer();
   g.setMessage(`${incName(s.inc)}: ${SHOT_NAMES[shot]} · 4 MINUTES FROM NOW`);
 }
 
@@ -282,6 +311,8 @@ function onPrinter() {
   const ticket = { inc: s.inc, until: now() + TICKET_WINDOW };
   set({ corrupted: ticket, inc: s.inc + 1 });
   core().setBigMessage('CORRUPTED TICKET');
+  esc.printer();
+  esc.glitch();
   core().setMessage(`${incName(ticket.inc)} IS CORRUPTED · SHOOT THE PRINTER IN ${TICKET_WINDOW}s TO RESTORE IT`);
   later(TICKET_WINDOW, () => { if (t === epoch && get().corrupted === ticket) resolve(false); });
 }
@@ -296,6 +327,7 @@ function resolve(restore: boolean) {
     score(15000, 'TICKET RESTORED');
     g.setMessage(`RESTORED. AI CONTROL ${ai}/${MAX_AI_CONTROL}. IT SAYS THANK YOU.`);
     sound.jackpot();
+    esc.unlock();
     pin(409);
   } else {
     set({ corrupted: null, ticketsResolved: resolved });
@@ -312,10 +344,11 @@ function onMinPin() {
   lastMinpinAt = now();
   flash('minpin');
   addShake(0.12);
-  sound.post();
   const s = get();
   shot('minpin');
-  if (s.minpinHits >= MINPIN_FRIEND_AT) { score(500, undefined); return; }
+  if (s.minpinHits >= MINPIN_FRIEND_AT) { esc.bark(true); score(500, undefined); return; }
+  if (s.minpinHits === 0) esc.growl();
+  esc.bark();
   const hits = s.minpinHits + 1;
   set({ minpinHits: hits });
   if (hits < MINPIN_FRIEND_AT) {
@@ -349,6 +382,7 @@ function onServer(id: string) {
   flash('server');
   score(7500, '503 — SERVER REFUSES TO DIE');
   core().setBigMessage('503 SERVICE UNAVAILABLE');
+  esc.rise();
   core().setMessage(`THE SERVER REFUSES TO DIE · GHOST SESSIONS: ${clears}`);
   if (clears >= SERVER_ESCALATE_AT) { pin(422); escalate('server'); }
   const t = epoch;
@@ -463,11 +497,11 @@ function onPost(id: string) {
   if (id === 'rollback') { flash('rollback'); sound.post(); addShake(0.12); score(300); return; }
   if (id === 'firewall' || id === 'cab') { flash(`post:${id}`); sound.post(); score(250); return; }
   if (id.startsWith('fk')) { flash(`kicker:${id}`); sound.post(); score(100); return; }
-  if (id === 'duck') { flash('duck'); sound.post(); score(250, 'QUACK — PROBLEM EXPLAINED'); return; }
-  if (id === 'pager') { flash('pager'); sound.post(); addShake(0.1); score(200, 'PAGED · 3:04 AM'); return; }
-  if (id === 'legacy') { flash('legacy'); sound.post(); score(300, 'LEGACY SYSTEM · DO NOT TOUCH'); return; }
-  if (id === 'zombie') { flash('zombie'); sound.post(); score(350, 'kill -9 · IT GOT UP AGAIN'); return; }
-  if (id === 'techdebt') { flash('techdebt'); sound.post(); addShake(0.12); score(400, 'TECH DEBT · INTEREST ACCRUED'); return; }
+  if (id === 'duck') { flash('duck'); esc.quack(); score(250, 'QUACK — PROBLEM EXPLAINED'); return; }
+  if (id === 'pager') { flash('pager'); esc.pager(); addShake(0.1); score(200, 'PAGED · 3:04 AM'); return; }
+  if (id === 'legacy') { flash('legacy'); esc.creak(); score(300, 'LEGACY SYSTEM · DO NOT TOUCH'); return; }
+  if (id === 'zombie') { flash('zombie'); esc.groan(); score(350, 'kill -9 · IT GOT UP AGAIN'); return; }
+  if (id === 'techdebt') { flash('techdebt'); esc.clunk(); addShake(0.12); score(400, 'TECH DEBT · INTEREST ACCRUED'); return; }
   sound.post();
   score(30);
 }
@@ -539,6 +573,7 @@ export const rules: ThemeRules = {
     set({ savesThisBall: s.savesThisBall + 1, saves: s.saves + 1 });
     useGame.setState({ bonus: Math.floor(core().bonus / 2) });
     flash('save');
+    esc.type();
     return { big: 'ASSISTANCE PROVIDED', message: 'E.S.C.A.L.A.T.E. KEPT HALF YOUR BONUS. …YOU\'RE WELCOME.' };
   },
 };

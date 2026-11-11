@@ -12,7 +12,7 @@ import { table as salTable, diffOverrides as salOverrides } from '../src/themes/
 import { rules as salRules, useSalamander, BELL_RELIGHT } from '../src/themes/salamander/rules';
 import { table as escTable, diffOverrides as escOverrides } from '../src/themes/lastEscalation/table';
 import {
-  rules as escRules, useEscalation, PINS, SERVER_RISE, TICKET_WINDOW, SILENCE_S, QUEUE_LOOP_AT,
+  rules as escRules, useEscalation, debugNextAct, PINS, SERVER_RISE, TICKET_WINDOW, SILENCE_S, QUEUE_LOOP_AT,
 } from '../src/themes/lastEscalation/rules';
 import { drained } from '../src/engine/sim';
 
@@ -309,6 +309,10 @@ gameRef.time += 60;
 for (const b of gameRef.balls) b.active = false;
 drained(escRules);
 expect('a drain long after launch is not saved', g().ballPhase === 'bonus');
+
+const actBeforeSkip = esc().act;
+debugNextAct();
+expect('the ?debug skip key (]) does nothing on a ranked game', esc().act === actBeforeSkip);
 
 escRules.reset();
 expect('a new game resets the story', esc().act === 1 && esc().aiControl === 0 && !esc().pins[100]);

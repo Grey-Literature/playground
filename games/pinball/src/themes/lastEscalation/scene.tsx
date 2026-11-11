@@ -17,6 +17,8 @@ import { PX, PZ } from '../../engine/scene/track';
 import { ACTIVE, TABLE, kinematicPose } from '../../engine/table';
 import { gameRef, flashOf, spinnerOf } from '../../engine/runtime';
 import { SLING_LEFT, SLING_RIGHT } from '../deadStarDisco/table';
+import { setHum } from './sound';
+import { useGame } from '../../engine/store';
 import { useEscalation, silent, MINPIN_FRIEND_AT, PINS, type Shot } from './rules';
 import { CORE_AT, PRINTER_AT, MINPIN_ORBIT } from './table';
 
@@ -34,15 +36,64 @@ const SHOT_AT: Record<Shot, { x: number; y: number }> = {
   minpin: { x: MINPIN_ORBIT.cx, y: MINPIN_ORBIT.cy },
 };
 
+/** Server-room raised floor: vented tiles, cable runs and stray ticket paper (a canvas texture). */
+function makeFloorTexture(): THREE.CanvasTexture {
+  const W = 512, H = 894;
+  const c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  const g = c.getContext('2d')!;
+  let seed = 7;
+  const r = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  g.fillStyle = '#080b0e';
+  g.fillRect(0, 0, W, H);
+  // raised-floor tiles, a few of them vented
+  const T = 64;
+  for (let y = 0; y < H; y += T) {
+    for (let x = 0; x < W; x += T) {
+      const v = 13 + Math.floor(r() * 6);
+      g.fillStyle = `rgb(${v - 3},${v + 1},${v + 5})`;
+      g.fillRect(x + 1, y + 1, T - 2, T - 2);
+      if (r() < 0.18) {
+        g.fillStyle = 'rgba(0,0,0,0.55)';
+        for (let vy = y + 10; vy < y + T - 8; vy += 7) for (let vx = x + 10; vx < x + T - 8; vx += 7) g.fillRect(vx, vy, 3, 3);
+      }
+    }
+  }
+  // cable runs: dark bundles with a few coloured strands
+  const cable = (w: number, col: string) => {
+    g.strokeStyle = col; g.lineWidth = w; g.lineCap = 'round';
+    g.beginPath();
+    const x0 = r() * W, y0 = r() < 0.5 ? -20 : H + 20;
+    g.moveTo(x0, y0);
+    g.bezierCurveTo(r() * W, r() * H, r() * W, r() * H, r() * W, r() < 0.5 ? -20 : H + 20);
+    g.stroke();
+  };
+  for (let i = 0; i < 6; i++) cable(7 + r() * 5, '#05070a');
+  for (const col of ['rgba(57,255,142,0.10)', 'rgba(255,59,59,0.10)', 'rgba(111,185,255,0.10)', 'rgba(57,255,142,0.07)']) cable(3, col);
+  // stray tickets
+  for (let i = 0; i < 7; i++) {
+    g.save();
+    g.translate(r() * W, r() * H);
+    g.rotate((r() - 0.5) * 1.2);
+    g.fillStyle = 'rgba(214,224,228,0.06)';
+    g.fillRect(-18, -24, 36, 48);
+    g.fillStyle = 'rgba(214,224,228,0.06)';
+    for (let l = 0; l < 6; l++) g.fillRect(-13, -17 + l * 7, 18 + r() * 8, 2);
+    g.restore();
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 4;
+  return tex;
+}
+
 function Floor() {
+  const tex = useMemo(() => makeFloorTexture(), []);
   return (
-    <>
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 1]} receiveShadow>
-        <planeGeometry args={[47, 82]} />
-        <meshStandardMaterial color="#05080a" roughness={0.7} metalness={0.15} />
-      </mesh>
-      <gridHelper args={[80, 40, '#0f3d26', '#0a1f16']} position={[0, 0.03, 1]} />
-    </>
+    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 1]} receiveShadow>
+      <planeGeometry args={[47, 82]} />
+      <meshStandardMaterial map={tex} roughness={0.75} metalness={0.15} />
+    </mesh>
   );
 }
 
@@ -273,24 +324,34 @@ function Queue() {
   );
 }
 
-/** THE PRINTER THAT KNOWS (saucer) and its lit prediction insert. */
+/** THE PRINTER THAT KNOWS (saucer) and its lit prediction insert. The paper feeds out when it prints. */
 function Printer() {
   const mat = useRef<THREE.MeshStandardMaterial>(null!);
+  const led = useRef<THREE.MeshStandardMaterial>(null!);
+  const paper = useRef<THREE.Mesh>(null!);
   const insert = useRef<THREE.Mesh>(null!);
   const insertMat = useRef<THREE.MeshBasicMaterial>(null!);
   useFrame((state) => {
+    const t = state.clock.elapsedTime;
     const s = useEscalation.getState();
     const corrupt = !!s.corrupted;
+    const fl = flashOf('printer');
     if (mat.current) {
       mat.current.emissive.set(corrupt ? RED : GREEN);
-      mat.current.emissiveIntensity = (corrupt ? 0.9 + Math.sin(state.clock.elapsedTime * 6) * 0.4 : 0.35) + flashOf('printer') * 4;
+      mat.current.emissiveIntensity = (corrupt ? 0.35 + Math.sin(t * 4) * 0.15 : 0.06) + fl * 1.2;
     }
+    if (led.current) {
+      led.current.emissive.set(corrupt ? RED : GREEN);
+      led.current.emissiveIntensity = corrupt ? 2.4 : 1.4;
+    }
+    // paper slides out while the flash is up, then settles back into the tray
+    if (paper.current) paper.current.position.x = -1.2 - fl * 1.6;
     const lit = s.prediction && gameRef.time <= s.predictionUntil ? SHOT_AT[s.prediction] : null;
     if (insert.current) {
       insert.current.visible = !!lit;
       if (lit) insert.current.position.set(PX(lit.x), 0.1, PZ(lit.y));
     }
-    if (insertMat.current) insertMat.current.opacity = 0.45 + Math.sin(state.clock.elapsedTime * 5) * 0.25;
+    if (insertMat.current) insertMat.current.opacity = 0.45 + Math.sin(t * 5) * 0.25;
   });
   return (
     <>
@@ -299,10 +360,28 @@ function Printer() {
           <ringGeometry args={[1.5, 2.1, 32]} />
           <meshBasicMaterial color="#9ca3af" />
         </mesh>
-        <mesh position={[3.2, 1.4, 0]} castShadow>
-          <boxGeometry args={[2.4, 2.8, 3.2]} />
-          <meshStandardMaterial ref={mat} color="#d1d5db" emissive={GREEN} emissiveIntensity={0.35} roughness={0.5} />
-        </mesh>
+        <group position={[3.3, 0, 0]}>
+          <mesh position={[0, 1.3, 0]} castShadow>
+            <boxGeometry args={[2.4, 2.6, 3.6]} />
+            <meshStandardMaterial ref={mat} color="#cfd4da" emissive={GREEN} emissiveIntensity={0.06} roughness={0.5} />
+          </mesh>
+          <mesh position={[0, 2.66, 0.2]}>
+            <boxGeometry args={[2.0, 0.12, 2.6]} />
+            <meshStandardMaterial color="#6b7280" roughness={0.6} />
+          </mesh>
+          <mesh position={[-1.21, 1.45, 0]}>
+            <boxGeometry args={[0.04, 0.25, 2.8]} />
+            <meshStandardMaterial color="#030712" />
+          </mesh>
+          <mesh ref={paper} position={[-1.2, 1.45, 0]} rotation={[0, 0, -0.15]}>
+            <boxGeometry args={[1.6, 0.04, 2.3]} />
+            <meshStandardMaterial color="#f8fafc" roughness={0.9} />
+          </mesh>
+          <mesh position={[-0.6, 2.4, 1.81]}>
+            <boxGeometry args={[0.7, 0.35, 0.04]} />
+            <meshStandardMaterial ref={led} color="#000" emissive={GREEN} emissiveIntensity={1.4} toneMapped={false} />
+          </mesh>
+        </group>
       </group>
       <mesh ref={insert} rotation={[-Math.PI / 2, 0, 0]} visible={false}>
         <ringGeometry args={[2.2, 2.9, 32]} />
@@ -312,15 +391,24 @@ function Printer() {
   );
 }
 
-/** THE CORE: dark until Act III's silence ends, then a red beacon. */
+/** THE CORE: a monolith of blade servers. T3 blue at rest; red once it's lit (and through Act IV). */
 function Core() {
-  const mat = useRef<THREE.MeshStandardMaterial>(null!);
+  const leds = useRef<(THREE.MeshStandardMaterial | null)[]>([]);
+  const beacon = useRef<THREE.MeshStandardMaterial>(null!);
+  const BLADES = 9;
   useFrame((state) => {
+    const t = state.clock.elapsedTime;
     const s = useEscalation.getState();
-    if (!mat.current) return;
     const hot = s.coreLit || s.act === 4;
-    mat.current.emissive.set(hot ? RED : '#1e293b');
-    mat.current.emissiveIntensity = (hot ? 1.2 + Math.sin(state.clock.elapsedTime * 3) * 0.3 : 0.2) + flashOf('core') * 4;
+    const fl = flashOf('core');
+    leds.current.forEach((m, i) => {
+      if (!m) return;
+      m.emissive.set(hot ? RED : BLUE);
+      // a slow wave up the blades (one cycle every ~2.5 s), never a strobe
+      const wave = 0.5 + 0.5 * Math.sin(t * 2.5 - i * 0.7);
+      m.emissiveIntensity = (hot ? 1.2 + wave * 1.4 : 0.35 + wave * 0.5) + fl * 3;
+    });
+    if (beacon.current) beacon.current.emissiveIntensity = hot ? 1.6 + Math.sin(t * 3) * 0.6 + fl * 3 : 0.1;
   });
   return (
     <group position={[PX(CORE_AT.x), 0, PZ(CORE_AT.y)]}>
@@ -328,46 +416,102 @@ function Core() {
         <ringGeometry args={[1.6, 2.2, 32]} />
         <meshBasicMaterial color="#9ca3af" />
       </mesh>
-      <mesh position={[0, 2.5, -3.4]} castShadow>
-        <boxGeometry args={[3.6, 5, 1.6]} />
-        <meshStandardMaterial ref={mat} color="#0b1220" emissive="#1e293b" emissiveIntensity={0.2} metalness={0.7} roughness={0.3} />
-      </mesh>
+      <group position={[0, 0, -3.5]}>
+        <mesh position={[0, 0.25, 0]} receiveShadow>
+          <boxGeometry args={[4.6, 0.5, 2.2]} />
+          <meshStandardMaterial color="#111827" metalness={0.7} roughness={0.35} />
+        </mesh>
+        <mesh position={[0, 3.2, 0]} castShadow>
+          <boxGeometry args={[3.8, 5.4, 1.6]} />
+          <meshStandardMaterial color="#05070b" metalness={0.75} roughness={0.3} />
+        </mesh>
+        {Array.from({ length: BLADES }, (_, i) => (
+          <group key={i} position={[0, 1.0 + i * 0.52, 0.81]}>
+            <mesh>
+              <boxGeometry args={[3.4, 0.38, 0.04]} />
+              <meshStandardMaterial color="#1f2937" metalness={0.6} roughness={0.4} />
+            </mesh>
+            <mesh position={[1.2, 0, 0.03]}>
+              <boxGeometry args={[0.7, 0.1, 0.02]} />
+              <meshStandardMaterial ref={(el) => { leds.current[i] = el; }} color="#000" emissive={BLUE} emissiveIntensity={0.5} toneMapped={false} />
+            </mesh>
+          </group>
+        ))}
+        <mesh position={[0, 6.2, 0]}>
+          <sphereGeometry args={[0.45, 16, 12]} />
+          <meshStandardMaterial ref={beacon} color="#3b0a0a" emissive={RED} emissiveIntensity={0.1} toneMapped={false} />
+        </mesh>
+      </group>
     </group>
   );
 }
 
-/** THE MIN PIN (orbiter): eyes red → amber → green as it warms up. */
+/** THE MIN PIN (orbiter): a small black-and-tan dog. Eyes red → amber → green; it wags once it's friend-shaped. */
 function MinPin() {
-  const k = TABLE.kinematics.find((x) => x.id === 'minpin')!;
+  useTier();
+  const k = ACTIVE.kinematics.find((x) => x.id === 'minpin');
   const ref = useRef<THREE.Group>(null!);
+  const tail = useRef<THREE.Group>(null!);
   const eyes = useRef<THREE.MeshStandardMaterial>(null!);
-  useFrame(() => {
+  useFrame((state) => {
+    if (!k) return;
     const pose = kinematicPose(k, gameRef.kin[k.id] ?? 0);
     if (ref.current && pose.kind === 'orbiter') {
       ref.current.position.set(PX(pose.x), k.r, PZ(pose.y));
       ref.current.rotation.y = Math.atan2(pose.vx, pose.vy);
     }
     const hits = useEscalation.getState().minpinHits;
+    const friend = hits >= MINPIN_FRIEND_AT;
+    if (tail.current) tail.current.rotation.z = friend ? Math.sin(state.clock.elapsedTime * 7) * 0.5 : 0;
     if (eyes.current) {
-      eyes.current.emissive.set(hits >= MINPIN_FRIEND_AT ? GREEN : hits >= 1 ? AMBER : RED);
+      eyes.current.emissive.set(friend ? GREEN : hits >= 1 ? AMBER : RED);
       eyes.current.emissiveIntensity = 2 + flashOf('minpin') * 4;
     }
   });
+  if (!k) return null;
+  const BLACK = '#17110d';
+  const TAN = '#a3562a';
   return (
     <group>
-      <mesh position={[PX(MINPIN_ORBIT.cx), 0.05, PZ(MINPIN_ORBIT.cy)]} rotation={[-Math.PI / 2, 0, 0]}>
-        <ringGeometry args={[MINPIN_ORBIT.orbit - 0.1, MINPIN_ORBIT.orbit + 0.1, 64]} />
+      <mesh position={[PX(k.cx), 0.05, PZ(k.cy)]} rotation={[-Math.PI / 2, 0, 0]}>
+        <ringGeometry args={[(k.orbit ?? 0) - 0.1, (k.orbit ?? 0) + 0.1, 64]} />
         <meshBasicMaterial color="#475569" transparent opacity={0.5} />
       </mesh>
       <group ref={ref}>
-        <mesh castShadow>
-          <sphereGeometry args={[k.r, 20, 20]} />
-          <meshStandardMaterial color="#3f2a1d" roughness={0.6} />
+        <mesh scale={[0.6, 0.55, 1.05]} castShadow>
+          <sphereGeometry args={[1, 18, 14]} />
+          <meshStandardMaterial color={BLACK} roughness={0.55} />
         </mesh>
-        <mesh position={[0, 0.5, 0.8]}>
-          <boxGeometry args={[1.2, 0.25, 0.2]} />
+        {[[-0.32, 0.55], [0.32, 0.55], [-0.32, -0.55], [0.32, -0.55]].map(([x, z]) => (
+          <mesh key={`${x}${z}`} position={[x, -0.75, z]}>
+            <cylinderGeometry args={[0.11, 0.09, 0.9, 8]} />
+            <meshStandardMaterial color={TAN} roughness={0.6} />
+          </mesh>
+        ))}
+        <mesh position={[0, 0.55, 1.0]} castShadow>
+          <sphereGeometry args={[0.46, 16, 12]} />
+          <meshStandardMaterial color={BLACK} roughness={0.55} />
+        </mesh>
+        <mesh position={[0, 0.42, 1.45]} scale={[0.6, 0.55, 1]}>
+          <sphereGeometry args={[0.3, 12, 10]} />
+          <meshStandardMaterial color={TAN} roughness={0.6} />
+        </mesh>
+        {[-0.24, 0.24].map((x) => (
+          <mesh key={x} position={[x, 1.05, 0.9]} rotation={[0, 0, x < 0 ? 0.25 : -0.25]}>
+            <coneGeometry args={[0.15, 0.55, 8]} />
+            <meshStandardMaterial color={BLACK} roughness={0.55} />
+          </mesh>
+        ))}
+        <mesh position={[0, 0.66, 1.4]}>
+          <boxGeometry args={[0.5, 0.09, 0.05]} />
           <meshStandardMaterial ref={eyes} color="#000" emissive={RED} emissiveIntensity={2} toneMapped={false} />
         </mesh>
+        <group ref={tail} position={[0, 0.3, -1.0]}>
+          <mesh position={[0, 0.3, -0.1]} rotation={[-0.5, 0, 0]}>
+            <cylinderGeometry args={[0.06, 0.09, 0.65, 6]} />
+            <meshStandardMaterial color={BLACK} roughness={0.55} />
+          </mesh>
+        </group>
       </group>
     </group>
   );
@@ -575,7 +719,7 @@ function Duck() {
     if (!g.current) return;
     const fl = flashOf('duck');
     g.current.rotation.z = Math.sin(state.clock.elapsedTime * 18) * 0.18 * fl;
-    g.current.scale.setScalar(1 + fl * 0.12);
+    g.current.scale.setScalar(1.45 * (1 + fl * 0.12));
   });
   if (!p) return null;
   return (
@@ -584,7 +728,7 @@ function Duck() {
         <torusGeometry args={[p.r, 0.22, 10, 28]} />
         <meshStandardMaterial color="#1f2937" roughness={0.6} />
       </mesh>
-      <group ref={g} rotation={[0, -0.5, 0]}>
+      <group ref={g} rotation={[0, -0.5, 0]} scale={1.45}>
         <mesh position={[0, 0.95, 0]} scale={[0.95, 0.75, 1.2]} castShadow>
           <sphereGeometry args={[1, 20, 16]} />
           <meshStandardMaterial color="#facc15" roughness={0.35} />
@@ -629,7 +773,7 @@ function Pager() {
   });
   if (!k) return null;
   return (
-    <group position={[PX(k.x), 0, PZ(k.y)]}>
+    <group position={[PX(k.x), 0, PZ(k.y)]} scale={1.4}>
       <group ref={g}>
         <mesh position={[0, 1.1, 0]} castShadow>
           <cylinderGeometry args={[0.28, 0.28, 2.2, 12]} />
@@ -805,7 +949,9 @@ export function Surroundings() {
       <pointLight position={[0, 26, 30]} intensity={30} distance={110} color="#bbf7d0" decay={1.9} />
       <pointLight position={[0, 20, -34]} intensity={50} distance={90} color="#7f1d1d" decay={1.9} />
 
-      <Cabinet sideArt={sideArt} look={CABINET} />
+      <Cabinet sideArt={sideArt} look={CABINET}>
+        <RailCamera />
+      </Cabinet>
 
       <mesh position={[0, -31.2, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
         <planeGeometry args={[400, 400]} />
@@ -852,10 +998,75 @@ function SilenceVeil() {
   );
 }
 
+/** The server-room hum: on while a ball is in play, faded out for THE SILENCE. */
+function Hum() {
+  useFrame(() => {
+    const g = useGame.getState();
+    const on = g.phase === 'playing' && !g.paused;
+    if (on && silent()) setHum(0, 1.2);
+    else setHum(on ? 0.05 : 0, 0.4);
+  });
+  useEffect(() => () => setHum(0, 0.2), []);
+  return null;
+}
+
+/**
+ * E.S.C.A.L.A.T.E.'s camera on the right cabinet rail. In Act I it sweeps the
+ * table; from Act II it follows the ball, its LED red.
+ */
+function RailCamera() {
+  const head = useRef<THREE.Group>(null!);
+  const led = useRef<THREE.MeshStandardMaterial>(null!);
+  const AT = { x: 25.2, y: 5.3, z: -12 };
+  useFrame((state, dt) => {
+    const t = state.clock.elapsedTime;
+    const act = useEscalation.getState().act;
+    let yaw = -Math.PI / 2 - 0.5 + Math.sin(t * 0.45) * 0.55; // the Act I sweep across the table
+    if (act >= 2) {
+      const ball = gameRef.balls.find((b) => b.active);
+      if (ball) yaw = Math.atan2(PX(ball.x) - AT.x, PZ(ball.y) - AT.z);
+    }
+    if (head.current) {
+      let d = yaw - head.current.rotation.y;
+      d = Math.atan2(Math.sin(d), Math.cos(d));
+      head.current.rotation.y += d * Math.min(1, dt * 4);
+    }
+    if (led.current) {
+      led.current.emissive.set(act >= 2 ? RED : GREEN);
+      led.current.emissiveIntensity = act >= 2 ? 3 : 0.6 + (Math.sin(t * 2) > 0 ? 0.6 : 0);
+    }
+  });
+  return (
+    <group position={[AT.x, AT.y, AT.z]}>
+      <mesh position={[0, 0.5, 0]}>
+        <cylinderGeometry args={[0.2, 0.3, 1.0, 10]} />
+        <meshStandardMaterial color="#1f2937" metalness={0.8} roughness={0.3} />
+      </mesh>
+      <group ref={head} position={[0, 1.2, 0]} rotation={[0, -Math.PI / 2, 0]}>
+        <group rotation={[0.35, 0, 0]}>
+          <mesh castShadow>
+            <boxGeometry args={[1.0, 0.9, 1.9]} />
+            <meshStandardMaterial color="#e5e7eb" roughness={0.45} />
+          </mesh>
+          <mesh position={[0, 0, 1.0]} rotation={[Math.PI / 2, 0, 0]}>
+            <cylinderGeometry args={[0.36, 0.4, 0.3, 18]} />
+            <meshStandardMaterial color="#030712" metalness={0.6} roughness={0.2} />
+          </mesh>
+          <mesh position={[0.32, 0.3, 0.96]}>
+            <sphereGeometry args={[0.09, 8, 8]} />
+            <meshStandardMaterial ref={led} color="#000" emissive={GREEN} emissiveIntensity={1} toneMapped={false} />
+          </mesh>
+        </group>
+      </group>
+    </group>
+  );
+}
+
 export function Playfield() {
   const act = useEscalation((s) => s.act);
   return (
     <>
+      <Hum />
       <Floor />
       <FloorInserts />
       <SilenceVeil />

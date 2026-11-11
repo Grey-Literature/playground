@@ -18,7 +18,7 @@ copy.
 | --------------- | -------------------- | ----------------------------------- |
 | `deadStarDisco` | Dead Star Disco      | Phase 1: the reference chassis      |
 | `salamander`    | Salamander           | Phase 2b: built, awaiting playtest  |
-| `lastEscalation` | The Last Escalation (TICKET #666) | Phase 4 B1: graybox, awaiting playtest |
+| `lastEscalation` | The Last Escalation (TICKET #666) | Phase 4: built (B1 + B2), published |
 | _tbd_           | a Snoopy Axolotl     | Phase 5                             |
 
 The origin prototypes are kept for reference in `examples/`:
@@ -454,7 +454,7 @@ touches geometry, physics or difficulty.
   about 20% through a hole and 80% over the waterfall.
 - Cross-layer collisions: 0.
 
-### Phase 4 B1 results (The Last Escalation, graybox)
+### Phase 4 results (The Last Escalation)
 
 - **The table** is Dead Star Disco's lower chassis with IT Shop of Horrors'
   Act IV as toys:
@@ -517,15 +517,31 @@ touches geometry, physics or difficulty.
   | HARD       | 282 (236)      | 121      | 45.0s | 80/14/6       |
   | IMPOSSIBLE | 196 (146)      | 138      | 17.9s | 92/4/5        |
 
-- **B2 to do:**
-  - the scene art
-  - `sound.ts`
-  - restyled panels and a glitch title
-  - the takeover tint
-  - E.S.C.A.L.A.T.E.'s rail camera
-  - the power-down dip (a single dip of at least 250 ms, never more than 3
-    flashes a second)
-  - its own cabinet; it borrows Dead Star Disco's for now
+- **B2 (art, sound, HUD), done after Rosetta's B1 playtest:**
+  - **Scene:** a server-room raised floor (canvas texture: vented tiles,
+    cable runs, stray tickets), the Core as a monolith of blade servers (T3
+    blue at rest, red once lit), a proper printer whose paper feeds out when
+    it prints, the Min Pin as a small black-and-tan dog (it wags once it's
+    friend-shaped), and E.S.C.A.L.A.T.E.'s camera on the right cabinet rail
+    (it sweeps in Act I and follows the ball from Act II).
+  - **Sound** (`themes/lastEscalation/sound.ts`, synthesized): a 55/58.3 Hz
+    server hum (with harmonics small speakers can play) that runs while a
+    ball is in play and fades out for THE SILENCE; typing, printer chatter,
+    the Min Pin's growl and bark (a yip once friend-shaped), a quack, a
+    pager beep, a creak, a groan, a clunk, the server spinning back up, an
+    unlock arpeggio, the takeover glitch and the power-down.
+  - **HUD:** terminal panels with scanlines (green, then red from Act II),
+    and a TICKET #666 title that glitches once every 7 s (off under
+    `prefers-reduced-motion`).
+  - **One-shot screen effects** (`hud.tsx` `ScreenEffects`, driven by the
+    `takeovers` / `powerdowns` counters in the story store): Act II's
+    takeover is a single red tint in and out (2.6 s), and REMOVE FROM
+    PRODUCTION is one dip to black (360 ms in, about 1 s out). Nothing
+    flashes more than 3 times a second anywhere on the table.
+  - **`?debug` skip key:** `]` steps to the next beat of the story (Act I →
+    II → III → the Core lit → IV → the finale), so the later acts can be
+    playtested without playing up to them. `?debug` pages file nowhere, and
+    `rules.check` confirms the key does nothing on a ranked game.
 
 ### Phase 2b results (Salamander)
 
@@ -680,7 +696,8 @@ The current numbers:
    (`lastEscalation`, IT Shop of Horrors' Act IV). **(B1) Graybox:** the
    table, the four-act rules and the `onDrain` ball-save hook, drawn with
    generic parts and plain markers. **STOP** **(B2) Art, sound and HUD.**
-   **STOP**
+   **STOP** Published with the playtest fixes (cabinet, obstacle ladder,
+   floor inserts, themed buttons, the wider attract card).
 5. **Expansion:** hall transitions, more modes and themes, mobile polish.
 
 The easter egg is **deferred** by Rosetta's call. When it comes back, propose
