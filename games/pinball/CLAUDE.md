@@ -463,11 +463,17 @@ touches geometry, physics or difficulty.
   - THE TICKET QUEUE (a left-lane spinner)
   - THE CABLE RUN (DSD's wire path, now with `carry`)
   - THE PRINTER THAT KNOWS (a right saucer)
-  - THE MIN PIN (an orbiter, every tier)
+  - THE MIN PIN (an orbiter, easy+)
 
-  The gated sets are the Firewall (easy+), the Change Advisory Board
-  (medium+), the Rollback (hard+, DSD's Wrecker) and Auto-Remediation
-  (impossible, DSD's frickies).
+  The three pop bumpers are drawn as a printer, a teapot and an undead
+  host (physics is still a round bumper; a lit ring on the floor marks the
+  edge).
+
+  Obstacles tick up one set per tier (after Rosetta's first look): Super
+  Easy has none; Easy adds the Min Pin's patrol (it's off duty on Super
+  Easy, and the printer never predicts it there); Medium adds the Firewall;
+  Hard adds the Rollback (DSD's Wrecker); Impossible adds Auto-Remediation
+  (DSD's frickies) and the Change Advisory Board.
 - **The rules** (`themes/lastEscalation/rules.ts`) are four acts kept for the
   whole game:
   1. Escalate 2 of the 4 entities.

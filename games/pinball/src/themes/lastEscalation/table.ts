@@ -13,13 +13,14 @@
 //   THE CABLE RUN — a momentum wire ramp from the left lane, over the top,
 //     dropping down the right side to the right inlane
 //   THE PRINTER THAT KNOWS — a saucer on the right
-//   THE MIN PIN — an orbiter patrolling mid-field
+//   THE MIN PIN — an orbiter patrolling mid-field (easy+, see below)
 //
-// Gated obstacles (one set per tier above supereasy, lowest first):
-//   easy+       THE FIREWALL — a post in the left-centre field
-//   medium+     THE CHANGE ADVISORY BOARD — a post between the racks
+// Obstacles tick up one set per tier (Super Easy has none):
+//   easy+       THE MIN PIN — patrols mid-field (faster each tier)
+//   medium+     THE FIREWALL — a post in the left-centre field
 //   hard+       THE ROLLBACK — DSD's spinning bar over the flippers
-//   impossible  AUTO-REMEDIATION — DSD's spring frickies above the flippers
+//   impossible  AUTO-REMEDIATION — DSD's spring frickies above the flippers,
+//               and THE CHANGE ADVISORY BOARD convenes between the racks
 //
 // Clearance rule as in Dead Star Disco; `npm test` soaks every tier.
 
@@ -49,10 +50,10 @@ const circles: CircleBody[] = [
   { x: -15.2, y: 12.2, r: 1.05, kind: 'drop', id: 'srv0' },
   { x: -15.2, y: 14.4, r: 1.05, kind: 'drop', id: 'srv1' },
   { x: -15.2, y: 16.6, r: 1.05, kind: 'drop', id: 'srv2' },
-  // THE FIREWALL (easy+) — Salamander's spire spot
-  { x: -5.5, y: -5, r: 0.6, kind: 'post', id: 'firewall', rest: 0.85, minTier: 'easy' },
-  // THE CHANGE ADVISORY BOARD (medium+) — between the racks
-  { x: 0, y: 17.6, r: 0.62, kind: 'post', id: 'cab', rest: 0.95, minTier: 'medium' },
+  // THE FIREWALL (medium+) — Salamander's spire spot
+  { x: -5.5, y: -5, r: 0.6, kind: 'post', id: 'firewall', rest: 0.85, minTier: 'medium' },
+  // THE CHANGE ADVISORY BOARD (impossible) — between the racks
+  { x: 0, y: 17.6, r: 0.62, kind: 'post', id: 'cab', rest: 0.95, minTier: 'impossible' },
   // AUTO-REMEDIATION (impossible) — Dead Star Disco's frickies
   { x: -7.2, y: -22.6, r: 0.8, kind: 'kicker', id: 'fk0', rest: 1.0, minTier: 'impossible' },
   { x: 7.2, y: -22.6, r: 0.8, kind: 'kicker', id: 'fk1', rest: 1.0, minTier: 'impossible' },
@@ -89,8 +90,8 @@ const rides: RideDef[] = [
 ];
 
 const kinematics: KinematicDef[] = [
-  // THE MIN PIN — patrols a small circle in the middle of the field, every tier
-  { id: 'minpin', kind: 'orbiter', cx: MINPIN_ORBIT.cx, cy: MINPIN_ORBIT.cy, r: 1.2, orbit: MINPIN_ORBIT.orbit, phase: 0, speed: { default: 1.3, hard: 1.7, impossible: 2.1 }, rest: 0.7, swat: 0.6 },
+  // THE MIN PIN (easy+) — patrols a small circle in the middle of the field, faster each tier
+  { id: 'minpin', kind: 'orbiter', cx: MINPIN_ORBIT.cx, cy: MINPIN_ORBIT.cy, r: 1.2, orbit: MINPIN_ORBIT.orbit, phase: 0, speed: { default: 1.3, easy: 1.0, hard: 1.7, impossible: 2.1 }, rest: 0.7, swat: 0.6, minTier: 'easy' },
   // THE ROLLBACK (hard+) — Dead Star Disco's Wrecker
   { id: 'rollback', kind: 'bar', cx: 0, cy: -14.5, half: 5.2, r: 0.55, speed: { default: 2.1, impossible: 3.4 }, rest: 0.65, swat: 0.55, minTier: 'hard' },
 ];
@@ -114,9 +115,9 @@ export const table: TableDef = {
 };
 
 export const diffOverrides: DiffOverrides = {
-  supereasy: { blurb: 'Read-only access: slower gravity, the floor wide open.' },
-  easy: { blurb: 'THE FIREWALL goes up in the middle of the field.' },
-  medium: { blurb: 'THE CHANGE ADVISORY BOARD sits between the racks.' },
-  hard: { blurb: 'THE ROLLBACK starts spinning over the flippers.' },
-  impossible: { blurb: 'AUTO-REMEDIATION over the flippers. Everything is a ticket.' },
+  supereasy: { blurb: 'Read-only access: no obstacles, the floor wide open. The Min Pin stays home.' },
+  easy: { blurb: 'THE MIN PIN starts its patrol.' },
+  medium: { blurb: '+ THE FIREWALL goes up in the middle of the field.' },
+  hard: { blurb: '+ THE ROLLBACK starts spinning over the flippers.' },
+  impossible: { blurb: '+ AUTO-REMEDIATION and THE CHANGE ADVISORY BOARD. Everything is a ticket.' },
 };

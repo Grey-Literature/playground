@@ -3,11 +3,12 @@
 // printer, Min Pin, the Core, E.S.C.A.L.A.T.E.'s camera) is B2.
 // Surroundings reuse Dead Star Disco's cabinet for now.
 
-import { useRef } from 'react';
+import { useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
+import { TeapotGeometry } from 'three/examples/jsm/geometries/TeapotGeometry.js';
 import {
-  Walls, Slings, Bumpers, Posts, Kickers, Flippers, Balls, Plunger, RideWires, useTier,
+  Walls, Slings, Posts, Kickers, Flippers, Balls, Plunger, RideWires, useTier,
 } from '../../engine/scene/parts';
 import { PX, PZ } from '../../engine/scene/track';
 import { ACTIVE, TABLE, kinematicPose } from '../../engine/table';
@@ -220,6 +221,178 @@ function MinPin() {
   );
 }
 
+// ---------------- the three middle bumpers: a printer, a teapot, an undead host ----------------
+// Physics is still a round bumper (r 2.4); each shape fits inside that circle,
+// and a lit rubber ring on the floor shows the real edge.
+
+type ToyRefs = { mats: THREE.MeshStandardMaterial[]; pop: THREE.Group | null; light: THREE.PointLight | null };
+type ToyProps = { accent: string; refs: ToyRefs };
+
+/** Collect a material so a hit can flash it. */
+const keep = (refs: ToyRefs) => (el: THREE.MeshStandardMaterial | null) => {
+  if (el && !refs.mats.includes(el)) refs.mats.push(el);
+};
+
+function PrinterToy({ accent, refs }: ToyProps) {
+  const m = keep(refs);
+  return (
+    <group rotation={[0, 0.25, 0]}>
+      <mesh position={[0, 1.15, 0]} castShadow>
+        <boxGeometry args={[3.6, 1.7, 2.6]} />
+        <meshStandardMaterial color="#d1d5db" roughness={0.55} />
+      </mesh>
+      {/* paper feed tray, tilted up at the back, with a sheet in it */}
+      <mesh position={[0, 2.35, -1.05]} rotation={[0.55, 0, 0]} castShadow>
+        <boxGeometry args={[2.8, 0.12, 1.5]} />
+        <meshStandardMaterial color="#9ca3af" roughness={0.5} />
+      </mesh>
+      <mesh position={[0, 2.55, -1.1]} rotation={[0.55, 0, 0]}>
+        <boxGeometry args={[2.3, 0.04, 1.7]} />
+        <meshStandardMaterial color="#f8fafc" roughness={0.9} />
+      </mesh>
+      {/* output slot and the ticket coming out of it */}
+      <mesh position={[0, 1.35, 1.31]}>
+        <boxGeometry args={[2.6, 0.22, 0.04]} />
+        <meshStandardMaterial color="#030712" />
+      </mesh>
+      <mesh position={[0, 1.2, 1.75]} rotation={[-0.25, 0, 0]}>
+        <boxGeometry args={[2.1, 0.04, 0.95]} />
+        <meshStandardMaterial ref={m} color="#f8fafc" emissive={accent} emissiveIntensity={0.15} roughness={0.9} />
+      </mesh>
+      {/* status panel */}
+      <mesh position={[1.25, 2.02, 0.9]}>
+        <boxGeometry args={[0.8, 0.06, 0.5]} />
+        <meshStandardMaterial ref={m} color="#030712" emissive={accent} emissiveIntensity={0.8} toneMapped={false} />
+      </mesh>
+    </group>
+  );
+}
+
+function TeapotToy({ accent, refs }: ToyProps) {
+  const geo = useMemo(() => {
+    const g = new TeapotGeometry(1, 8);
+    g.computeBoundingBox();
+    const b = g.boundingBox!;
+    const s = 4.3 / (b.max.x - b.min.x); // spout tip to handle fits inside the bumper
+    g.scale(s, s, s);
+    g.computeBoundingBox();
+    const c = g.boundingBox!.getCenter(new THREE.Vector3());
+    g.translate(-c.x, -g.boundingBox!.min.y, -c.z);
+    return g;
+  }, []);
+  return (
+    <mesh geometry={geo} position={[0, 0.3, 0]} rotation={[0, -0.5, 0]} castShadow>
+      <meshStandardMaterial ref={keep(refs)} color="#f1f5f9" emissive={accent} emissiveIntensity={0.25} roughness={0.2} metalness={0.05} />
+    </mesh>
+  );
+}
+
+function HostToy({ accent, refs }: ToyProps) {
+  const ghost = useRef<THREE.Group>(null!);
+  const leds = useRef<(THREE.MeshStandardMaterial | null)[]>([]);
+  useFrame((state) => {
+    const t = state.clock.elapsedTime;
+    if (ghost.current) {
+      ghost.current.position.y = 4.5 + Math.sin(t * 1.4) * 0.3;
+      ghost.current.rotation.y = Math.sin(t * 0.7) * 0.4;
+    }
+    // drive lights blink slowly (well under 3 flashes a second)
+    leds.current.forEach((l, i) => { if (l) l.emissiveIntensity = Math.sin(t * (1.1 + i * 0.6) + i) > 0.2 ? 2 : 0.2; });
+  });
+  const m = keep(refs);
+  return (
+    <group>
+      {/* a tower server with a tombstone top */}
+      <mesh position={[0, 1.6, 0]} castShadow>
+        <boxGeometry args={[2.4, 3.2, 2.4]} />
+        <meshStandardMaterial color="#111827" metalness={0.6} roughness={0.35} />
+      </mesh>
+      <mesh position={[0, 3.2, 0]} rotation={[Math.PI / 2, 0, 0]} castShadow>
+        <cylinderGeometry args={[1.2, 1.2, 2.4, 24, 1, false, -Math.PI / 2, Math.PI]} />
+        <meshStandardMaterial color="#111827" metalness={0.6} roughness={0.35} />
+      </mesh>
+      {/* rack-unit slots and drive lights */}
+      {[0.7, 1.3, 1.9, 2.5].map((y, i) => (
+        <group key={y}>
+          <mesh position={[0, y, 1.21]}>
+            <boxGeometry args={[1.9, 0.08, 0.02]} />
+            <meshStandardMaterial color="#374151" />
+          </mesh>
+          <mesh position={[0.75, y + 0.22, 1.22]}>
+            <boxGeometry args={[0.18, 0.12, 0.02]} />
+            <meshStandardMaterial ref={(el) => { leds.current[i] = el; }} color="#000" emissive={i % 2 ? AMBER : accent} emissiveIntensity={1} toneMapped={false} />
+          </mesh>
+        </group>
+      ))}
+      {/* its eyes */}
+      {[-0.45, 0.45].map((x) => (
+        <mesh key={x} position={[x, 3.35, 1.18]}>
+          <boxGeometry args={[0.42, 0.16, 0.06]} />
+          <meshStandardMaterial ref={m} color="#000" emissive={accent} emissiveIntensity={2.4} toneMapped={false} />
+        </mesh>
+      ))}
+      {/* the ghost session rising out of it */}
+      <group ref={ghost} position={[0, 4.5, 0]}>
+        <mesh>
+          <sphereGeometry args={[0.75, 18, 14]} />
+          <meshStandardMaterial ref={m} color="#e2fbe9" emissive={accent} emissiveIntensity={0.6} transparent opacity={0.4} depthWrite={false} />
+        </mesh>
+        <mesh position={[0, -0.85, 0]} rotation={[Math.PI, 0, 0]}>
+          <coneGeometry args={[0.72, 1.1, 18, 1, true]} />
+          <meshStandardMaterial color="#e2fbe9" emissive={accent} emissiveIntensity={0.4} transparent opacity={0.25} depthWrite={false} side={THREE.DoubleSide} />
+        </mesh>
+      </group>
+    </group>
+  );
+}
+
+const RACK_TOYS: Record<string, typeof PrinterToy> = { rack0: PrinterToy, rack1: TeapotToy, rack2: HostToy };
+
+function RackToys({ accent }: { accent: string }) {
+  useTier();
+  const list = ACTIVE.bumpers;
+  const refs = useRef<Record<string, ToyRefs>>({});
+  const ring = useRef<(THREE.MeshStandardMaterial | null)[]>([]);
+  for (const b of list) refs.current[b.id] ??= { mats: [], pop: null, light: null };
+  useFrame(() => {
+    list.forEach((b, i) => {
+      const r = refs.current[b.id];
+      const fl = flashOf(`bumper:${b.id}`);
+      r.mats.forEach((mat) => {
+        mat.userData.base ??= mat.emissiveIntensity;
+        mat.emissiveIntensity = mat.userData.base + fl * 4;
+      });
+      if (r.pop) { const s = 1 + fl * 0.1; r.pop.scale.set(s, 1 + fl * 0.06, s); }
+      if (r.light) r.light.intensity = 4 + fl * 90;
+      if (ring.current[i]) ring.current[i]!.emissiveIntensity = 0.9 + fl * 5;
+    });
+  });
+  return (
+    <group>
+      {list.map((b, i) => {
+        const Toy = RACK_TOYS[b.id] ?? HostToy;
+        const r = refs.current[b.id];
+        return (
+          <group key={b.id} position={[PX(b.x), 0, PZ(b.y)]}>
+            <mesh position={[0, 0.1, 0]} receiveShadow>
+              <cylinderGeometry args={[b.r + 0.5, b.r + 0.7, 0.2, 32]} />
+              <meshStandardMaterial color="#020617" roughness={0.6} />
+            </mesh>
+            <mesh position={[0, 0.35, 0]} rotation={[Math.PI / 2, 0, 0]}>
+              <torusGeometry args={[b.r - 0.1, 0.22, 10, 40]} />
+              <meshStandardMaterial ref={(el) => { ring.current[i] = el; }} color="#0b1a12" emissive={accent} emissiveIntensity={0.9} roughness={0.4} />
+            </mesh>
+            <group ref={(el) => { r.pop = el; }}>
+              <Toy accent={accent} refs={r} />
+            </group>
+            <pointLight ref={(el) => { r.light = el; }} position={[0, 5, 0]} color={accent} intensity={4} distance={24} decay={1.8} />
+          </group>
+        );
+      })}
+    </group>
+  );
+}
+
 /** THE ROLLBACK (hard+): a spinning bar. */
 function Rollback() {
   useTier();
@@ -257,14 +430,13 @@ function SilenceVeil() {
 
 export function Playfield() {
   const act = useEscalation((s) => s.act);
-  const rack = act >= 2 ? [RED, '#ff6b6b', RED] : [GREEN, '#7dffb3', GREEN];
   return (
     <>
       <Floor />
       <SilenceVeil />
       <Walls />
       <Slings tris={SLINGS} glow={GREEN} rubber="#14532d" />
-      <Bumpers colors={rack} skirt="#1f2937" cap="#030712" />
+      <RackToys key={act >= 2 ? 'red' : 'green'} accent={act >= 2 ? RED : GREEN} />
       <Posts ring={(id) => (id === 'cab' ? AMBER : id === 'firewall' ? RED : '#94a3b8')} />
       <Kickers head={RED} />
       <LaneLamps />

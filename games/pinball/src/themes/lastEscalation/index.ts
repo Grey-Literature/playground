@@ -16,7 +16,7 @@ export const lastEscalation: ThemeDef = {
     dmdTitle: 'TICKET #666',
     attractHint: 'HOLD SPACE • SKILL SHOT A D·N·S LANE',
     attractFooter: 'Escalate the Printer, the Min Pin, the Undead Server, the Ticket Queue • restore corrupted tickets • survive the Silence • shoot the Core',
-    obstacleSets: ['the Firewall', 'the Change Advisory Board', 'the Rollback', 'Auto-Remediation'],
+    obstacleSets: ['the Min Pin', 'the Firewall', 'the Rollback', 'Auto-Remediation + the Change Advisory Board'],
   },
   table,
   diffOverrides,

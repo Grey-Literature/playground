@@ -25,7 +25,7 @@ import type { PhysEvent } from '../../engine/types';
 import type { ThemeRules, BallSave } from '../../engine/theme';
 import { useGame } from '../../engine/store';
 import { gameRef, flash, addShake, spinnerOf, later } from '../../engine/runtime';
-import { TABLE } from '../../engine/table';
+import { TABLE, ACTIVE } from '../../engine/table';
 import { sound } from '../../engine/audio';
 
 export const SILENCE_S = 25;
@@ -248,7 +248,9 @@ function finale() {
 function predict() {
   const g = core();
   const s = get();
-  const shots = (Object.keys(SHOT_NAMES) as Shot[]).filter((x) => x !== s.prediction);
+  // The Min Pin is off duty on Super Easy: never predict a shot that isn't on the table.
+  const minpinOn = ACTIVE.kinematics.some((k) => k.id === 'minpin');
+  const shots = (Object.keys(SHOT_NAMES) as Shot[]).filter((x) => x !== s.prediction && (x !== 'minpin' || minpinOn));
   const shot = shots[Math.floor(Math.random() * shots.length)] ?? 'cableRun';
   set({ prediction: shot, predictionUntil: now() + PREDICTION_S, inc: s.inc + 1 });
   g.setMessage(`${incName(s.inc)}: ${SHOT_NAMES[shot]} · 4 MINUTES FROM NOW`);

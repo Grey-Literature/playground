@@ -3,6 +3,8 @@
 // them (CRT terminal look, glitch title, takeover tint).
 
 import { BonusCard, TiltCard } from '../../engine/hud/HUD';
+import { useGame } from '../../engine/store';
+import { ACTIVE } from '../../engine/table';
 import {
   useEscalation, ACT_NAMES, ENTITY_NAMES, PINS, PIN_NAMES, MAX_AI_CONTROL, JACKPOTS_TO_SUPER,
   type Entity,
@@ -11,6 +13,12 @@ import {
 const card = 'rounded-xl border border-pa-900/70 bg-black/75 p-3 backdrop-blur-md w-40';
 const head = 'mb-2 text-[10px] font-black tracking-[0.25em]';
 const ROMAN = ['', 'I', 'II', 'III', 'IV'];
+
+/** Is the Min Pin on the table at this tier? (It stays home on Super Easy.) */
+function useMinPinOn() {
+  useGame((s) => s.difficulty);
+  return ACTIVE.kinematics.some((k) => k.id === 'minpin');
+}
 
 function ActCard() {
   const act = useEscalation((s) => s.act);
@@ -21,13 +29,14 @@ function ActCard() {
   const silenceUntil = useEscalation((s) => s.silenceUntil);
   const coreLit = useEscalation((s) => s.coreLit);
   const jackpots = useEscalation((s) => s.jackpots);
+  const minpinOn = useMinPinOn();
   return (
     <div className={card}>
       <div className={`${head} text-pa-300`}>ACT {ROMAN[act]}{level > 0 ? ` · LOOP ${level + 1}` : ''}</div>
-      <div className="font-display text-sm font-black leading-tight text-pa-200">{ACT_NAMES[act]}</div>
+      <div className="font-display text-lg font-normal leading-tight tracking-wide text-pa-200">{ACT_NAMES[act]}</div>
       <div className="mt-2 space-y-0.5 text-[10px] text-slate-300">
         {act === 1 && (Object.keys(ENTITY_NAMES) as Entity[]).map((e) => (
-          <div key={e} className={escalated[e] ? 'text-pa-300' : 'text-slate-500'}>{escalated[e] ? '■' : '□'} {ENTITY_NAMES[e]}</div>
+          <div key={e} className={escalated[e] ? 'text-pa-300' : 'text-slate-500'}>{escalated[e] ? '■' : '□'} {ENTITY_NAMES[e]}{e === 'minpin' && !minpinOn ? ' (off duty)' : ''}</div>
         ))}
         {act === 1 && <div className="pt-1 text-slate-400">Escalate 2 to continue</div>}
         {act === 2 && <div>{corrupted ? <span className="text-pb-300">CORRUPTED TICKET — SHOOT THE PRINTER</span> : 'Shoot the printer'}</div>}
@@ -76,6 +85,7 @@ function AiCard() {
   const ai = useEscalation((s) => s.aiControl);
   const ghosts = useEscalation((s) => s.serverClears);
   const minpin = useEscalation((s) => s.minpinHits);
+  const minpinOn = useMinPinOn();
   return (
     <div className={`rounded-xl border p-3 backdrop-blur-md w-40 ${ai > 0 ? 'border-pb-500/70 bg-pb-950/70' : 'border-pa-900/70 bg-black/75'}`}>
       <div className={`${head} ${ai > 0 ? 'text-pb-300' : 'text-slate-400'}`}>AI CONTROL</div>
@@ -86,7 +96,7 @@ function AiCard() {
       </div>
       <div className="mt-1 text-[10px] text-slate-400">{ai > 0 ? 'ASSISTANCE AVAILABLE' : 'Restore tickets to raise it'}</div>
       <div className="mt-2 flex justify-between text-[11px] font-bold text-slate-300"><span>Ghost sessions</span><span className="text-pa-300">{ghosts}</span></div>
-      <div className="flex justify-between text-[11px] font-bold text-slate-300"><span>Min Pin</span><span className="text-pa-300">{minpin >= 3 ? 'FRIEND' : `${minpin}/3`}</span></div>
+      <div className="flex justify-between text-[11px] font-bold text-slate-300"><span>Min Pin</span><span className="text-pa-300">{!minpinOn ? 'OFF DUTY' : minpin >= 3 ? 'FRIEND' : `${minpin}/3`}</span></div>
     </div>
   );
 }
@@ -111,7 +121,7 @@ export function StatusPanels() {
 export function Title() {
   return (
     <>
-      <h1 className="font-display text-5xl sm:text-7xl font-black uppercase leading-none tracking-tight text-pa-400 drop-shadow-[0_0_24px_color-mix(in_srgb,var(--color-pa-500)_55%,transparent)]">
+      <h1 className="font-display text-6xl sm:text-8xl font-normal uppercase leading-none tracking-[0.08em] text-pa-400 drop-shadow-[0_0_10px_color-mix(in_srgb,var(--color-pa-500)_40%,transparent)]">
         TICKET #666
       </h1>
       <div className="mt-1 text-sm font-bold tracking-[0.35em] text-pb-400">THE LAST ESCALATION</div>
@@ -122,7 +132,7 @@ export function Title() {
 
 export const help = (
   <>
-    <p><b className="text-pa-300">Act I · Something is wrong:</b> escalate two of the four: hit the shot <b>the Printer</b> predicts (its insert lights up), hit <b>the Min Pin</b> 3 times until it's FRIEND-SHAPED, clear <b>the Undead Server</b> 3 times (it always comes back), or run <b>the Ticket Queue</b> spinner up to 16 open tickets in one ball.</p>
+    <p><b className="text-pa-300">Act I · Something is wrong:</b> escalate two of the four: hit the shot <b>the Printer</b> predicts (its insert lights up), hit <b>the Min Pin</b> 3 times until it's FRIEND-SHAPED (Easy and up), clear <b>the Undead Server</b> 3 times (it always comes back), or run <b>the Ticket Queue</b> spinner up to 16 open tickets in one ball.</p>
     <p><b className="text-pa-300">Act II · Something knows you're here:</b> the Printer prints <b className="text-pb-300">corrupted tickets</b>. Shoot it again within 8 seconds to <b>RESTORE</b> (big points, and AI CONTROL goes up), or let it go. Two tickets either way.</p>
     <p><b className="text-pa-300">Act III · Something needs you:</b> <b>The Silence</b> — 25 seconds of double scoring. Then <b className="text-pb-300">the Core</b> lights.</p>
     <p><b className="text-pa-300">Act IV · The last escalation:</b> shoot the lit Core for <b>T3-CHAOS MULTIBALL</b>. Core shots are jackpots; the third is <b>REMOVE FROM PRODUCTION</b>. Then Ticket #666 reopens.</p>
