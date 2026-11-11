@@ -550,7 +550,10 @@ touches geometry, physics or difficulty.
     flashes more than 3 times a second anywhere on the table.
   - **`?debug` skip key:** `]` steps to the next beat of the story (Act I →
     II → III → the Core lit → IV → the finale), so the later acts can be
-    playtested without playing up to them. `?debug` pages file nowhere, and
+    playtested without playing up to them. `[` is a sound check for the
+    creatures (quack-quack, the Min Pin's growl and bark, its yip). The duck
+    and Min Pin voices are formant-filtered syllables (`syllable()` in
+    `sound.ts`), so they read as a quack and a bark rather than blips. `?debug` pages file nowhere, and
     `rules.check` confirms the key does nothing on a ranked game.
 
 ### Phase 2b results (Salamander)

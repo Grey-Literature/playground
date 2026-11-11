@@ -59,6 +59,57 @@ export function setHum(level: number, fade = 0.3) {
   h.gain.gain.setTargetAtTime(level, sound.ctx.currentTime, fade);
 }
 
+// ---------------- creature voices ----------------
+/**
+ * One vocal syllable: an oscillator sliding from `f0` to `f1`, shaped by a
+ * band-pass "mouth" at `formant` Hz (that's what makes a quack nasal and a
+ * bark gruff), with a fast attack and a short tail. `tremolo` (Hz) adds a
+ * growl's flutter. Plays on the engine's master gain, so mute applies.
+ */
+function syllable(o: {
+  f0: number; f1: number; dur: number; gain: number; formant: number; q?: number;
+  type?: OscillatorType; delay?: number; tremolo?: number;
+}) {
+  const ctx = sound.ctx;
+  const master = sound.master;
+  if (!ctx || !master || !sound.enabled) return;
+  const t0 = ctx.currentTime + (o.delay ?? 0);
+  const osc = ctx.createOscillator();
+  osc.type = o.type ?? 'sawtooth';
+  osc.frequency.setValueAtTime(o.f0, t0);
+  osc.frequency.exponentialRampToValueAtTime(Math.max(30, o.f1), t0 + o.dur);
+  const mouth = ctx.createBiquadFilter();
+  mouth.type = 'bandpass';
+  mouth.frequency.value = o.formant;
+  mouth.Q.value = o.q ?? 3;
+  const env = ctx.createGain();
+  env.gain.setValueAtTime(0.0001, t0);
+  env.gain.exponentialRampToValueAtTime(o.gain, t0 + 0.012);
+  env.gain.setValueAtTime(o.gain, t0 + o.dur * 0.55);
+  env.gain.exponentialRampToValueAtTime(0.0001, t0 + o.dur);
+  osc.connect(mouth);
+  mouth.connect(env);
+  let lfo: OscillatorNode | null = null;
+  if (o.tremolo) {
+    const trem = ctx.createGain();
+    trem.gain.value = 0.55;
+    lfo = ctx.createOscillator();
+    lfo.frequency.value = o.tremolo;
+    const depth = ctx.createGain();
+    depth.gain.value = 0.45;
+    lfo.connect(depth);
+    depth.connect(trem.gain);
+    env.connect(trem);
+    trem.connect(master);
+    lfo.start(t0);
+    lfo.stop(t0 + o.dur + 0.05);
+  } else {
+    env.connect(master);
+  }
+  osc.start(t0);
+  osc.stop(t0 + o.dur + 0.05);
+}
+
 // ---------------- the table's voice (replaces the engine's defaults) ----------------
 const t = (f: number, d: number, type: OscillatorType, g: number, slide?: number, delay = 0) => sound.tone(f, d, type, g, slide, delay);
 const n = (d: number, f: number, g: number, type: BiquadFilterType = 'lowpass', delay = 0) => sound.noise(d, f, g, type, delay);
@@ -154,30 +205,31 @@ export const esc = {
     sound.noise(0.5, 900, 0.08, 'bandpass', 0.05);
     sound.tone(140, 0.25, 'sawtooth', 0.04, 110, 0.55);
   },
-  /** The Min Pin: two sharp barks (a happy yip once it's friend-shaped). */
-  bark(friend = false) {
-    if (throttled('bark', 180)) return;
+  /** The Min Pin: "ruff-ruff" (a happy two-note yip once it's friend-shaped). */
+  bark(friend = false, delay = 0) {
+    if (throttled('bark', 350)) return;
     if (friend) {
-      sound.tone(700, 0.08, 'sawtooth', 0.12, 1100);
-      sound.tone(800, 0.08, 'sawtooth', 0.12, 1300, 0.11);
+      syllable({ f0: 620, f1: 980, dur: 0.12, gain: 0.5, formant: 1400, q: 2, delay });
+      syllable({ f0: 700, f1: 1150, dur: 0.14, gain: 0.5, formant: 1500, q: 2, delay: delay + 0.17 });
       return;
     }
-    sound.tone(620, 0.09, 'sawtooth', 0.14, 300);
-    sound.noise(0.06, 1400, 0.1, 'bandpass');
-    sound.tone(560, 0.09, 'sawtooth', 0.12, 260, 0.13);
+    for (const d of [0, 0.24]) {
+      syllable({ f0: 520, f1: 240, dur: 0.17, gain: 0.6, formant: 950, q: 2.2, delay: delay + d });
+      sound.noise(0.07, 1300, 0.22, 'bandpass', delay + d);
+    }
   },
-  /** The Min Pin before it trusts you: a low growl. */
+  /** The Min Pin before it trusts you: a rolling growl, pitched where laptop speakers can play it. */
   growl() {
-    if (throttled('growl', 600)) return;
-    sound.tone(95, 0.55, 'sawtooth', 0.09, 80);
-    sound.noise(0.55, 300, 0.12, 'lowpass');
+    if (throttled('growl', 900)) return;
+    syllable({ f0: 175, f1: 150, dur: 0.6, gain: 0.55, formant: 520, q: 1.6, tremolo: 26 });
   },
-  /** The rubber duck. */
+  /** The rubber duck: "quack-quack", nasal and a little indignant. */
   quack() {
-    if (throttled('quack', 150)) return;
-    sound.tone(330, 0.12, 'square', 0.1, 230);
-    sound.noise(0.1, 1100, 0.07, 'bandpass');
-    sound.tone(310, 0.1, 'square', 0.08, 220, 0.14);
+    if (throttled('quack', 400)) return;
+    for (const d of [0, 0.26]) {
+      syllable({ f0: 330, f1: 250, dur: 0.2, gain: 0.55, formant: 1150, q: 5, delay: d });
+      syllable({ f0: 660, f1: 500, dur: 0.18, gain: 0.18, formant: 2300, q: 6, type: 'square', delay: d });
+    }
   },
   /** The pager: beep-beep. */
   pager() {

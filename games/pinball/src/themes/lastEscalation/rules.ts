@@ -347,8 +347,7 @@ function onMinPin() {
   const s = get();
   shot('minpin');
   if (s.minpinHits >= MINPIN_FRIEND_AT) { esc.bark(true); score(500, undefined); return; }
-  if (s.minpinHits === 0) esc.growl();
-  esc.bark();
+  if (s.minpinHits === 0) { esc.growl(); esc.bark(false, 0.55); } else esc.bark();
   const hits = s.minpinHits + 1;
   set({ minpinHits: hits });
   if (hits < MINPIN_FRIEND_AT) {

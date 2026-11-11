@@ -5,6 +5,8 @@
 
 import { useEffect, useRef, type ReactNode } from 'react';
 import { BonusCard, TiltCard } from '../../engine/hud/HUD';
+import { sound } from '../../engine/audio';
+import { esc } from './sound';
 import { useGame } from '../../engine/store';
 import { ACTIVE } from '../../engine/table';
 import {
@@ -152,12 +154,24 @@ function ScreenEffects() {
   );
 }
 
-/** ?debug pages: `]` skips to the next beat of the story (see debugNextAct). */
+/**
+ * ?debug pages: `]` skips to the next beat of the story (see debugNextAct);
+ * `[` is a sound check for the creatures — quack-quack, the Min Pin's growl
+ * and bark, then its friend-shaped yip.
+ */
 function DebugKeys() {
   const unranked = useGame((s) => s.unranked);
   useEffect(() => {
     if (!unranked) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === ']') debugNextAct(); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === ']') debugNextAct();
+      if (e.key === '[') {
+        sound.ensure();
+        esc.quack();
+        setTimeout(() => { esc.growl(); esc.bark(false, 0.55); }, 800);
+        setTimeout(() => esc.bark(true), 2200);
+      }
+    };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [unranked]);
