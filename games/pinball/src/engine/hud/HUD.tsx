@@ -478,7 +478,7 @@ function AttractScreen() {
 
         <button
           onClick={() => useGame.getState().startGame()}
-          className="group pointer-events-auto mt-6 inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-pa-500 to-pb-500 px-8 py-3.5 font-display text-lg font-black tracking-wide text-white shadow-[0_0_35px_color-mix(in_srgb,var(--color-pa-400)_50%,transparent)] transition-all hover:scale-105 hover:shadow-[0_0_50px_color-mix(in_srgb,var(--color-pb-400)_60%,transparent)] active:scale-95"
+          className={`group pointer-events-auto mt-6 inline-flex items-center gap-2 rounded-2xl px-8 py-3.5 font-display text-lg font-black tracking-wide transition-all hover:scale-105 active:scale-95 ${ctaSkin()}`}
         >
           <Play className="h-5 w-5 fill-current" /> PRESS ENTER / TAP TO PLAY
         </button>
@@ -516,7 +516,7 @@ function GameOverScreen() {
         </div>
         <button
           onClick={() => useGame.getState().startGame()}
-          className="pointer-events-auto mt-4 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-pa-500 to-pb-500 px-6 py-3 font-display text-base font-black text-white shadow-[0_0_30px_color-mix(in_srgb,var(--color-pa-400)_40%,transparent)] transition-all hover:scale-[1.02] active:scale-95"
+          className={`pointer-events-auto mt-4 inline-flex w-full items-center justify-center gap-2 rounded-2xl px-6 py-3 font-display text-base font-black transition-all hover:scale-[1.02] active:scale-95 ${ctaSkin()}`}
         >
           <RotateCcw className="h-4 w-4" /> PLAY AGAIN (ENTER)
         </button>
@@ -584,6 +584,11 @@ function PausedOverlay() {
   );
 }
 
+/** The theme's call-to-action button skin, or the palette gradient. */
+function ctaSkin() {
+  return activeTheme().ctaClass ?? 'bg-gradient-to-r from-pa-500 to-pb-500 text-white shadow-[0_0_35px_color-mix(in_srgb,var(--color-pa-400)_50%,transparent)] hover:shadow-[0_0_50px_color-mix(in_srgb,var(--color-pb-400)_60%,transparent)]';
+}
+
 function HelpModal() {
   const show = useGame((s) => s.showHelp);
   const toggle = useGame((s) => s.toggleHelp);
@@ -609,7 +614,7 @@ function HelpModal() {
           </details>
           <p><b className="text-pb-300">Tables:</b> <Kbd>T</Kbd> on the title screen summons the next table. <b className="text-pa-300">Extra balls</b> at 120K / 300K / 600K. <b className="text-pa-300">Camera:</b> <Kbd>C</Kbd> cycles Auto / Broadcast / Top / Cinematic.</p>
         </div>
-        <button onClick={toggle} className="pointer-events-auto mt-5 w-full rounded-xl bg-gradient-to-r from-pa-500 to-pb-500 py-2.5 font-black text-white">GOT IT</button>
+        <button onClick={toggle} className={`pointer-events-auto mt-5 w-full rounded-xl py-2.5 font-black ${ctaSkin()}`}>GOT IT</button>
       </div>
     </div>
   );

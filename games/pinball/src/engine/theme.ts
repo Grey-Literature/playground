@@ -76,6 +76,12 @@ export interface ThemeDef {
   StatusPanels?: ComponentType;
   /** Theme-specific paragraphs for the help modal. */
   help: ReactNode;
+  /**
+   * Optional skin (Tailwind classes: background, text colour, border, shadow)
+   * for the big call-to-action buttons: PLAY, PLAY AGAIN, GOT IT. Layout
+   * classes stay in the HUD. Leave it out for the palette gradient.
+   */
+  ctaClass?: string;
 }
 
 const registry = new Map<string, ThemeDef>();

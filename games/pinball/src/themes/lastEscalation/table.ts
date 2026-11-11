@@ -15,12 +15,17 @@
 //   THE PRINTER THAT KNOWS — a saucer on the right
 //   THE MIN PIN — an orbiter patrolling mid-field (easy+, see below)
 //
-// Obstacles tick up one set per tier (Super Easy has none):
+// Obstacles tick up one set per tier, each in its own patch of open floor:
+//   supereasy+  THE RUBBER DUCK — a big friendly post, upper right
 //   easy+       THE MIN PIN — patrols mid-field (faster each tier)
+//               THE PAGER — a spring kicker, upper left
 //   medium+     THE FIREWALL — a post in the left-centre field
+//               THE LEGACY SYSTEM — a slow flapper, lower right
 //   hard+       THE ROLLBACK — DSD's spinning bar over the flippers
+//               THE ZOMBIE PROCESS — an orbiter, left mid-field
 //   impossible  AUTO-REMEDIATION — DSD's spring frickies above the flippers,
-//               and THE CHANGE ADVISORY BOARD convenes between the racks
+//               THE CHANGE ADVISORY BOARD convenes between the racks,
+//               and THE TECH DEBT — a fast flapper, lower left
 //
 // Clearance rule as in Dead Star Disco; `npm test` soaks every tier.
 
@@ -54,6 +59,10 @@ const circles: CircleBody[] = [
   { x: -5.5, y: -5, r: 0.6, kind: 'post', id: 'firewall', rest: 0.85, minTier: 'medium' },
   // THE CHANGE ADVISORY BOARD (impossible) — between the racks
   { x: 0, y: 17.6, r: 0.62, kind: 'post', id: 'cab', rest: 0.95, minTier: 'impossible' },
+  // THE RUBBER DUCK (every tier) — the open upper right; 4.6 from the divider, 8.4 from rack1
+  { x: 12.4, y: 11, r: 1.0, kind: 'post', id: 'duck', rest: 0.8, minTier: 'supereasy' },
+  // THE PAGER (easy+) — a spring kicker in the open upper left, clear of rack0, the arch and the blades
+  { x: -12, y: 23, r: 0.8, kind: 'kicker', id: 'pager', rest: 1.0, minTier: 'easy' },
   // AUTO-REMEDIATION (impossible) — Dead Star Disco's frickies
   { x: -7.2, y: -22.6, r: 0.8, kind: 'kicker', id: 'fk0', rest: 1.0, minTier: 'impossible' },
   { x: 7.2, y: -22.6, r: 0.8, kind: 'kicker', id: 'fk1', rest: 1.0, minTier: 'impossible' },
@@ -92,6 +101,12 @@ const rides: RideDef[] = [
 const kinematics: KinematicDef[] = [
   // THE MIN PIN (easy+) — patrols a small circle in the middle of the field, faster each tier
   { id: 'minpin', kind: 'orbiter', cx: MINPIN_ORBIT.cx, cy: MINPIN_ORBIT.cy, r: 1.2, orbit: MINPIN_ORBIT.orbit, phase: 0, speed: { default: 1.3, easy: 1.0, hard: 1.7, impossible: 2.1 }, rest: 0.7, swat: 0.6, minTier: 'easy' },
+  // THE LEGACY SYSTEM (medium+) — a slow flapper in the open lower right, clear of the printer and the sling
+  { id: 'legacy', kind: 'bar', motion: 'swing', cx: 9.5, cy: -5.5, half: 2.5, r: 0.55, amp: 0.5, base: 0, speed: { default: 1.2, hard: 1.5, impossible: 1.8 }, rest: 0.6, swat: 0.45, minTier: 'medium' },
+  // THE ZOMBIE PROCESS (hard+) — circles the open left mid-field; it never quite dies
+  { id: 'zombie', kind: 'orbiter', cx: -11.5, cy: 4.5, r: 1.0, orbit: 2.3, phase: Math.PI, speed: { default: 1.4, impossible: 1.8 }, rest: 0.7, swat: 0.6, minTier: 'hard' },
+  // THE TECH DEBT (impossible) — a fast flapper in the open lower left, 3.85 clear of the Firewall
+  { id: 'techdebt', kind: 'bar', motion: 'swing', cx: -13, cy: -4.5, half: 2.5, r: 0.55, amp: 0.6, base: 0, speed: { default: 2.2 }, rest: 0.65, swat: 0.55, minTier: 'impossible' },
   // THE ROLLBACK (hard+) — Dead Star Disco's Wrecker
   { id: 'rollback', kind: 'bar', cx: 0, cy: -14.5, half: 5.2, r: 0.55, speed: { default: 2.1, impossible: 3.4 }, rest: 0.65, swat: 0.55, minTier: 'hard' },
 ];
@@ -111,13 +126,14 @@ export const table: TableDef = {
     bumper: 2.6, sling: 3, lane: 2.2, spinner: 2.5, drain: 1.5, jackpot: 1.2,
     printer: 1.6, core: 1.2, server: 2.4, minpin: 2.0, ramp: 1.3, post: 2.5, kicker: 2.5,
     silence: 0.5, powerdown: 0.6, takeover: 0.8, save: 1.2,
+    duck: 2.4, pager: 2.4, legacy: 2.4, zombie: 2.4, techdebt: 2.4,
   },
 };
 
 export const diffOverrides: DiffOverrides = {
-  supereasy: { blurb: 'Read-only access: no obstacles, the floor wide open. The Min Pin stays home.' },
-  easy: { blurb: 'THE MIN PIN starts its patrol.' },
-  medium: { blurb: '+ THE FIREWALL goes up in the middle of the field.' },
-  hard: { blurb: '+ THE ROLLBACK starts spinning over the flippers.' },
-  impossible: { blurb: '+ AUTO-REMEDIATION and THE CHANGE ADVISORY BOARD. Everything is a ticket.' },
+  supereasy: { blurb: 'Read-only access: just THE RUBBER DUCK. The Min Pin stays home.' },
+  easy: { blurb: '+ THE MIN PIN starts its patrol, and THE PAGER goes off.' },
+  medium: { blurb: '+ THE FIREWALL goes up, and THE LEGACY SYSTEM creaks into motion.' },
+  hard: { blurb: '+ THE ROLLBACK spins over the flippers, and a ZOMBIE PROCESS wanders.' },
+  impossible: { blurb: '+ AUTO-REMEDIATION, THE CHANGE ADVISORY BOARD and THE TECH DEBT. Everything is a ticket.' },
 };

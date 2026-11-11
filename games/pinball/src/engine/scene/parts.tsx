@@ -162,11 +162,11 @@ export function Bumpers({ colors = ['#22d3ee', '#e879f9', '#fbbf24', '#4ade80', 
 }
 
 // ---------------- Rubber posts ----------------
-export function Posts({ ring = () => '#f43f5e' }: { ring?: (id: string) => string }) {
+export function Posts({ ring = () => '#f43f5e', only }: { ring?: (id: string) => string; only?: (id: string) => boolean }) {
   useTier();
   return (
     <group>
-      {ACTIVE.posts.map((p) => (
+      {ACTIVE.posts.filter((p) => !only || only(p.id)).map((p) => (
         <group key={p.id} position={[PX(p.x), p.layer ? layerHeight(p.layer) : TABLE.heightAt(p.x, p.y), PZ(p.y)]}>
           <mesh position={[0, 1.1, 0]} castShadow>
             <cylinderGeometry args={[0.28, 0.28, 2.2, 12]} />
@@ -187,18 +187,19 @@ export function Posts({ ring = () => '#f43f5e' }: { ring?: (id: string) => strin
 }
 
 // ---------------- Spring kickers ----------------
-export function Kickers({ head = '#f43f5e', glow = '#be123c' }: { head?: string; glow?: string }) {
+export function Kickers({ head = '#f43f5e', glow = '#be123c', only }: { head?: string; glow?: string; only?: (id: string) => boolean }) {
   useTier();
   const groups = useRef<(THREE.Group | null)[]>([]);
+  const list = only ? ACTIVE.kickers.filter((k) => only(k.id)) : ACTIVE.kickers;
   useFrame(() => {
-    for (let i = 0; i < ACTIVE.kickers.length; i++) {
+    for (let i = 0; i < list.length; i++) {
       const g = groups.current[i];
       if (g) g.position.y = Math.sin(performance.now() * 0.008 + i) * 0.12;
     }
   });
   return (
     <group>
-      {ACTIVE.kickers.map((f, i) => (
+      {list.map((f, i) => (
         <group key={f.id} position={[PX(f.x), layerHeight(f.layer), PZ(f.y)]}>
           <group ref={(el) => { groups.current[i] = el; }}>
             <mesh position={[0, 1.2, 0]} castShadow>

@@ -463,6 +463,11 @@ function onPost(id: string) {
   if (id === 'rollback') { flash('rollback'); sound.post(); addShake(0.12); score(300); return; }
   if (id === 'firewall' || id === 'cab') { flash(`post:${id}`); sound.post(); score(250); return; }
   if (id.startsWith('fk')) { flash(`kicker:${id}`); sound.post(); score(100); return; }
+  if (id === 'duck') { flash('duck'); sound.post(); score(250, 'QUACK — PROBLEM EXPLAINED'); return; }
+  if (id === 'pager') { flash('pager'); sound.post(); addShake(0.1); score(200, 'PAGED · 3:04 AM'); return; }
+  if (id === 'legacy') { flash('legacy'); sound.post(); score(300, 'LEGACY SYSTEM · DO NOT TOUCH'); return; }
+  if (id === 'zombie') { flash('zombie'); sound.post(); score(350, 'kill -9 · IT GOT UP AGAIN'); return; }
+  if (id === 'techdebt') { flash('techdebt'); sound.post(); addShake(0.12); score(400, 'TECH DEBT · INTEREST ACCRUED'); return; }
   sound.post();
   score(30);
 }

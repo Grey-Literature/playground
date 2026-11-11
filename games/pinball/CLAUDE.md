@@ -149,7 +149,9 @@ Grey-Literature/playground#2). The two branches work like this:
     camera), so the ball visibly keeps rolling on a wire.
 - **Scene parts.** `engine/scene/parts.tsx` draws everything table-driven
   (walls, slings, bumpers, posts, flippers, balls, decks, ride wires) from
-  look props; `only` filters let a theme custom-draw some bumpers or rides.
+  look props; `only` filters let a theme custom-draw some bumpers, posts,
+  kickers or rides. `ThemeDef.ctaClass` optionally reskins the big PLAY /
+  PLAY AGAIN / GOT IT buttons (default: the palette gradient).
   `engine/scene/cabinet.tsx` is the shared cabinet, coloured by a
   `CabinetLook` (Dead Star Disco's is the default).
 - **Spirit Board (scores).** `src/engine/scores.ts` keeps a top 10 per
@@ -469,11 +471,20 @@ touches geometry, physics or difficulty.
   host (physics is still a round bumper; a lit ring on the floor marks the
   edge).
 
-  Obstacles tick up one set per tier (after Rosetta's first look): Super
-  Easy has none; Easy adds the Min Pin's patrol (it's off duty on Super
-  Easy, and the printer never predicts it there); Medium adds the Firewall;
-  Hard adds the Rollback (DSD's Wrecker); Impossible adds Auto-Remediation
-  (DSD's frickies) and the Change Advisory Board.
+  Obstacles tick up one set per tier, filling the open floor (after
+  Rosetta's first two looks):
+
+  | Tier       | Adds                                                        |
+  | ---------- | ----------------------------------------------------------- |
+  | Super Easy | the Rubber Duck (a post, upper right)                       |
+  | Easy       | the Min Pin's patrol; the Pager (a kicker, upper left)      |
+  | Medium     | the Firewall; the Legacy System (a slow flapper, lower right) |
+  | Hard       | the Rollback (DSD's Wrecker); the Zombie Process (an orbiter, left) |
+  | Impossible | Auto-Remediation (DSD's frickies); the Change Advisory Board; the Tech Debt (a fast flapper, lower left) |
+
+  The Min Pin is off duty on Super Easy, and the printer never predicts it
+  there. The table has its own cabinet (TICKET #666 side art, green/red
+  trim), and its PLAY / PLAY AGAIN buttons use `ThemeDef.ctaClass`.
 - **The rules** (`themes/lastEscalation/rules.ts`) are four acts kept for the
   whole game:
   1. Escalate 2 of the 4 entities.
