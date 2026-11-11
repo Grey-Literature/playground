@@ -485,9 +485,10 @@ touches geometry, physics or difficulty.
   The Min Pin is off duty on Super Easy, and the printer never predicts it
   there. The table has its own cabinet (TICKET #666 side art, green/red
   trim), and its PLAY / PLAY AGAIN buttons use `ThemeDef.ctaClass`.
-- **Floor inserts** show where to shoot: chevrons in front of each goal
-  (green = an Act I entity still to escalate, amber = the printer's
-  prediction, red = the Act II printer and the lit Core), an act ladder
+- **Floor inserts** show where to shoot: chevrons in front of each goal,
+  coloured green, orange, red toward the target, chasing while there's
+  something to shoot there (an Act I entity, the printer's prediction, the
+  Act II printer, the lit Core), an act ladder
   I–IV, and the lanyard's 11 code lamps in an arc above the flippers. The
   chase is 1.4 Hz per chevron; during THE SILENCE they hold still.
 - **The rules** (`themes/lastEscalation/rules.ts`) are four acts kept for the

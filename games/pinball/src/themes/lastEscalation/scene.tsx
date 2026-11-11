@@ -70,11 +70,14 @@ function LaneLamps() {
 
 // ---------------- floor inserts: the floor shows you where to shoot ----------------
 // Chevron arrows in front of each goal, an act ladder (I–IV) and the lanyard's
-// 11 HTTP-code lamps. They read the story store every frame:
-//   green chase  — an Act I entity still to escalate
-//   amber chase  — the shot the printer predicted
-//   red          — the printer in Act II (chasing while a corrupted ticket is live),
-//                  the Core once it's lit
+// 11 HTTP-code lamps. Each arrow escalates toward its target: the back
+// chevron is green, the middle orange, the front red. They read the story
+// store every frame:
+//   chasing  — a goal to shoot: an Act I entity still to escalate, the shot
+//              the printer predicted (it also gets the amber ring), the Act II
+//              printer while a corrupted ticket is live, the lit Core
+//   steady   — the Act II printer between tickets
+//   faint    — nothing to do there right now
 // The chase steps at 1.4 Hz per chevron (well under 3 flashes a second), and
 // during THE SILENCE everything holds a steady, dim glow: no movement at all.
 
@@ -86,6 +89,9 @@ const ARROWS: { id: ArrowId; x: number; y: number; angle: number }[] = [
   { id: 'lane', x: -18.6, y: -5, angle: Math.PI / 2 },     // up the left lane: the queue, then the cable run
   { id: 'core', x: 0, y: 20.6, angle: Math.PI / 2 },       // up between the racks, at the Core
 ];
+const ORANGE = '#ff7a1a';
+/** Back to front: green, orange, red. */
+const CHEVRON_COLORS = [GREEN, ORANGE, RED];
 const ACT_LAMPS = [-4.5, -1.5, 1.5, 4.5].map((x, i) => ({ x, y: -9.5, label: ['I', 'II', 'III', 'IV'][i] }));
 const LANYARD_LAMPS = PINS.map((p, i) => {
   const a = (130 - (80 * i) / (PINS.length - 1)) * (Math.PI / 180);
@@ -164,9 +170,10 @@ function FloorInserts() {
     ARROWS.forEach((a, ai) => {
       const w = want(a.id);
       arrowMats.current[ai].forEach((m, ci) => {
-        if (!w) tint(m, '#2f5a43', 0.9);
-        else if (quiet || !w.chase) tint(m, w.color, quiet ? 0.35 : 0.8);
-        else tint(m, w.color, ci === step ? 1.6 : 0.3);
+        const c = CHEVRON_COLORS[ci];
+        if (!w) tint(m, c, 0.22);
+        else if (quiet || !w.chase) tint(m, c, quiet ? 0.35 : 0.8);
+        else tint(m, c, ci === step ? 1.6 : 0.35);
       });
     });
 
@@ -869,7 +876,7 @@ export function Playfield() {
       <Core />
       <MinPin />
       <Rollback />
-      <RideWires color="#9ca3af" glow={GREEN} />
+      <RideWires color="#b91c1c" glow={RED} />
       <Flippers
         left={{ body: '#e5e7eb', glow: '#14532d', inlay: GREEN }}
         right={{ body: '#e5e7eb', glow: '#14532d', inlay: GREEN }}

@@ -449,7 +449,8 @@ function AttractScreen() {
         <Title />
 
         <div className="mt-5 grid gap-5 text-left lg:grid-cols-[2fr_3fr] lg:items-start">
-          <div className="mx-auto w-full max-w-md lg:max-w-none">
+          {/* lg:pt matches the SELECT DIFFICULTY label row, so both boxes start level */}
+          <div className="mx-auto w-full max-w-md lg:max-w-none lg:pt-[23px]">
             <Boards limit={5} />
           </div>
           <div className="mx-auto w-full max-w-xl lg:max-w-none">
