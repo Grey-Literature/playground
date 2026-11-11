@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@500;600;700;800;900&family=Rajdhani:wght@500;600;700&family=Barlow+Condensed:wght@600;700;800;900&family=DM+Sans:wght@400;500;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@500;600;700;800;900&family=Rajdhani:wght@500;600;700&family=Barlow+Condensed:wght@600;700;800;900&family=DM+Sans:wght@400;500;700&family=VT323&family=Share+Tech+Mono&display=swap');
 @import "tailwindcss";
 
 /* viewport tall enough for the key legend to sit under the theme's side panels */
@@ -87,3 +87,31 @@ canvas {
 ::-webkit-scrollbar { width: 8px; }
 ::-webkit-scrollbar-track { background: #0f172a; }
 ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+
+/* The Last Escalation: the TICKET #666 title glitches once every 7 s — one
+   brief offset split (red / T3 blue), never a strobe. Off for reduced motion. */
+.esc-glitch { position: relative; display: inline-block; }
+.esc-glitch::before,
+.esc-glitch::after {
+  content: attr(data-text);
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+}
+.esc-glitch::before { color: #ff3b3b; animation: esc-glitch-a 7s steps(1, end) infinite; }
+.esc-glitch::after { color: #6fb9ff; animation: esc-glitch-b 7s steps(1, end) infinite; }
+@keyframes esc-glitch-a {
+  0%, 100% { opacity: 0; transform: none; clip-path: inset(0 0 0 0); }
+  90% { opacity: 0.85; transform: translate(-4px, 0); clip-path: inset(12% 0 52% 0); }
+  93% { opacity: 0.85; transform: translate(3px, 0); clip-path: inset(58% 0 10% 0); }
+  96% { opacity: 0; transform: none; }
+}
+@keyframes esc-glitch-b {
+  0%, 100% { opacity: 0; transform: none; clip-path: inset(0 0 0 0); }
+  91% { opacity: 0.7; transform: translate(4px, 0); clip-path: inset(40% 0 30% 0); }
+  95% { opacity: 0; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .esc-glitch::before, .esc-glitch::after { animation: none; }
+}

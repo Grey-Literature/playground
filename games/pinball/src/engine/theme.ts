@@ -4,6 +4,7 @@
 import type { ComponentType, ReactNode } from 'react';
 import type { TableDef, PhysEvent } from './types';
 import type { DiffOverrides } from './difficulty';
+import { sound, type Voice, type RollLook } from './audio';
 
 export interface ThemeRules {
   /** New game: clear all theme state. */
@@ -16,7 +17,16 @@ export interface ThemeRules {
   onAttractEvent?(e: PhysEvent): void;
   /** The player just released the plunger at `power` (0..1). */
   onLaunch?(power: number): void;
+  /**
+   * The LAST ball in play just drained (not tilted). Return a `BallSave` to
+   * re-serve it to the plunger without costing a ball (like the B key), with
+   * the theme's own copy; return null/undefined to let the ball end normally.
+   */
+  onDrain?(): BallSave | null | undefined;
 }
+
+/** A theme-granted ball save (see ThemeRules.onDrain). */
+export interface BallSave { big: string; message: string }
 
 /** 50..950-style shade ramp used to repaint the HUD's two accent families. */
 export type Shades = Record<'50' | '100' | '200' | '300' | '400' | '500' | '600' | '700' | '800' | '900' | '950', string>;
@@ -67,6 +77,16 @@ export interface ThemeDef {
   StatusPanels?: ComponentType;
   /** Theme-specific paragraphs for the help modal. */
   help: ReactNode;
+  /**
+   * Optional skin (Tailwind classes: background, text colour, border, shadow)
+   * for the big call-to-action buttons: PLAY, PLAY AGAIN, GOT IT. Layout
+   * classes stay in the HUD. Leave it out for the palette gradient.
+   */
+  ctaClass?: string;
+  /** Optional replacements for the engine's table sounds while this table is active (engine/audio.ts). */
+  voice?: Voice;
+  /** Optional level / colour for the rolling-ball noise. */
+  roll?: RollLook;
 }
 
 const registry = new Map<string, ThemeDef>();
@@ -99,4 +119,5 @@ export function activeTheme(): ThemeDef {
 
 export function setActiveTheme(def: ThemeDef) {
   active = def;
+  sound.setVoice(def.voice, def.roll);
 }

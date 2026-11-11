@@ -6,9 +6,9 @@
 import { STEP } from './constants';
 import type { PhysEvent } from './types';
 import { TABLE } from './table';
-import { gameRef, spawnBallAt, runDue } from './runtime';
+import { gameRef, spawnBallAt, runDue, isTilted } from './runtime';
 import { useGame } from './store';
-import { activeTheme } from './theme';
+import { activeTheme, type ThemeRules } from './theme';
 import { sound } from './audio';
 import { stepPhysics } from './physics';
 import { FixedStepper } from './timestep';
@@ -29,6 +29,18 @@ export function simulate(dt: number): PhysEvent[] {
 /** Exactly one fixed physics step (lockstep). */
 export function simulateStep(): PhysEvent[] {
   return frame(STEP, () => { const ev = stepPhysics(STEP); gameRef.alpha = 0; return ev; });
+}
+
+/**
+ * A ball drained during play. If it was the last one, the theme may save it
+ * (ThemeRules.onDrain) — the ball is re-served instead of ending.
+ */
+export function drained(rules: ThemeRules) {
+  const st = useGame.getState();
+  const last = !gameRef.balls.some((b) => b.active);
+  const save = last && st.ballPhase === 'active' && !st.bonusCounting && !isTilted() ? rules.onDrain?.() : null;
+  if (save) st.reserveBall(save);
+  else st.onDrain();
 }
 
 function frame(dt: number, physics: () => PhysEvent[]): PhysEvent[] {
@@ -72,7 +84,7 @@ function frame(dt: number, physics: () => PhysEvent[]): PhysEvent[] {
 
   if (st.phase === 'playing') {
     for (const e of events) {
-      if (e.type === 'drain') st.onDrain();
+      if (e.type === 'drain') drained(theme.rules);
       else if (e.type === 'autoLaunch') st.onAutoLaunch();
       else theme.rules.onEvent(e);
     }

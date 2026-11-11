@@ -10,6 +10,13 @@ import { table, diffOverrides } from '../src/themes/deadStarDisco/table';
 import { rules, useDisco } from '../src/themes/deadStarDisco/rules';
 import { table as salTable, diffOverrides as salOverrides } from '../src/themes/salamander/table';
 import { rules as salRules, useSalamander, BELL_RELIGHT } from '../src/themes/salamander/rules';
+import { table as escTable, diffOverrides as escOverrides } from '../src/themes/lastEscalation/table';
+import {
+  rules as escRules, useEscalation, debugNextAct, PINS, SERVER_RISE, TICKET_WINDOW, SILENCE_S, QUEUE_LOOP_AT,
+} from '../src/themes/lastEscalation/rules';
+import { drained } from '../src/engine/sim';
+import { voice as escVoice, roll as escRoll } from '../src/themes/lastEscalation/sound';
+import { sound } from '../src/engine/audio';
 
 // in-memory localStorage so per-theme × per-tier bests are really exercised
 const mem = new Map<string, string>();
@@ -29,6 +36,12 @@ registerTheme({
 registerTheme({
   id: 'salamander', table: salTable, diffOverrides: salOverrides, rules: salRules,
   copy: { name: 'Salamander', tagline: '', dmdTitle: '', attractHint: '', attractFooter: '', obstacleSets: [] },
+  palette: {} as ThemeDef['palette'], Playfield: none, Surroundings: none, Title: none, help: null,
+});
+
+registerTheme({
+  id: 'lastEscalation', table: escTable, diffOverrides: escOverrides, rules: escRules, voice: escVoice, roll: escRoll,
+  copy: { name: 'The Last Escalation', tagline: '', dmdTitle: '', attractHint: '', attractFooter: '', obstacleSets: [] },
   palette: {} as ThemeDef['palette'], Playfield: none, Surroundings: none, Title: none, help: null,
 });
 
@@ -198,5 +211,122 @@ for (const id of ['bell0']) sfire({ type: 'bumper', id });
 useSalamander.setState({ heat: 1 });
 salRules.resetBall();
 expect('resetBall clears lanes + bells, keeps heat', !sal().lanes.some(Boolean) && !sal().bells.some(Boolean) && sal().heat === 1);
+
+// ---------------- The Last Escalation ----------------
+console.log('\n[lastEscalation] rules contract (medium):');
+g().toAttract();
+g().setTheme('lastEscalation');
+g().setDifficulty('medium');
+g().startGame();
+const esc = () => useEscalation.getState();
+const efire = (e: Record<string, unknown>) => escRules.onEvent({ ...at, ...e } as PhysEvent);
+const tick = (s: number) => { gameRef.time += s; runDue(); };
+expect('lastEscalation is the active table, Act I', g().phase === 'playing' && esc().act === 1);
+expect('its own voice and quieter roll are active (no Dead Star Disco beeps)', sound.voice === escVoice && sound.rollMax === escRoll.max);
+let heard = '';
+sound.setVoice({ bumper: () => { heard = 'theme'; } });
+sound.bumper(0);
+expect('a theme voice replaces the engine sound it names', heard === 'theme');
+sound.setVoice(escVoice, escRoll);
+
+gameRef.skillWindow = 0;
+for (const i of [0, 1, 2]) efire({ type: 'sensor', kind: 'lane', id: `lane${i}` });
+expect('D·N·S → multiplier 2X, pin 100', g().multiplier === 2 && esc().pins[100], `x${g().multiplier}`);
+
+t0 = g().score;
+efire({ type: 'capture', id: 'core' });
+expect('unlit Core → 403 FORBIDDEN 1,500 (x2), pin 403', g().score - t0 === 3000 && esc().pins[403], `+${g().score - t0}`);
+
+Math.random = () => 0;
+efire({ type: 'capture', id: 'printer' });
+Math.random = realRandom;
+expect('printer predicts a shot (CABLE RUN)', esc().prediction === 'cableRun' && esc().predictionUntil > gameRef.time);
+t0 = g().score;
+efire({ type: 'rideEnter', id: 'cableRun', speed: 90 });
+expect('predicted shot → 200 OK 5,000 + cable run 1,500 (x2), pins 200 + 400', g().score - t0 === 13000 && esc().pins[200] && esc().pins[400] && esc().prediction === null, `+${g().score - t0}`);
+expect('… and the printer is escalated (1/2, still Act I)', esc().escalated.printer && esc().act === 1);
+
+for (let i = 0; i < 3; i++) { tick(0.5); efire({ type: 'post', id: 'minpin' }); }
+expect('3 Min Pin hits → FRIEND-SHAPED, pin 418', esc().minpinHits === 3 && esc().pins[418] && esc().escalated.minpin);
+expect('two escalations → Act II', esc().act === 2);
+const hitsBefore = esc().minpinHits;
+efire({ type: 'post', id: 'minpin' });
+expect('Min Pin hits inside 0.4 s are one hit (debounce)', esc().minpinHits === hitsBefore);
+
+for (let c = 1; c <= 3; c++) {
+  for (const id of ['srv0', 'srv1', 'srv2']) efire({ type: 'drop', id });
+  expect(`server clear ${c} → resurrecting`, esc().serverClears === c && esc().resurrecting);
+  tick(SERVER_RISE + 0.05);
+  expect(`… the blades rise again after ${SERVER_RISE}s`, !esc().resurrecting && !esc().serverDown.some(Boolean));
+}
+expect('3 clears → pin 422, server escalated', esc().pins[422] && esc().escalated.server);
+
+let passes = 0;
+while (esc().queue < QUEUE_LOOP_AT && passes < 10) { efire({ type: 'sensor', kind: 'spinner', id: 'queue' }); passes++; }
+expect(`queue doubles to ${QUEUE_LOOP_AT} in 5 passes → 508, pin 429`, passes === 5 && esc().queueLooped && esc().pins[429], `${passes} passes`);
+
+// Act II: corrupted tickets
+efire({ type: 'capture', id: 'printer' });
+expect('Act II printer → corrupted ticket', !!esc().corrupted);
+tick(3);
+t0 = g().score;
+efire({ type: 'capture', id: 'printer' });
+expect('printer again inside the window → RESTORE 750 + 15,000 (x2), AI CONTROL 1, pin 409', g().score - t0 === 31500 && esc().aiControl === 1 && esc().pins[409] && !esc().corrupted, `+${g().score - t0}`);
+efire({ type: 'capture', id: 'printer' });
+tick(TICKET_WINDOW + 0.05);
+expect('a ticket left past its window → LEAVE IT, pin 410', esc().pins[410] && !esc().corrupted && esc().ticketsResolved === 2);
+expect('two tickets → Act III, THE SILENCE running', esc().act === 3 && esc().silenceUntil > gameRef.time);
+
+t0 = g().score;
+efire({ type: 'sling', id: 'L' });
+expect('the Silence doubles theme scoring (sling 80 → 160, x mult)', g().score - t0 === 160 * g().multiplier, `+${g().score - t0}`);
+efire({ type: 'capture', id: 'core' });
+expect('Core during the Silence is still unlit', esc().act === 3 && !g().multiball);
+tick(SILENCE_S + 0.05);
+expect(`after ${SILENCE_S}s the Silence ends and the Core lights`, esc().silenceUntil === 0 && esc().coreLit);
+
+efire({ type: 'capture', id: 'core' });
+expect('lit Core → Act IV, T3-CHAOS MULTIBALL, pin 500', esc().act === 4 && g().multiball && esc().pins[500] && !esc().coreLit);
+efire({ type: 'capture', id: 'core' }); efire({ type: 'capture', id: 'core' });
+expect('two Core jackpots', esc().jackpots === 2 && esc().act === 4);
+t0 = g().score;
+efire({ type: 'capture', id: 'core' });
+expect('third → REMOVE FROM PRODUCTION; Ticket #666 reopens: Act I, loop 2', esc().act === 1 && esc().level === 1 && !esc().escalated.printer && g().score - t0 >= 100000, `+${g().score - t0}`);
+expect('AI CONTROL and the lanyard carry over the loop', esc().aiControl === 1 && esc().pins[500]);
+
+gameRef.skillWindow = 5; gameRef.lastLaunchPower = 0.4;
+efire({ type: 'sensor', kind: 'lane', id: 'lane1' });
+expect('skill shot → pin 401; all 11 pins → HUMAN ESCALATION PATH paid once', esc().pins[401] && PINS.every((p) => esc().pins[p]) && esc().lanyardPaid);
+
+// AI CONTROL ball save, through the engine's drain hook
+useGame.setState({ multiball: false, ballPhase: 'active', bonus: 1000 });
+escRules.onLaunch?.(0.6);
+const ballNo = g().ball;
+for (const b of gameRef.balls) b.active = false;
+drained(escRules);
+expect('AI CONTROL ≥ 1: early drain → ASSISTANCE PROVIDED (re-served, same ball)', g().ballPhase === 'plunger' && g().ball === ballNo && g().bigMessage === 'ASSISTANCE PROVIDED' && gameRef.balls.filter((b) => b.active).length === 1);
+expect('… E.S.C.A.L.A.T.E. kept half the bonus', g().bonus === 500, `${g().bonus}`);
+useGame.setState({ ballPhase: 'active' });
+for (const b of gameRef.balls) b.active = false;
+drained(escRules);
+expect('only once per ball: the next drain ends the ball', g().ballPhase === 'bonus');
+for (let i = 0; i < 80 && g().ball === ballNo; i++) await sleep(100);
+expect('ball 2: lanes and queue reset, the act and AI CONTROL kept', g().ball === ballNo + 1 && esc().queue === 0 && !esc().lanes.some(Boolean) && esc().aiControl === 1 && esc().level === 1);
+useGame.setState({ ballPhase: 'active' });
+gameRef.time += 60;
+for (const b of gameRef.balls) b.active = false;
+drained(escRules);
+expect('a drain long after launch is not saved', g().ballPhase === 'bonus');
+
+const actBeforeSkip = esc().act;
+debugNextAct();
+expect('the ?debug skip key (]) does nothing on a ranked game', esc().act === actBeforeSkip);
+
+g().toAttract();
+g().setTheme('deadStarDisco');
+expect('switching to Dead Star Disco restores the default sounds', Object.keys(sound.voice).length === 0 && sound.rollMax === 0.16);
+g().setTheme('lastEscalation');
+escRules.reset();
+expect('a new game resets the story', esc().act === 1 && esc().aiControl === 0 && !esc().pins[100]);
 
 process.exit(bad ? 1 : 0);

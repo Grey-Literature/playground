@@ -18,7 +18,7 @@ copy.
 | --------------- | -------------------- | ----------------------------------- |
 | `deadStarDisco` | Dead Star Disco      | Phase 1: the reference chassis      |
 | `salamander`    | Salamander           | Phase 2b: built, awaiting playtest  |
-| _tbd_           | a MISFIRE ARCADE callback | Phase 4                        |
+| `lastEscalation` | The Last Escalation (TICKET #666) | Phase 4: built (B1 + B2), published |
 | _tbd_           | a Snoopy Axolotl     | Phase 5                             |
 
 The origin prototypes are kept for reference in `examples/`:
@@ -105,6 +105,12 @@ Grey-Literature/playground#2). The two branches work like this:
   API: `addScore`, `popup`, `message`, `bigMessage`, `startMultiball`,
   `flash`, `shake` and sound. Any theme-only state lives in that theme's own
   store.
+  - **Ball saves (Phase 4).** `ThemeRules.onDrain?()` runs when the LAST
+    ball in play drains (not tilted, not mid-bonus; `sim.ts` `drained()`).
+    Return `{ big, message }` and the engine re-serves the ball through
+    `reserveBall(save)`, the same path as the `B` key, with the theme's copy.
+    Return nothing and the ball ends as usual. The Last Escalation uses it for
+    ASSISTANCE PROVIDED.
 - **Layers (decks).** A table may list `layers: LayerDef[]`. Each is a raised
   deck with a footprint `outline`, drop `holes` and a render `height`. Any
   body can carry `layer: '<deck id>'`; leaving it out means `'field'`.
@@ -143,7 +149,15 @@ Grey-Literature/playground#2). The two branches work like this:
     camera), so the ball visibly keeps rolling on a wire.
 - **Scene parts.** `engine/scene/parts.tsx` draws everything table-driven
   (walls, slings, bumpers, posts, flippers, balls, decks, ride wires) from
-  look props; `only` filters let a theme custom-draw some bumpers or rides.
+  look props; `only` filters let a theme custom-draw some bumpers, posts,
+  kickers or rides. `ThemeDef.ctaClass` optionally reskins the big PLAY /
+  PLAY AGAIN / GOT IT buttons (default: the palette gradient).
+- **Sound.** `engine/audio.ts` synthesizes every sound. A theme can re-voice
+  any of the named table sounds (`VOICES`: flippers, bumper, sling, lane,
+  jackpot, multiball, start, drain…) with `ThemeDef.voice`, and set the
+  rolling-ball noise's level and colour with `ThemeDef.roll`; whatever it
+  leaves out keeps the default (Dead Star Disco's). `setActiveTheme` applies
+  both, and `rules.check` confirms switching tables swaps them.
   `engine/scene/cabinet.tsx` is the shared cabinet, coloured by a
   `CabinetLook` (Dead Star Disco's is the default).
 - **Spirit Board (scores).** `src/engine/scores.ts` keeps a top 10 per
@@ -446,6 +460,102 @@ touches geometry, physics or difficulty.
   about 20% through a hole and 80% over the waterfall.
 - Cross-layer collisions: 0.
 
+### Phase 4 results (The Last Escalation)
+
+- **The table** is Dead Star Disco's lower chassis with IT Shop of Horrors'
+  Act IV as toys:
+  - D·N·S top lanes
+  - three server-rack pop bumpers
+  - THE CORE (top-centre saucer)
+  - THE UNDEAD SERVER (a drop bank at DSD's door spot that rises again)
+  - THE TICKET QUEUE (a left-lane spinner)
+  - THE CABLE RUN (DSD's wire path, now with `carry`)
+  - THE PRINTER THAT KNOWS (a right saucer)
+  - THE MIN PIN (an orbiter, easy+)
+
+  The three pop bumpers are drawn as a printer, a teapot and an undead
+  host (physics is still a round bumper; a lit ring on the floor marks the
+  edge).
+
+  Obstacles tick up one set per tier, filling the open floor (after
+  Rosetta's first two looks):
+
+  | Tier       | Adds                                                        |
+  | ---------- | ----------------------------------------------------------- |
+  | Super Easy | the Rubber Duck (a post, upper right)                       |
+  | Easy       | the Min Pin's patrol; the Pager (a kicker, upper left)      |
+  | Medium     | the Firewall; the Legacy System (a slow flapper, lower right) |
+  | Hard       | the Rollback (DSD's Wrecker); the Zombie Process (an orbiter, left) |
+  | Impossible | Auto-Remediation (DSD's frickies); the Change Advisory Board; the Tech Debt (a fast flapper, lower left) |
+
+  The Min Pin is off duty on Super Easy, and the printer never predicts it
+  there. The table has its own cabinet (TICKET #666 side art, green/red
+  trim), and its PLAY / PLAY AGAIN buttons use `ThemeDef.ctaClass`.
+- **Floor inserts** show where to shoot: chevrons in front of each goal,
+  coloured green, orange, red toward the target, chasing while there's
+  something to shoot there (an Act I entity, the printer's prediction, the
+  Act II printer, the lit Core), an act ladder
+  I–IV, and the lanyard's 11 code lamps in an arc above the flippers. The
+  chase is 1.4 Hz per chevron; during THE SILENCE they hold still.
+- **The rules** (`themes/lastEscalation/rules.ts`) are four acts kept for the
+  whole game:
+  1. Escalate 2 of the 4 entities.
+  2. Two corrupted tickets, each RESTORED (+AI CONTROL) or LEFT.
+  3. THE SILENCE: 25 s of game time at 2×, then the Core lights.
+  4. T3-CHAOS multiball. The third Core jackpot is REMOVE FROM PRODUCTION,
+     and Ticket #666 reopens at Act I.
+
+  Alongside them run the 11-pin lanyard (HTTP codes) and the AI CONTROL ball
+  save. `rules.check` covers all of it (35 checks).
+- **Results:**
+  - `stuck=0` at every tier (878–907 trials), and the Min Pin and Rollback
+    pin tests report 0.
+  - The cable run enters and ejects, and its wires clear the shooter lane.
+  - Every skill-zone plunge reaches a lane at every tier.
+- **Feel:** flipper and bumper exits are identical to Dead Star Disco's.
+  Median ball life sits between DSD's and Salamander's:
+
+  | Tier       | flipExit (min) | bumpExit | life  | mid/off/out % |
+  | ---------- | -------------- | -------- | ----- | ------------- |
+  | SUPER EASY | 202 (166)      | 80       | 45.0s | 100/0/0       |
+  | EASY       | 225 (199)      | 93       | 37.0s | 100/0/0       |
+  | MEDIUM     | 249 (235)      | 105      | 45.0s | 100/0/0       |
+  | HARD       | 282 (236)      | 121      | 45.0s | 80/14/6       |
+  | IMPOSSIBLE | 196 (146)      | 138      | 17.9s | 92/4/5        |
+
+- **B2 (art, sound, HUD), done after Rosetta's B1 playtest:**
+  - **Scene:** a server-room raised floor (canvas texture: vented tiles,
+    cable runs, stray tickets), the Core as a monolith of blade servers (T3
+    blue at rest, red once lit), a proper printer whose paper feeds out when
+    it prints, the Min Pin as a small black-and-tan dog (it wags once it's
+    friend-shaped), and E.S.C.A.L.A.T.E.'s camera on the right cabinet rail
+    (it sweeps in Act I and follows the ball from Act II).
+  - **Sound** (`themes/lastEscalation/sound.ts`, synthesized): its own
+    `voice` for every common table sound (relay-clack flippers, a network
+    ping for the lanes, a terminal chime for jackpots, an incident alarm for
+    multiball…), with each middle bumper in its own voice (dot-matrix, china
+    clink, drive seek), and a quieter, lower rolling noise. Plus a 55/58.3 Hz
+    server hum (with harmonics small speakers can play) that runs while a
+    ball is in play and fades out for THE SILENCE; typing, printer chatter,
+    the Min Pin's growl and bark (a yip once friend-shaped), a quack, a
+    pager beep, a creak, a groan, a clunk, the server spinning back up, an
+    unlock arpeggio, the takeover glitch and the power-down.
+  - **HUD:** terminal panels with scanlines (green, then red from Act II),
+    and a TICKET #666 title that glitches once every 7 s (off under
+    `prefers-reduced-motion`).
+  - **One-shot screen effects** (`hud.tsx` `ScreenEffects`, driven by the
+    `takeovers` / `powerdowns` counters in the story store): Act II's
+    takeover is a single red tint in and out (2.6 s), and REMOVE FROM
+    PRODUCTION is one dip to black (360 ms in, about 1 s out). Nothing
+    flashes more than 3 times a second anywhere on the table.
+  - **`?debug` skip key:** `]` steps to the next beat of the story (Act I →
+    II → III → the Core lit → IV → the finale), so the later acts can be
+    playtested without playing up to them. `[` is a sound check for the
+    creatures (quack-quack, the Min Pin's growl and bark, its yip). The duck
+    and Min Pin voices are formant-filtered syllables (`syllable()` in
+    `sound.ts`), so they read as a quack and a bark rather than blips. `?debug` pages file nowhere, and
+    `rules.check` confirms the key does nothing on a ranked game.
+
 ### Phase 2b results (Salamander)
 
 **After Rosetta's first playtest** she reported that the ramps killed the
@@ -561,6 +671,9 @@ The current numbers:
 - Board first: the table is the focal point. Score, switches and toggles sit
   at the edges and stay out of the way, and the playfield is never covered
   during play.
+- The attract card must fit a laptop screen without scrolling: wide screens
+  get the two-column layout, and PLAY stays pinned when a short screen
+  scrolls.
 - Each theme restyles the HUD chrome through its palette tokens and fonts.
 - Dead Star Disco is a synthwave grid over a collapsing star: neon cyan and
   magenta on near-black.
@@ -592,7 +705,12 @@ The current numbers:
    envelope. Run death-trap and ball-trap audits, do Dead Star Disco's
    obstacle-placement pass, and check 30/60/144 Hz parity in a real
    browser. **STOP**
-4. **A third theme** pulled from MISFIRE ARCADE. **STOP**
+4. **A third theme** pulled from MISFIRE ARCADE: **The Last Escalation**
+   (`lastEscalation`, IT Shop of Horrors' Act IV). **(B1) Graybox:** the
+   table, the four-act rules and the `onDrain` ball-save hook, drawn with
+   generic parts and plain markers. **STOP** **(B2) Art, sound and HUD.**
+   **STOP** Published with the playtest fixes (cabinet, obstacle ladder,
+   floor inserts, themed buttons, the wider attract card).
 5. **Expansion:** hall transitions, more modes and themes, mobile polish.
 
 The easter egg is **deferred** by Rosetta's call. When it comes back, propose

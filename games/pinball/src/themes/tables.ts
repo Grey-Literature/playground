@@ -6,6 +6,7 @@ import type { DiffOverrides } from '../engine/difficulty';
 import * as deadStarDisco from './deadStarDisco/table';
 import * as layerLab from './layerLab/table';
 import * as salamander from './salamander/table';
+import * as lastEscalation from './lastEscalation/table';
 
 /** `fixture`: an engine test table — soaked and checked, but not part of the feel envelope. */
 export interface TableEntry { id: string; table: TableDef; diffOverrides?: DiffOverrides; fixture?: boolean }
@@ -13,5 +14,6 @@ export interface TableEntry { id: string; table: TableDef; diffOverrides?: DiffO
 export const TABLES: TableEntry[] = [
   { id: 'deadStarDisco', table: deadStarDisco.table, diffOverrides: deadStarDisco.diffOverrides },
   { id: 'salamander', table: salamander.table, diffOverrides: salamander.diffOverrides },
+  { id: 'lastEscalation', table: lastEscalation.table, diffOverrides: lastEscalation.diffOverrides },
   { id: 'layerLab', table: layerLab.table, diffOverrides: deadStarDisco.diffOverrides, fixture: true },
 ];
