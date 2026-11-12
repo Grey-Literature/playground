@@ -789,6 +789,79 @@
             text-shadow: 0 0 5px rgba(255, 60, 60, 0.4);
         }
 
+        /* ---------- STAPLR-01 preview: a gate arm that has learned to bind ---------- */
+        .staplr-preview {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #14110a;
+            border-radius: 4px;
+        }
+
+        .staplr-post {
+            position: absolute;
+            right: 22%;
+            bottom: 26px;
+            width: 8px;
+            height: 52px;
+            background: #6b5a2a;
+        }
+
+        /* red and white, since 1994; the two prongs at the tip are new */
+        .staplr-arm {
+            position: absolute;
+            right: calc(22% + 4px);
+            bottom: 66px;
+            width: 46%;
+            height: 9px;
+            background: repeating-linear-gradient(90deg, #c8392b 0 16px, #f4efdf 16px 32px);
+            transform-origin: 100% 50%;
+            animation: staplr-kachunk 3.6s cubic-bezier(.6, 0, .3, 1) infinite;
+        }
+
+        .staplr-arm::before {
+            content: "";
+            position: absolute;
+            left: -3px;
+            top: -7px;
+            width: 9px;
+            height: 21px;
+            border: 3px solid #e8edf2;
+            border-right: 0;
+        }
+
+        @keyframes staplr-kachunk {
+            0%, 18% { transform: rotate(0deg); }
+            45%, 70% { transform: rotate(62deg); }
+            78%, 100% { transform: rotate(0deg); }
+        }
+
+        .staplr-stapler {
+            position: absolute;
+            right: 8%;
+            bottom: 26px;
+            width: 26px;
+            height: 9px;
+            background: #d8c9a3;
+            box-shadow: 0 -5px 0 -1px #c4b48c;
+        }
+
+        .staplr-caption {
+            position: absolute;
+            bottom: 6px;
+            left: 0.4rem;
+            right: 0.4rem;
+            text-align: center;
+            font-family: 'Courier New', monospace;
+            font-size: 0.66rem;
+            letter-spacing: 0.06em;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            color: #f2b233;
+        }
+
         /* ---------- CHROMATIC CAULDRON preview: one ingredient, dubious vessel ---------- */
         .potion-preview {
             position: relative;
@@ -1222,6 +1295,7 @@
             }
 
             .itshop-beam,
+            .staplr-arm,
             .itshop-cam {
                 animation: none !important;
             }
@@ -1430,6 +1504,29 @@
                         <span class="itshop-beam" aria-hidden="true"></span>
                         <span class="itshop-cam" aria-hidden="true"></span>
                         <span class="itshop-ticket">TICKET #666 &middot; ASSIGNED TO: YOU</span>
+                    </div>
+                </div>
+            </a>
+
+            <a class="card" id="card-staplr" href="./staplr-01/staplr-01.html">
+                <span class="card-index">09</span>
+                <span class="play-badge">Play Now</span>
+                <span class="badge compatibility-tag">Mouse, touch or keys</span>
+                <h2>STAPLR-01</h2>
+                <p>
+                    The Staple That Held the Universe Together. At 2:47 a.m. a
+                    stapler in a parking booth federates with the gate outside,
+                    and it escalates from there: seven levels, and you are someone
+                    different in each. Fail one and you get stapled to something.
+                    It stays on you. There is a boss fight at the end. Everyone
+                    agrees it is a boss fight.
+                </p>
+                <div class="card-preview">
+                    <div class="staplr-preview" aria-label="A striped parking gate arm with two staple prongs at its tip, rising and coming down, beside a beige stapler">
+                        <span class="staplr-post" aria-hidden="true"></span>
+                        <span class="staplr-arm" aria-hidden="true"></span>
+                        <span class="staplr-stapler" aria-hidden="true"></span>
+                        <span class="staplr-caption">TKT-4476 &middot; DOCUMENT RETENTION: SUCCESS</span>
                     </div>
                 </div>
             </a>

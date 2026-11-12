@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>STAPLR-01 — The Staple That Held the Universe Together</title>
+    <meta name="description" content="A stapler federates with a parking gate at 2:47 a.m. Seven escalations. You can lose.">
+    <link rel="icon" type="image/png" href="../../favicon/RosettasKeysLogoFavi2-512x402.png">
+    <link rel="stylesheet" href="./css/staplr.css">
+</head>
+<body data-skin="booth">
+
+    <header class="hud" id="hud">
+        <div class="hud-id">
+            <span class="hud-name">STAPLR-01</span>
+            <span class="hud-level" id="hud-level">Booth 3 · Level P3</span>
+        </div>
+        <div class="hud-pov" id="hud-pov"></div>
+        <div class="hud-right">
+            <div class="hud-carry" id="hud-carry" aria-live="polite"></div>
+            <button class="hud-btn" id="hud-mute" type="button" aria-pressed="false" title="Sound on/off (M)">SOUND ON</button>
+            <a class="hud-btn" href="../games-index.html" title="Back to the arcade">&larr; ARCADE</a>
+        </div>
+    </header>
+
+    <main class="stage-wrap">
+        <div class="stage" id="stage">
+            <canvas id="game" width="960" height="600" tabindex="0"
+                aria-label="Game area. Move with mouse, touch or arrow keys. Space or tap to staple."></canvas>
+        </div>
+        <p class="caption" id="caption" aria-live="polite"></p>
+        <p class="rotate-hint">Turn your phone sideways. The stapler is wider than it is tall.</p>
+        <pre class="fedlog" id="fedlog" aria-label="Federation log" aria-live="polite"></pre>
+    </main>
+
+    <div class="overlay" id="overlay" hidden>
+        <div class="card" id="card" role="dialog" aria-modal="true" aria-labelledby="card-title"></div>
+    </div>
+
+    <noscript>STAPLR-01 needs JavaScript. The stapler does not, but you do.</noscript>
+
+    <!-- Classic scripts on one STAPLR global, in order. No modules, so file:// works. -->
+    <script src="./js/carry.js"></script>
+    <script src="./js/ui.js"></script>
+    <script src="./js/core.js"></script>
+    <script src="./js/epilogue.js"></script>
+    <script src="./js/levels/l1-handshake.js"></script>
+    <script src="./js/levels/l2-firstcar.js"></script>
+    <script src="./js/levels/l3-binding.js"></script>
+    <script src="./js/levels/l4-routes.js"></script>
+    <script src="./js/levels/l5-wormhole.js"></script>
+    <script src="./js/levels/l6-arrivals.js"></script>
+    <script src="./js/levels/l7-validation.js"></script>
+    <script>STAPLR.boot();</script>
+</body>
+</html>
