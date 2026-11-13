@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#171e18">
+  <meta name="description" content="Fowl Play. A Thanksgiving survival comedy with suspiciously competent poultry. Five nights. One key. Absolutely no guarantees.">
+  <title>Fowl Play — A Thanksgiving Survival Comedy</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="game.js" defer></script>
+</head>
+<body>
+  <div class="page">
+    <header class="masthead">
+      <a class="brand" href="./" aria-label="Fowl Play home"><svg viewBox="0 0 58 58" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2"><path d="M28 38C2 40 1 14 12 16c-3-14 11-15 15-5 4-15 17-9 15 1 15-4 21 12 10 17 7 10-9 18-18 12"/><path d="m27 31-9-13m12 11 2-16m2 19 11-12"/><path d="M38 45c-14 9-24-5-18-13 6-8 15-4 17 2 4-3 4-13 9-12 5 1 5 9 0 12l5 3-8 2c0 4-1 5-5 6Zm-11 0-2 8m11-8 2 8m-17 0h8m5 0h8"/></g><circle cx="45" cy="27" r="1.5" fill="currentColor"/></svg><span>FOWL PLAY<span class="brand-sub">A THANKSGIVING SURVIVAL COMEDY</span></span></a>
+      <nav aria-label="Game navigation"><button id="help-button">How to play <span>↗</span></button><button id="notes-button">Field notes <span>↗</span></button><button id="sound-button" class="sound" aria-pressed="false" aria-label="Enable sound">♪ <span>Sound off</span></button></nav>
+    </header>
+
+    <main>
+      <section class="intro" aria-label="Introduction"><div class="eyebrow"><span class="tiny-star">✳</span> THE HARVEST MAZE INCIDENT</div><div class="intro-row"><h1>Dinner has other plans.</h1><p>One turkey. One hunter.<br>Several OSHA violations.</p></div></section>
+
+      <section class="game-frame" aria-label="Fowl Play game">
+        <div class="hud">
+          <div class="night-label"><span class="live-dot"></span><div><span id="night-number" class="micro">NIGHT 01 / 05</span><strong id="night-name">The main course has escaped</strong></div></div>
+          <div class="stats"><div class="stat feathers"><span class="micro">TAIL FEATHERS</span><span id="hearts" aria-label="3 hit points">♥ ♥ ♥</span></div><div class="stat stamina"><span class="micro">DRUMSTICK STAMINA</span><div class="meter"><i id="stamina-fill"></i></div></div><div class="stat gravy"><span class="micro">GRAVY POINTS</span><strong id="score">0000</strong></div><button id="pause-button" class="pause" aria-label="Pause game">Ⅱ</button></div>
+        </div>
+        <div class="playfield" id="playfield">
+          <canvas id="game" width="1280" height="704" tabindex="0" aria-label="Harvest maze. Move with WASD or arrow keys, Shift to sprint, Space to gobble, E to interact, and 1 through 4 to place traps. Touch controls are below the maze."></canvas>
+          <div class="field-top"><span id="objective"><span class="key-symbol">⚿</span> THE FARMER HAS THE KEY.</span><span id="clock">DINNER IN 3:00</span></div>
+          <div class="location"><span>CEDAR HOLLOW FARM</span><span id="scarecrow-count">SCARECROWS: 07. PROBABLY.</span></div>
+          <div id="toast" role="status" aria-live="polite"></div>
+          <div id="dialogue" class="dialogue" aria-live="polite"></div>
+          <div id="overlay" class="overlay">
+            <div class="intro-card" id="overlay-card">
+              <span class="eyebrow">YOU ARE THE TURKEY.</span>
+              <h2 id="overlay-title">This year,<br>be the problem.</h2>
+              <p id="overlay-copy">The gates are locked. The farmer has the key.<br>Fortunately, the farm is a workplace accident.</p>
+              <button id="start-button" class="primary">Let’s ruin Thanksgiving <span>→</span></button>
+              <span class="overlay-foot" id="overlay-foot">5 NIGHTS · 3 FEATHERS · QUESTIONABLE ODDS</span>
+            </div>
+            <div class="stamp" aria-hidden="true">FARM SAFETY<br><strong>0</strong><br>DAYS WITHOUT INCIDENT</div>
+          </div>
+        </div>
+        <div class="equipment">
+          <div class="equipment-heading"><span class="micro">AGRICULTURAL SABOTAGE</span><span>Locally sourced. Personally regrettable.</span></div>
+          <div class="tools"><button class="tool" data-tool="rake"><kbd>1</kbd><span class="tool-icon">⌁</span><span>Rake ambush<small id="count-rake">× 3</small></span></button><button class="tool" data-tool="grease"><kbd>2</kbd><span class="tool-icon">◒</span><span>Greased pumpkin<small id="count-grease">× 2</small></span></button><button class="tool" data-tool="can"><kbd>3</kbd><span class="tool-icon">▤</span><span>Gobble-in-a-can<small id="count-can">× 2</small></span></button><button class="tool" data-tool="hay"><kbd>4</kbd><span class="tool-icon">▥</span><span>Hay-bale avalanche<small id="count-hay">× 1</small></span></button></div>
+        </div>
+      </section>
+      <div class="under-game"><div class="keyboard-guide"><span><kbd>W A S D</kbd> waddle</span><span><kbd>SHIFT</kbd> sprint</span><span><kbd>SPACE</kbd> gobble</span><span><kbd>E</kbd> interact</span></div><span class="fine-print">Friendly fire is a feature. Legally speaking.</span></div>
+      <div class="touch-controls" aria-label="Touch game controls"><div class="dpad"><button data-key="ArrowUp" aria-label="Move up">↑</button><button data-key="ArrowLeft" aria-label="Move left">←</button><button data-key="ArrowDown" aria-label="Move down">↓</button><button data-key="ArrowRight" aria-label="Move right">→</button></div><div><button data-key="Shift">Sprint</button><button data-action="gobble">Gobble</button><button data-action="interact">Interact</button></div></div>
+      <section class="field-strip"><span class="field-number">FIELD NOTE<br><strong>No. 001</strong></span><p>He’s already bought the stuffing.<br><em>Try not to take it personally.</em></p><div class="campaign" id="campaign" aria-label="Five night campaign"><span class="current" title="Night 1">01</span><i></i><span title="Night 2">02</span><i></i><span title="Night 3">03</span><i></i><span title="Night 4">04</span><i></i><span title="Night 5">05</span></div><span class="campaign-caption">FIVE NIGHTS UNTIL THANKSGIVING.<br>LET’S MAKE IT AWKWARD.</span></section>
+    </main>
+    <footer><span>A SMALL GAME ABOUT NOT BEING DINNER.</span><span>EST. FOUR DAYS TOO LATE <span class="tiny-star">✳</span></span></footer>
+  </div>
+  <dialog id="info-dialog"><button class="close-dialog" aria-label="Close dialog">×</button><div id="info-content"></div></dialog>
+</body>
+</html>

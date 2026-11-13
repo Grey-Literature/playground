@@ -1,0 +1,12 @@
+{
+  "name": "fowl-play",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A Thanksgiving survival comedy with suspiciously competent poultry.",
+  "scripts": {
+    "dev": "node server.js",
+    "start": "node server.js",
+    "check": "node --check game.js && node --check server.js",
+    "test": "node verify-game.cjs"
+  }
+}
