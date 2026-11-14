@@ -94,7 +94,12 @@ const rides: RideDef[] = [
     path: CABLE_RUN, dur: 1.6,
     exit: { vx: -6, vy: -95 },
     gate: { minSpeed: 72, minVy: 42 },
-    carry: { keep: 0.5, min: 38, max: 80 },
+    // Phase 3: it used to let go at clamp(entry × 0.5, 38, 80), i.e. ~40 u/s on
+    // the slower tiers, which dropped every ball onto the right sling at the
+    // one angle that ping-pongs it to the left sling and down the middle (96%
+    // of Easy's drains). Released at 80+ it plays like Dead Star Disco's fixed
+    // 95 u/s exit and keeps its momentum.
+    carry: { keep: 1.0, min: 80, max: 120 },
   },
 ];
 

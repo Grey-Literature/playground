@@ -1,7 +1,11 @@
 // Feel signature per theme × tier — the numbers behind "the ball has weight".
 // Dead Star Disco is the reference envelope; later themes must sit inside it.
 //
-//   flipExit  ball speed right off a cradled left-flipper shot
+//   flipExit  ball speed right off a cradled left-flipper shot, measured on a
+//             clear field (moving obstacles and kickers lifted out). It is the
+//             flipper's own feel: with them in, a spinning bar over the flippers
+//             catches the inner shots inside the 0.1 s sample and reads as a weak
+//             flipper (Phase 3 finding: DSD's "impossible flip 196" was the Wrecker).
 //   apex      highest y that shot reaches (how far up the table a flip carries)
 //   bumpExit  ball speed right after a pop-bumper kick
 //   life      median seconds a launched ball survives with a naive auto-flipper
@@ -55,8 +59,21 @@ function flipShot(advance: () => void, seconds = 3, frac = 0.65) {
 
 const median = (v: number[]) => { const s = [...v].sort((a, b) => a - b); return s[Math.floor(s.length / 2)]; };
 
-/** Shots from 13 cradle points along the bat (30%..90% of its length). */
+/** Shots from 13 cradle points along the bat (30%..90% of its length), on a clear field. */
 function flipSpread(makeAdvance: () => () => void) {
+  // lift out moving obstacles and kickers so only the flipper is measured
+  const keep = { kin: ACTIVE.kinematics, kick: ACTIVE.kickers, layers: Object.fromEntries(Object.entries(ACTIVE.byLayer).map(([k, v]) => [k, { kin: v.kinematics, kick: v.kickers }])) };
+  ACTIVE.kinematics = []; ACTIVE.kickers = [];
+  for (const v of Object.values(ACTIVE.byLayer)) { v.kinematics = []; v.kickers = []; }
+  try {
+    return flipSpreadInner(makeAdvance);
+  } finally {
+    ACTIVE.kinematics = keep.kin; ACTIVE.kickers = keep.kick;
+    for (const [k, v] of Object.entries(keep.layers)) { ACTIVE.byLayer[k].kinematics = v.kin; ACTIVE.byLayer[k].kickers = v.kick; }
+  }
+}
+
+function flipSpreadInner(makeAdvance: () => () => void) {
   const exits: number[] = [], angles: number[] = [], apexes: number[] = [];
   for (let i = 0; i <= 12; i++) {
     reseed(9 + i);

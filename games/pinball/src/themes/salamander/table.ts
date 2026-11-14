@@ -103,9 +103,13 @@ export const sensors: Sensor[] = [
   ...discoSensors.filter((s) => s.kind === 'lane' || s.kind === 'inlane'),
   // spinner on the left orbit, in front of the left ramp
   { x: -18.5, y: -5, r: 2.0, kind: 'spinner', id: 'spinner' },
-  // INFERNO VENTS (impossible): blast pads over the flippers
-  { x: -6.5, y: -20, r: 1.4, kind: 'vent', id: 'ventL', minTier: 'impossible', blast: { speed: 140, angle: Math.PI / 2, spread: 0.6, cooldown: 1.15 } },
-  { x: 6.5, y: -20, r: 1.4, kind: 'vent', id: 'ventR', minTier: 'impossible', blast: { speed: 140, angle: Math.PI / 2, spread: 0.6, cooldown: 1.15 } },
+  // INFERNO VENTS (hard+): blast pads over the flippers. Phase 3: they blast
+  // OUTWARD (toward the slings, 20° above level) at 85 u/s. Blasting straight
+  // up at 140 saved balls (1,520 blasts in 120 impossible balls, the ball near
+  // the flippers only 9% of the time); outward they are a hazard, and Hard
+  // finally gets harder than Medium (see CLAUDE.md, Phase 3 results).
+  { x: -6.5, y: -20, r: 1.4, kind: 'vent', id: 'ventL', minTier: 'hard', blast: { speed: 85, angle: Math.PI - 0.35, spread: 0.4, cooldown: 1.6 } },
+  { x: 6.5, y: -20, r: 1.4, kind: 'vent', id: 'ventR', minTier: 'hard', blast: { speed: 85, angle: 0.35, spread: 0.4, cooldown: 1.6 } },
 ];
 
 export const captures: CaptureDef[] = [
@@ -171,8 +175,8 @@ const kinematics: KinematicDef[] = [
     amp: 0.5, base: 0, speed: { default: 2.4, impossible: 3.0 }, rest: 0.65, swat: 0.5, minTier: 'medium',
   },
   // CINDER MOONS (hard+) — two cinders circling THE MAW
-  { id: 'moonA', kind: 'orbiter', cx: MAW_AT.x, cy: MAW_AT.y, r: 1.1, orbit: 4.2, phase: 0, speed: { default: 1.6, impossible: 2.1 }, rest: 0.7, swat: 0.6, minTier: 'hard' },
-  { id: 'moonB', kind: 'orbiter', cx: MAW_AT.x, cy: MAW_AT.y, r: 1.1, orbit: 4.2, phase: Math.PI, speed: { default: 1.6, impossible: 2.1 }, rest: 0.7, swat: 0.6, minTier: 'hard' },
+  { id: 'moonA', kind: 'orbiter', cx: MAW_AT.x, cy: MAW_AT.y, r: 1.1, orbit: 4.2, phase: 0, speed: { default: 1.6, impossible: 2.1 }, rest: 0.7, swat: 0.6, minTier: 'impossible' },
+  { id: 'moonB', kind: 'orbiter', cx: MAW_AT.x, cy: MAW_AT.y, r: 1.1, orbit: 4.2, phase: Math.PI, speed: { default: 1.6, impossible: 2.1 }, rest: 0.7, swat: 0.6, minTier: 'impossible' },
 ];
 
 export const table: TableDef = {
@@ -196,6 +200,6 @@ export const diffOverrides: DiffOverrides = {
   supereasy: { blurb: 'A gentle flame: slower gravity, the nest wide open.' },
   easy: { blurb: 'The EMBER SPIRE rises in the middle of the field.' },
   medium: { blurb: 'The ASH PENDULUM starts swinging on the nest.' },
-  hard: { blurb: 'Two CINDER MOONS circle THE MAW.' },
-  impossible: { blurb: 'INFERNO VENTS over the flippers. Everything burns.' },
+  hard: { blurb: 'INFERNO VENTS over the flippers blast the ball sideways.' },
+  impossible: { blurb: 'Two CINDER MOONS circle THE MAW. Everything burns.' },
 };

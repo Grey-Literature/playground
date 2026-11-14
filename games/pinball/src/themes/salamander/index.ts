@@ -16,7 +16,7 @@ export const salamander: ThemeDef = {
     dmdTitle: 'SALAMANDER',
     attractHint: 'HOLD SPACE • FULL HEAT = SKYSHOT TO THE NEST',
     attractFooter: 'Ramps & Skyshot → EMBER NEST • 3 Fire Bells = INFERNO • 2 INFERNOs light THE MAW → MULTIBALL • Serpent Tunnel ▲',
-    obstacleSets: ['the Ember Spire', 'the Ash Pendulum', 'two Cinder Moons', 'Inferno Vents'],
+    obstacleSets: ['the Ember Spire', 'the Ash Pendulum', 'Inferno Vents', 'two Cinder Moons'],
   },
   table,
   diffOverrides,

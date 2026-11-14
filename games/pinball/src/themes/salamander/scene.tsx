@@ -722,6 +722,12 @@ function Moons() {
   );
 }
 
+/** Tilt a vertical jet toward a table-plane blast angle (0 = +x, π/2 = up-table). */
+function jetLean(angle: number) {
+  const dir = new THREE.Vector3(Math.cos(angle) * 0.85, 0.55, -Math.sin(angle) * 0.85).normalize();
+  return new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+}
+
 function Vents() {
   useTier();
   const vents = ACTIVE.sensors.filter((s) => s.blast);
@@ -736,7 +742,7 @@ function Vents() {
       const m = rings.current[i];
       if (m) m.emissiveIntensity = 0.2 + charge * (1.4 + Math.sin(t * 8 + i) * 0.4) + fl * 3;
       const j = jets.current[i];
-      if (j) { j.visible = fl > 0.05; j.scale.set(1, 0.2 + fl * 1.4, 1); j.position.y = 0.2 + fl * 2.4; }
+      if (j) { j.visible = fl > 0.05; j.scale.set(1, 0.2 + fl * 1.4, 1); j.position.y = fl * 2.4; }
     });
   });
   return (
@@ -753,10 +759,13 @@ function Vents() {
               <meshStandardMaterial color="#292524" metalness={0.8} roughness={0.4} />
             </mesh>
           ))}
-          <mesh ref={(el) => { jets.current[i] = el; }} visible={false}>
-            <coneGeometry args={[v.r * 0.9, 5, 14, 1, true]} />
-            <meshBasicMaterial color={FLAME} transparent opacity={0.6} blending={THREE.AdditiveBlending} depthWrite={false} toneMapped={false} side={THREE.DoubleSide} />
-          </mesh>
+          {/* the jet leans the way the vent blasts (outward, low over the field) */}
+          <group position={[0, 0.2, 0]} quaternion={jetLean(v.blast!.angle)}>
+            <mesh ref={(el) => { jets.current[i] = el; }} visible={false}>
+              <coneGeometry args={[v.r * 0.9, 5, 14, 1, true]} />
+              <meshBasicMaterial color={FLAME} transparent opacity={0.6} blending={THREE.AdditiveBlending} depthWrite={false} toneMapped={false} side={THREE.DoubleSide} />
+            </mesh>
+          </group>
         </group>
       ))}
     </group>
