@@ -460,6 +460,68 @@ touches geometry, physics or difficulty.
   about 20% through a hole and 80% over the waterfall.
 - Cross-layer collisions: 0.
 
+### Phase 3 results (physics parity, partial)
+
+The soak behind `feelcheck` is chaotic: one small geometry change reroutes
+every ball, and a 120-ball median moved by ±10 points between seeds. So
+Phase 3 judged with 600-ball probes (seed 999) on **mean life**, **survival**
+and **trap %** (the share of drains that follow the single most common path,
+the last four things the ball touched). `feelcheck` now prints `mean` and
+`trap` too (120 balls, reported, not gated), plus the path when trap > 40%.
+
+- **"IMPOSSIBLE flips are weaker than HARD" was the measurement.** The
+  spinning bar over the flippers (DSD's Wrecker, LE's Rollback) caught the
+  inner cradle shots before the 0.1 s sample; the frickies made no
+  difference. With the bar lifted, Impossible is the strongest shot (DSD:
+  315, weakest 303). `flipExit` is now measured on a clear field (moving
+  obstacles, kickers and blast pads lifted out), so it reads the flipper's
+  own feel. No physics change was needed.
+- **Hard is hard because of the bar over the flippers.** DSD without its
+  Wrecker keeps 81 of 120 balls alive at Hard (with it, 43). The livelier
+  tier physics on their own make the naive bot's life *easier*, so every
+  table needs a real flipper-zone obstacle by Hard.
+- **Death traps found and fixed:**
+
+  | Table / tier | Trap % | The path | Fix |
+  | --- | --- | --- | --- |
+  | LE Easy | 96% | cable run exit → right sling ×2 → left sling → drain | release at `carry {1.0, 80, 120}` (was 0.5/38/80: ~40 u/s on slow tiers) |
+  | Salamander Medium | 88% | left sling → right sling → Ember Spire → left sling → drain | Spire moved (-5.5,-5) → (-4,-9.5) |
+  | Salamander Hard | 48% | right vent → right sling → (repeat) | vents blast 40° above level, not 20° |
+
+- **Salamander's ladder rebuilt** (it was 44/44/27/38/35 s mean life):
+  - The Ash Pendulum moved off the nest (balls spend 1–2% of their time
+    there, so it changed nothing) to swing over the flippers at (0,-15.5),
+    half 4.0, amp 0.45, speed 1.6/1.9/2.3 (medium/hard/impossible). Its
+    tips stay 3.1 clear of the Spire.
+  - The Inferno Vents moved from Impossible to Hard and blast outward
+    (85 u/s, 40° above level, cooldown 1.6) instead of straight up (140 u/s),
+    which had kept the ball away from the flippers (1,520 blasts in 120
+    impossible balls; the ball in the flipper zone 9% of the time).
+  - The Cinder Moons moved from Hard to Impossible.
+- **DSD's ramp keeps its fixed exit.** With `carry {1.0, 80, 120}` its
+  Medium went to 85% survival (from 45%) and fell below Easy, inverting the
+  reference ladder. The wormhole keeps its fixed exit too: its path ends
+  pointing down-left, but it is meant to spit the ball up the west corridor.
+- **Results** (600-ball probe, seed 999; mean life · survival · trap):
+
+  | Tier       | Dead Star Disco    | Salamander          | The Last Escalation |
+  | ---------- | ------------------ | ------------------- | ------------------- |
+  | SUPER EASY | 41.4s · 82% · 11%  | 43.7s · 95% · 34%   | 43.1s · 92% · 16%   |
+  | EASY       | 39.6s · 76% · 7%   | 42.3s · 88% · 14%   | 43.6s · 93% · 24%   |
+  | MEDIUM     | 32.8s · 45% · 73%  | 37.1s · 66% · 7%    | 35.0s · 59% · 10%   |
+  | HARD       | 30.2s · 40% · 7%   | 25.1s · 23% · 12%   | 29.8s · 41% · 3%    |
+  | IMPOSSIBLE | 17.5s · 7% · 6%    | 16.5s · 7% · 7%     | 17.2s · 6% · 5%     |
+
+  (Salamander Super Easy's 34% is 10 of 30 drains; LE Easy's 24% is the
+  old cable-run path, now only ~10 balls in 600.)
+- **Still open for Phase 3:**
+  - **DSD Medium has a trap:** 73% of its drains go bumper 4 → the right
+    target bank → down the middle. That's DSD's obstacle-placement pass.
+  - **30/60/144 Hz parity in a real browser.** The harness parity is exact
+    (spread 0.0); a real-screen check still needs doing.
+  - The DSD drain mix is still mostly straight down the middle (no
+    outlanes); judge any layout pass against it.
+
 ### Phase 4 results (The Last Escalation)
 
 - **The table** is Dead Star Disco's lower chassis with IT Shop of Horrors'
@@ -616,11 +678,9 @@ The current numbers:
   Flipper and bumper exits match Dead Star Disco (same chassis). Timestep
   parity is exact (spread 0.0).
 - **Open items for Phase 3:**
-  - **Salamander is gentler than Dead Star Disco.** The auto-flipper's
-    median ball life hits the 45 s cap at every tier (DSD impossible: 12.2 s),
-    before and after the relayout.
-  - **Give Dead Star Disco's ramp and wormhole `carry`** once parity work
-    starts. Its feel numbers will move, so re-baseline them.
+  - ~~**Salamander is gentler than Dead Star Disco.**~~ **Done (Phase 3).**
+  - ~~**Give Dead Star Disco's ramp and wormhole `carry`.**~~ **Tested and
+    declined (Phase 3)**; see the Phase 3 results.
   - ~~**Dead Star Disco multiball never ends for a good player.**~~ **Done
     (2c.1).** Completing both banks during multiball used to extend it
     (+5k and a full timer) without limit. A lockstep reflex-loop script
@@ -630,11 +690,8 @@ The current numbers:
     clock keeps running. This is engine-wide, so Salamander's lit Maw is
     capped too. A perfect-reflex bot still never drains, so its score still
     climbs, at 5× at most.
-  - **The Inferno Vents save balls.** They blast straight up the table (about
-    450 blasts in 40 impossible balls), and the impossible flip-exit reading
-    (315, weakest 131) is the vent catching the cradle shot. The prototype
-    pushed the ball radially away from the vent with a sideways kick; try
-    that, or angle the blasts, so impossible actually gets harder.
+  - ~~**The Inferno Vents save balls.**~~ **Done (Phase 3):** they blast
+    outward now, and arrive at Hard.
 
 ### Phase 1 measurements (the baseline Phase 3 starts from)
 
@@ -656,11 +713,9 @@ The current numbers:
 - **stuckcheck** still reports `stuck=0` on every tier, with trial counts
   identical to the prototype's.
 - **Open items for Phase 3:**
-  - **IMPOSSIBLE flip exit is weaker than HARD** (median 196 with a weakest
-    of 146, against 281). The bat turns about 0.31 rad per step at the
-    impossible flip speed, so it may be skipping part of the contact; the
-    Frickies may also be catching the shot. Fix by sub-stepping the flipper
-    angle, then re-verify every theme.
+  - ~~**IMPOSSIBLE flip exit is weaker than HARD.**~~ **Not a flipper bug
+    (Phase 3):** the Wrecker caught the inner cradle shots inside the 0.1 s
+    sample. On a clear field Impossible is the strongest shot (315 vs 282).
   - **The auto-flipper soak drains almost entirely down the middle** on Dead
     Star Disco (mid/off/out of about 88/5/7 at hard and impossible), because
     the table has no outlanes. That is the death-trap baseline to judge its
@@ -704,7 +759,9 @@ The current numbers:
 3. **Physics parity.** Salamander should sit inside Dead Star Disco's
    envelope. Run death-trap and ball-trap audits, do Dead Star Disco's
    obstacle-placement pass, and check 30/60/144 Hz parity in a real
-   browser. **STOP**
+   browser. **STOP** *(Partly done: flipper reading explained, three death
+   traps fixed, Salamander's ladder rebuilt; DSD's Medium trap and the
+   real-browser refresh check remain. See Phase 3 results.)*
 4. **A third theme** pulled from MISFIRE ARCADE: **The Last Escalation**
    (`lastEscalation`, IT Shop of Horrors' Act IV). **(B1) Graybox:** the
    table, the four-act rules and the `onDrain` ball-save hook, drawn with

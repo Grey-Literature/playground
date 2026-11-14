@@ -2,13 +2,20 @@
 // Dead Star Disco is the reference envelope; later themes must sit inside it.
 //
 //   flipExit  ball speed right off a cradled left-flipper shot, measured on a
-//             clear field (moving obstacles and kickers lifted out). It is the
+//             clear field (moving obstacles, kickers and blast pads lifted out). It is the
 //             flipper's own feel: with them in, a spinning bar over the flippers
 //             catches the inner shots inside the 0.1 s sample and reads as a weak
 //             flipper (Phase 3 finding: DSD's "impossible flip 196" was the Wrecker).
 //   apex      highest y that shot reaches (how far up the table a flip carries)
 //   bumpExit  ball speed right after a pop-bumper kick
 //   life      median seconds a launched ball survives with a naive auto-flipper
+//   mean      mean seconds (steadier than the median, which sits at the 45 s cap
+//             whenever more than half the balls survive)
+//   trap      share of drains that follow the single most common path (the last
+//             four things the ball touched). A high number is a death trap: one
+//             repeatable route to the drain. Phase 3 found three (LE Easy 96%,
+//             Salamander Medium 88%, Salamander Hard 48%) and fixed them; DSD
+//             Medium (~73%) is a known open item. Reported, not gated.
 //   mid/off/out  drain mix: straight down the middle (between resting tips) /
 //             rolled off a flipper (tip..pivot) / outlane (outside the pivots)
 //   p95/max   95th-percentile speed as a fraction of the tier's speed cap
@@ -61,15 +68,16 @@ const median = (v: number[]) => { const s = [...v].sort((a, b) => a - b); return
 
 /** Shots from 13 cradle points along the bat (30%..90% of its length), on a clear field. */
 function flipSpread(makeAdvance: () => () => void) {
-  // lift out moving obstacles and kickers so only the flipper is measured
-  const keep = { kin: ACTIVE.kinematics, kick: ACTIVE.kickers, layers: Object.fromEntries(Object.entries(ACTIVE.byLayer).map(([k, v]) => [k, { kin: v.kinematics, kick: v.kickers }])) };
-  ACTIVE.kinematics = []; ACTIVE.kickers = [];
-  for (const v of Object.values(ACTIVE.byLayer)) { v.kinematics = []; v.kickers = []; }
+  // lift out moving obstacles, kickers and blast pads so only the flipper is measured
+  const noBlast = <T extends { blast?: unknown }>(l: T[]) => l.filter((x) => !x.blast);
+  const keep = { kin: ACTIVE.kinematics, kick: ACTIVE.kickers, sens: ACTIVE.sensors, layers: Object.fromEntries(Object.entries(ACTIVE.byLayer).map(([k, v]) => [k, { kin: v.kinematics, kick: v.kickers, sens: v.sensors }])) };
+  ACTIVE.kinematics = []; ACTIVE.kickers = []; ACTIVE.sensors = noBlast(ACTIVE.sensors);
+  for (const v of Object.values(ACTIVE.byLayer)) { v.kinematics = []; v.kickers = []; v.sensors = noBlast(v.sensors); }
   try {
     return flipSpreadInner(makeAdvance);
   } finally {
-    ACTIVE.kinematics = keep.kin; ACTIVE.kickers = keep.kick;
-    for (const [k, v] of Object.entries(keep.layers)) { ACTIVE.byLayer[k].kinematics = v.kin; ACTIVE.byLayer[k].kickers = v.kick; }
+    ACTIVE.kinematics = keep.kin; ACTIVE.kickers = keep.kick; ACTIVE.sensors = keep.sens;
+    for (const [k, v] of Object.entries(keep.layers)) { ACTIVE.byLayer[k].kinematics = v.kin; ACTIVE.byLayer[k].kickers = v.kick; ACTIVE.byLayer[k].sensors = v.sens; }
   }
 }
 
@@ -125,6 +133,7 @@ function playSoak(n = 120, cap = 45) {
   const lives: number[] = [];
   const speeds: number[] = [];
   let mid = 0, off = 0, out = 0, secs = 0;
+  const paths: Record<string, number> = {};
   gameRef.unwedgeCount = 0;
   const F = TABLE.flippers;
   const midX = (F.left.pivot.x + F.right.pivot.x) / 2;
@@ -139,16 +148,23 @@ function playSoak(n = 120, cap = 45) {
     gameRef.balls.push(b);
     let t = 0;
     let lastX = b.x;
+    const recent: { k: string; t: number }[] = [];
     while (t < cap && b.active) {
       autoFlip(gameRef.balls);
       lastX = b.x;
-      step();
+      for (const e of step()) {
+        if (e.type === 'drain' || e.type === 'flipper') continue;
+        recent.push({ k: e.type === 'sensor' ? `sensor:${e.kind}` : `${e.type}:${'id' in e ? e.id : ''}`, t });
+        if (recent.length > 12) recent.shift();
+      }
       t += STEP;
       if (!b.ride && b.captured <= 0 && !b.inLane) speeds.push(Math.hypot(b.vx, b.vy));
     }
     lives.push(t);
     secs += t;
     if (!b.active) {
+      const path = recent.filter((r) => t - r.t < 4).slice(-4).map((r) => r.k).join(' > ') || '(quiet)';
+      paths[path] = (paths[path] ?? 0) + 1;
       const dx = Math.abs(lastX - midX);
       if (dx < tipHalf) mid++; else if (dx < pivotHalf) off++; else out++;
     }
@@ -156,8 +172,12 @@ function playSoak(n = 120, cap = 45) {
   lives.sort((a, b) => a - b);
   speeds.sort((a, b) => a - b);
   const drains = Math.max(1, mid + off + out);
+  const [trapPath, trapN] = Object.entries(paths).sort((a, b) => b[1] - a[1])[0] ?? ['-', 0];
   return {
     life: lives[Math.floor(lives.length / 2)],
+    mean: secs / n,
+    trap: trapN / drains,
+    trapPath,
     mix: `${Math.round(mid / drains * 100)}/${Math.round(off / drains * 100)}/${Math.round(out / drains * 100)}`,
     avg: speeds.reduce((a, v) => a + v, 0) / Math.max(1, speeds.length),
     p95: speeds[Math.floor(speeds.length * 0.95)] / DIFF.maxSpeed,
@@ -167,7 +187,7 @@ function playSoak(n = 120, cap = 45) {
 
 function signature(entry: TableEntry) {
   console.log(`\n[${entry.id}] feel signature (auto-flipper soak: 120 balls × ≤45 s per tier)`);
-  console.log('  tier        flipExit(min)  apex  bumpExit   life  mid/off/out%   avg  p95/max  unwedge/min');
+  console.log('  tier        flipExit(min)  apex  bumpExit   life   mean  trap  mid/off/out%   avg  p95/max  unwedge/min');
   for (const id of DIFF_ORDER) {
     useTable(entry, id);
     reseed(4242);
@@ -176,9 +196,10 @@ function signature(entry: TableEntry) {
     const s = playSoak();
     console.log(
       `  ${DIFF.label.padEnd(11)} ${pad(`${f.exit.toFixed(0)} (${f.minExit.toFixed(0)})`, 13)} ${pad(f.apex.toFixed(0), 5)} ${pad(bump.toFixed(0), 9)}` +
-      ` ${pad(s.life.toFixed(1) + 's', 6)} ${pad(s.mix, 12)}` +
+      ` ${pad(s.life.toFixed(1) + 's', 6)} ${pad(s.mean.toFixed(1) + 's', 6)} ${pad(Math.round(s.trap * 100) + '%', 5)} ${pad(s.mix, 12)}` +
       ` ${pad(s.avg.toFixed(0), 6)} ${pad(s.p95.toFixed(2), 8)} ${pad(s.unwedge.toFixed(2), 12)}`,
     );
+    if (s.trap > 0.4) console.log(`      trap: ${s.trapPath}`);
   }
 }
 

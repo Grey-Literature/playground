@@ -666,7 +666,7 @@ function Pendulum() {
   if (!k) return null;
   const len = (k.half ?? 0) * 2 + k.r * 2;
   return (
-    <group position={[PX(k.cx), layerHeight(NEST), PZ(k.cy)]}>
+    <group position={[PX(k.cx), layerHeight(k.layer), PZ(k.cy)]}>
       <group ref={bar} position={[0, 0.7, 0]}>
         <mesh castShadow>
           <boxGeometry args={[len, 0.9, 1.0]} />

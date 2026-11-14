@@ -7,8 +7,7 @@
 //
 //   EMBER NEST (layer 'nest', h 5.5) — a wide raised deck over the middle of
 //     the table. Zig-zag front rails slope into two WATERFALL gaps; DROP holes
-//     in the front corners; a row of three FIRE BELLS; the ASH PENDULUM
-//     (medium+) over the tent.
+//     in the front corners; a row of three FIRE BELLS.
 //   Field (runs under the nest — the beacon shows a ball down there):
 //     H-O-T top lanes on the arch, in view above the nest (skill shot); two
 //     ember pop bumpers; THE MAW mid-field with CINDER MOONS circling it
@@ -94,8 +93,10 @@ const circles: CircleBody[] = [
   // lane separators — above the nest's back rail, in plain view
   { x: -3.4, y: 31, r: 0.55, kind: 'post', id: 'lanePost0', rest: 0.7 },
   { x: 3.4, y: 31, r: 0.55, kind: 'post', id: 'lanePost1', rest: 0.7 },
-  // EMBER SPIRE (easy+)
-  { x: -5.5, y: -5, r: 0.6, kind: 'post', id: 'spire', rest: 0.85, minTier: 'easy' },
+  // EMBER SPIRE (easy+). Phase 3: moved from (-5.5, -5), where it closed a
+  // sling–spire–sling loop that drained 88% of Medium's balls straight down
+  // the middle.
+  { x: -4, y: -9.5, r: 0.6, kind: 'post', id: 'spire', rest: 0.85, minTier: 'easy' },
 ];
 
 export const sensors: Sensor[] = [
@@ -104,12 +105,13 @@ export const sensors: Sensor[] = [
   // spinner on the left orbit, in front of the left ramp
   { x: -18.5, y: -5, r: 2.0, kind: 'spinner', id: 'spinner' },
   // INFERNO VENTS (hard+): blast pads over the flippers. Phase 3: they blast
-  // OUTWARD (toward the slings, 20° above level) at 85 u/s. Blasting straight
+  // OUTWARD at 85 u/s, 40° above level (at 20° they fired the ball into the
+  // sling and back, half of all Hard drains). Blasting straight
   // up at 140 saved balls (1,520 blasts in 120 impossible balls, the ball near
   // the flippers only 9% of the time); outward they are a hazard, and Hard
   // finally gets harder than Medium (see CLAUDE.md, Phase 3 results).
-  { x: -6.5, y: -20, r: 1.4, kind: 'vent', id: 'ventL', minTier: 'hard', blast: { speed: 85, angle: Math.PI - 0.35, spread: 0.4, cooldown: 1.6 } },
-  { x: 6.5, y: -20, r: 1.4, kind: 'vent', id: 'ventR', minTier: 'hard', blast: { speed: 85, angle: 0.35, spread: 0.4, cooldown: 1.6 } },
+  { x: -6.5, y: -20, r: 1.4, kind: 'vent', id: 'ventL', minTier: 'hard', blast: { speed: 85, angle: Math.PI - 0.7, spread: 0.4, cooldown: 1.6 } },
+  { x: 6.5, y: -20, r: 1.4, kind: 'vent', id: 'ventR', minTier: 'hard', blast: { speed: 85, angle: 0.7, spread: 0.4, cooldown: 1.6 } },
 ];
 
 export const captures: CaptureDef[] = [
@@ -169,10 +171,14 @@ const rides: RideDef[] = [
 ];
 
 const kinematics: KinematicDef[] = [
-  // ASH PENDULUM (medium+) — flaps over the tent, batting balls from the bells toward the waterfalls
+  // ASH PENDULUM (medium+) — flaps over the flippers. Phase 3: it used to swing
+  // on the nest, where a soak ball spends 1–2% of its time, so Medium had no
+  // real obstacle (its only difficulty was a sling–spire–sling drain loop, 88%
+  // of drains). Over the flippers it is Salamander's answer to DSD's Wrecker.
+  // At full swing its tips stay 3.1 clear of the Ember Spire.
   {
-    id: 'pendulum', kind: 'bar', motion: 'swing', layer: NEST, cx: 0, cy: 17.4, half: 2.0, r: 0.5,
-    amp: 0.5, base: 0, speed: { default: 2.4, impossible: 3.0 }, rest: 0.65, swat: 0.5, minTier: 'medium',
+    id: 'pendulum', kind: 'bar', motion: 'swing', cx: 0, cy: -15.5, half: 4.0, r: 0.5,
+    amp: 0.45, base: 0, speed: { default: 1.6, hard: 1.9, impossible: 2.3 }, rest: 0.65, swat: 0.5, minTier: 'medium',
   },
   // CINDER MOONS (hard+) — two cinders circling THE MAW
   { id: 'moonA', kind: 'orbiter', cx: MAW_AT.x, cy: MAW_AT.y, r: 1.1, orbit: 4.2, phase: 0, speed: { default: 1.6, impossible: 2.1 }, rest: 0.7, swat: 0.6, minTier: 'impossible' },
@@ -199,7 +205,7 @@ export const table: TableDef = {
 export const diffOverrides: DiffOverrides = {
   supereasy: { blurb: 'A gentle flame: slower gravity, the nest wide open.' },
   easy: { blurb: 'The EMBER SPIRE rises in the middle of the field.' },
-  medium: { blurb: 'The ASH PENDULUM starts swinging on the nest.' },
+  medium: { blurb: 'The ASH PENDULUM starts swinging over the flippers.' },
   hard: { blurb: 'INFERNO VENTS over the flippers blast the ball sideways.' },
   impossible: { blurb: 'Two CINDER MOONS circle THE MAW. Everything burns.' },
 };
