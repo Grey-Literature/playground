@@ -152,6 +152,12 @@ Grey-Literature/playground#2). The two branches work like this:
   look props; `only` filters let a theme custom-draw some bumpers, posts,
   kickers or rides. `ThemeDef.ctaClass` optionally reskins the big PLAY /
   PLAY AGAIN / GOT IT buttons (default: the palette gradient).
+- **Back to the arcade.** A "◂ MISFIRE ARCADE" link (`ArcadeLink` in
+  `hud/HUD.tsx`, `#back-to-arcade`) goes to `../games-index.html` from the
+  start panel, the pause screen and game over (never the in-game button
+  bar). It uses the active palette and display font; `ThemeDef.backClass`
+  can restyle it (The Last Escalation uses its black terminal key). In the
+  dev server it 404s, because `vite` serves `pinball/` as the root.
 - **Sound.** `engine/audio.ts` synthesizes every sound. A theme can re-voice
   any of the named table sounds (`VOICES`: flippers, bumper, sling, lane,
   jackpot, multiball, start, drain…) with `ThemeDef.voice`, and set the
@@ -487,6 +493,7 @@ the last four things the ball touched). `feelcheck` now prints `mean` and
   | LE Easy | 96% | cable run exit → right sling ×2 → left sling → drain | release at `carry {1.0, 80, 120}` (was 0.5/38/80: ~40 u/s on slow tiers) |
   | Salamander Medium | 88% | left sling → right sling → Ember Spire → left sling → drain | Spire moved (-5.5,-5) → (-4,-9.5) |
   | Salamander Hard | 48% | right vent → right sling → (repeat) | vents blast 40° above level, not 20° |
+  | DSD Medium | 73% | bumper 4 → right target bank → down the middle | right bank angled, top toward the middle (R0 x 9.6, R1 9.0, R2 8.4) |
 
 - **Salamander's ladder rebuilt** (it was 44/44/27/38/35 s mean life):
   - The Ash Pendulum moved off the nest (balls spend 1–2% of their time
@@ -498,6 +505,11 @@ the last four things the ball touched). `feelcheck` now prints `mean` and
     which had kept the ball away from the flippers (1,520 blasts in 120
     impossible balls; the ball in the flipper zone 9% of the time).
   - The Cinder Moons moved from Hard to Impossible.
+- **DSD's ladder rebuilt.** Without its trap, DSD's Medium played like Easy,
+  so the Wrecker (the obstacle that makes a tier genuinely harder) now
+  starts at Medium, turning slowly (0.7 rad/s), and spins up from Hard as
+  before. The Top Posts moved from Medium to Hard: they barely change ball
+  life, and they keep the picker's "+N obst" count rising every tier.
 - **DSD's ramp keeps its fixed exit.** With `carry {1.0, 80, 120}` its
   Medium went to 85% survival (from 45%) and fell below Easy, inverting the
   reference ladder. The wormhole keeps its fixed exit too: its path ends
@@ -506,17 +518,17 @@ the last four things the ball touched). `feelcheck` now prints `mean` and
 
   | Tier       | Dead Star Disco    | Salamander          | The Last Escalation |
   | ---------- | ------------------ | ------------------- | ------------------- |
-  | SUPER EASY | 41.4s · 82% · 11%  | 43.7s · 95% · 34%   | 43.1s · 92% · 16%   |
-  | EASY       | 39.6s · 76% · 7%   | 42.3s · 88% · 14%   | 43.6s · 93% · 24%   |
-  | MEDIUM     | 32.8s · 45% · 73%  | 37.1s · 66% · 7%    | 35.0s · 59% · 10%   |
-  | HARD       | 30.2s · 40% · 7%   | 25.1s · 23% · 12%   | 29.8s · 41% · 3%    |
-  | IMPOSSIBLE | 17.5s · 7% · 6%    | 16.5s · 7% · 7%     | 17.2s · 6% · 5%     |
+  | SUPER EASY | 44.0s · 97% · 16%  | 43.7s · 95% · 34%   | 43.1s · 92% · 16%   |
+  | EASY       | 40.0s · 80% · 4%   | 42.3s · 88% · 14%   | 43.6s · 93% · 24%   |
+  | MEDIUM     | 34.6s · 53% · 4%   | 37.1s · 66% · 7%    | 35.0s · 59% · 10%   |
+  | HARD       | 29.2s · 37% · 5%   | 25.1s · 23% · 12%   | 29.8s · 41% · 3%    |
+  | IMPOSSIBLE | 17.6s · 6% · 5%    | 16.5s · 7% · 7%     | 17.2s · 6% · 5%     |
+
+  (DSD before Phase 3: 41.4 / 39.6 / 32.8 / 30.2 / 17.5 s, Medium trap 73%.)
 
   (Salamander Super Easy's 34% is 10 of 30 drains; LE Easy's 24% is the
   old cable-run path, now only ~10 balls in 600.)
 - **Still open for Phase 3:**
-  - **DSD Medium has a trap:** 73% of its drains go bumper 4 → the right
-    target bank → down the middle. That's DSD's obstacle-placement pass.
   - **30/60/144 Hz parity in a real browser.** The harness parity is exact
     (spread 0.0); a real-screen check still needs doing.
   - The DSD drain mix is still mostly straight down the middle (no
@@ -759,9 +771,9 @@ The current numbers:
 3. **Physics parity.** Salamander should sit inside Dead Star Disco's
    envelope. Run death-trap and ball-trap audits, do Dead Star Disco's
    obstacle-placement pass, and check 30/60/144 Hz parity in a real
-   browser. **STOP** *(Partly done: flipper reading explained, three death
-   traps fixed, Salamander's ladder rebuilt; DSD's Medium trap and the
-   real-browser refresh check remain. See Phase 3 results.)*
+   browser. **STOP** *(Mostly done: flipper reading explained, four death
+   traps fixed, Salamander's and DSD's ladders rebuilt; the real-browser
+   refresh check remains. See Phase 3 results.)*
 4. **A third theme** pulled from MISFIRE ARCADE: **The Last Escalation**
    (`lastEscalation`, IT Shop of Horrors' Act IV). **(B1) Graybox:** the
    table, the four-act rules and the `onDrain` ball-save hook, drawn with

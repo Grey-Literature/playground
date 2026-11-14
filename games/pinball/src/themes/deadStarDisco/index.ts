@@ -16,7 +16,7 @@ export const deadStarDisco: ThemeDef = {
     dmdTitle: 'DEAD STAR DISCO',
     attractHint: 'HOLD SPACE • RELEASE IN GREEN FOR SKILL SHOT',
     attractFooter: 'Drop the DOORS to light kickback + 3X ramp • WORMHOLE for mystery awards • Chain shots for combos • L+R banks = MULTIBALL',
-    obstacleSets: ['Extra Bumpers', 'Top Posts', 'the spinning WRECKER', 'kicking Frickies'],
+    obstacleSets: ['Extra Bumpers', 'the spinning WRECKER', 'Top Posts', 'kicking Frickies'],
   },
   table,
   diffOverrides,

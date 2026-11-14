@@ -37,6 +37,7 @@ export const lastEscalation: ThemeDef = {
   help,
   voice,
   roll,
+  backClass: 'border-pa-500/60 bg-black text-pa-300 shadow-[inset_0_-2px_0_var(--color-pb-500)] hover:border-pb-400 hover:text-pb-300',
   // black terminal key, green phosphor text and border, a red status bar along the bottom
   ctaClass: 'border-2 border-pa-400 bg-black text-pa-300 shadow-[inset_0_-4px_0_var(--color-pb-500),0_0_22px_color-mix(in_srgb,var(--color-pa-500)_35%,transparent)] hover:border-pb-400 hover:text-pb-300 hover:shadow-[inset_0_-4px_0_var(--color-pa-400),0_0_30px_color-mix(in_srgb,var(--color-pb-500)_45%,transparent)]',
 };

@@ -83,6 +83,8 @@ export interface ThemeDef {
    * classes stay in the HUD. Leave it out for the palette gradient.
    */
   ctaClass?: string;
+  /** Optional skin (Tailwind classes) for the "◂ MISFIRE ARCADE" link; default: the palette's own colours. */
+  backClass?: string;
   /** Optional replacements for the engine's table sounds while this table is active (engine/audio.ts). */
   voice?: Voice;
   /** Optional level / colour for the rolling-ball noise. */

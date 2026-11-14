@@ -107,10 +107,12 @@ const circles: CircleBody[] = [
   // ramp's dive and were removed so the wire can descend cleanly.
   { x: -3.4, y: 29.6, r: 0.55, kind: 'post', id: 'lanePost0', rest: 0.7 },
   { x: 3.4, y: 29.6, r: 0.55, kind: 'post', id: 'lanePost1', rest: 0.7 },
-  // Rubber posts that scatter top-of-field shots (medium+).
-  { x: 0, y: 17.6, r: 0.62, kind: 'post', id: 'tp0', rest: 0.95, minTier: 'medium' },
-  { x: -7.2, y: 17.5, r: 0.62, kind: 'post', id: 'tp1', rest: 0.95, minTier: 'medium' },
-  { x: 7.2, y: 17.5, r: 0.62, kind: 'post', id: 'tp2', rest: 0.95, minTier: 'medium' },
+  // Rubber posts that scatter top-of-field shots (hard+; Phase 3 moved them up
+  // from medium when the Wrecker became Medium's set — they barely change ball
+  // life, so they keep the picker's ladder honest without making a trap).
+  { x: 0, y: 17.6, r: 0.62, kind: 'post', id: 'tp0', rest: 0.95, minTier: 'hard' },
+  { x: -7.2, y: 17.5, r: 0.62, kind: 'post', id: 'tp1', rest: 0.95, minTier: 'hard' },
+  { x: 7.2, y: 17.5, r: 0.62, kind: 'post', id: 'tp2', rest: 0.95, minTier: 'hard' },
 
   // Spring-loaded frickies above the flippers (impossible only) — they punch the
   // ball back into the pit. Positioned so a raised flipper still leaves >1 ball
@@ -122,10 +124,13 @@ const circles: CircleBody[] = [
   { x: -14.0, y: -1.0, r: 1.15, kind: 'target', id: 'L0' },
   { x: -14.0, y: 2.7, r: 1.15, kind: 'target', id: 'L1' },
   { x: -14.0, y: 6.4, r: 1.15, kind: 'target', id: 'L2' },
-  // right bank — 3.4 clear of the plunger divider
-  { x: 9.0, y: -1.0, r: 1.15, kind: 'target', id: 'R0' },
+  // right bank, angled with its top toward the middle (Phase 3). Square to the
+  // field it caught bumper 4's kicks and fed them straight down the middle:
+  // 73% of Medium's drains took that one path. Neighbours stay 3.75 apart
+  // (sealed), and the bank is 6.2+ clear of the plunger divider.
+  { x: 9.6, y: -1.0, r: 1.15, kind: 'target', id: 'R0' },
   { x: 9.0, y: 2.7, r: 1.15, kind: 'target', id: 'R1' },
-  { x: 9.0, y: 6.4, r: 1.15, kind: 'target', id: 'R2' },
+  { x: 8.4, y: 6.4, r: 1.15, kind: 'target', id: 'R2' },
   // centre standups — 7.4 apart so the ball can shoot the gap
   { x: -6.2, y: -4.5, r: 1.05, kind: 'target', id: 'C0' },
   { x: 1.2, y: -4.5, r: 1.05, kind: 'target', id: 'C1' },
@@ -226,10 +231,13 @@ export const table: TableDef = {
     },
   ],
   kinematics: [
-    // The Wrecker: spinning bar that swats low balls (hard+).
+    // The Wrecker: spinning bar that swats low balls (medium+). Phase 3: it
+    // turns slowly at Medium (0.7 rad/s) and full speed from Hard. A bar over
+    // the flippers is what makes a tier genuinely harder; without it DSD's
+    // Medium was only hard because of the right-bank drain trap.
     {
       id: 'wrecker', kind: 'bar', cx: 0, cy: -14.5, half: 5.2, r: 0.55,
-      speed: { default: 2.1, impossible: 3.4 }, rest: 0.65, swat: 0.55, minTier: 'hard',
+      speed: { default: 2.1, medium: 0.7, impossible: 3.4 }, rest: 0.65, swat: 0.55, minTier: 'medium',
     },
   ],
   // Flipper spacing is load-bearing: at rest the two tips must be more than
@@ -258,7 +266,7 @@ export const table: TableDef = {
 export const diffOverrides: DiffOverrides = {
   supereasy: { blurb: 'Slower gravity, dead bumpers, starter obstacles only.' },
   easy: { blurb: 'Slightly slower, less reactive — plus the upper pop bumpers.' },
-  medium: { blurb: 'Tournament baseline + two extra obstacle sets.' },
-  hard: { blurb: 'Livelier everything — and the Wrecker is spinning.' },
+  medium: { blurb: 'Tournament baseline — and the Wrecker starts turning.' },
+  hard: { blurb: 'Livelier everything: the Wrecker spins up, top posts scatter.' },
   impossible: { blurb: 'Everything faster, everything bouncier, everything angry.' },
 };

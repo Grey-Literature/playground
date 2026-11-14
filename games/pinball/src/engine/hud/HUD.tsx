@@ -8,7 +8,7 @@ import { obstacleCount } from '../table';
 import { activeTheme, hallThemes, themeById } from '../theme';
 import {
   Volume2, VolumeX, Camera, Vibrate, VibrateOff, CircleHelp,
-  Play, Pause, RotateCcw, Trophy, Zap, TriangleAlert, LifeBuoy, Ghost, Bot,
+  Play, Pause, RotateCcw, Trophy, Zap, TriangleAlert, LifeBuoy, Ghost, Bot, ArrowLeft,
 } from 'lucide-react';
 
 export function fmt(n: number) {
@@ -441,8 +441,11 @@ function AttractScreen() {
   return (
     <div className="absolute inset-0 z-40 flex items-center justify-center bg-gradient-to-b from-slate-950/60 via-slate-950/40 to-slate-950/80 p-4">
       <div className="attract-in relative max-h-[calc(100dvh-2rem)] w-full max-w-2xl overflow-y-auto rounded-3xl border border-pa-400/25 bg-[color-mix(in_srgb,var(--pb-bg,#020617)_85%,transparent)] px-6 pt-6 text-center shadow-[0_0_80px_color-mix(in_srgb,var(--color-pa-400)_25%,transparent)] backdrop-blur-xl sm:px-10 sm:pt-7 lg:max-w-5xl">
-        <div className="mb-3 inline-flex items-center gap-1.5 rounded-full border border-amber-400/40 bg-amber-950/40 px-3 py-0.5 text-[10px] font-black tracking-[0.3em] text-amber-300">
-          WORK IN PROGRESS · MORE TABLES BEING SUMMONED
+        <div className="mb-3 flex flex-wrap items-center justify-center gap-2">
+          <ArcadeLink />
+          <div className="inline-flex items-center gap-1.5 rounded-full border border-amber-400/40 bg-amber-950/40 px-3 py-0.5 text-[10px] font-black tracking-[0.3em] text-amber-300">
+            WORK IN PROGRESS · MORE TABLES BEING SUMMONED
+          </div>
         </div>
         <ThemePicker />
         <div className="mb-1 mt-4 text-[11px] font-black tracking-[0.5em] text-pa-400">INSERT COIN • 3 BALLS</div>
@@ -532,6 +535,7 @@ function GameOverScreen() {
         >
           <RotateCcw className="h-4 w-4" /> PLAY AGAIN (ENTER)
         </button>
+        <div className="mt-3 flex justify-center"><ArcadeLink /></div>
         </>}
       </div>
     </div>
@@ -591,8 +595,32 @@ function PausedOverlay() {
         <button onClick={() => useGame.getState().setPaused(false)} className="pointer-events-auto mt-4 rounded-xl bg-pa-500 px-6 py-2 font-bold text-slate-950 hover:bg-pa-400">
           RESUME
         </button>
+        <div className="mt-4 flex justify-center"><ArcadeLink /></div>
       </div>
     </div>
+  );
+}
+
+/**
+ * The way back to MISFIRE ARCADE (games/games-index.html, one folder up from
+ * the deployed pinball/pinball.html). Drawn in the active table's palette and
+ * display font, so it matches each skin; a theme can restyle it with
+ * `ThemeDef.backClass`. On the start panel, the pause screen and game over —
+ * never on the in-game button bar, so nobody leaves a ball by accident.
+ */
+export const ARCADE_URL = '../games-index.html';
+function ArcadeLink() {
+  useGame((s) => s.themeId);
+  const skin = activeTheme().backClass
+    ?? 'border-pa-400/45 bg-[color-mix(in_srgb,var(--color-pa-500)_12%,transparent)] text-pa-300 hover:border-pb-400 hover:text-pb-200 hover:shadow-[0_0_18px_color-mix(in_srgb,var(--color-pb-400)_45%,transparent)]';
+  return (
+    <a
+      id="back-to-arcade"
+      href={ARCADE_URL}
+      className={`pointer-events-auto inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1 font-display text-[11px] font-black tracking-[0.22em] transition-all hover:scale-105 active:scale-95 ${skin}`}
+    >
+      <ArrowLeft className="h-3.5 w-3.5" /> MISFIRE ARCADE
+    </a>
   );
 }
 
